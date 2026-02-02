@@ -5,6 +5,8 @@ import { EmbeddingsResource } from './resources/embeddings';
 import { VectorsResource } from './resources/vectors';
 import { FilesResource } from './resources/files';
 import { TracingResource } from './resources/tracing';
+import { ToolsResource } from './resources/tools';
+import { PromptsResource } from './resources/prompts';
 
 /**
  * Default configuration values
@@ -58,8 +60,14 @@ export class CGateClient {
   /** File management API */
   public files: FilesResource;
 
+  /** Prompt templates API */
+  public prompts: PromptsResource;
+
   /** Agent tracing API */
   public tracing: TracingResource;
+
+  /** Tools API */
+  public tools: ToolsResource;
 
   /**
    * Create a new CG client
@@ -81,7 +89,9 @@ export class CGateClient {
     this.embeddings = new EmbeddingsResource(this.http);
     this.vectors = new VectorsResource(this.http);
     this.files = new FilesResource(this.http);
+    this.prompts = new PromptsResource(this.http);
     this.tracing = new TracingResource(this.http);
+    this.tools = new ToolsResource(this.http);
   }
 
   /**

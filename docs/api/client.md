@@ -65,6 +65,14 @@ File management API resource.
 
 See [Files API](/api/files) for details.
 
+### `client.prompts`
+
+Prompt template API resource.
+
+**Type:** `PromptsResource`
+
+See [Prompts API](/api/prompts) for details.
+
 ### `client.tracing`
 
 Agent tracing API resource.

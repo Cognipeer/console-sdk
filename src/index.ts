@@ -66,12 +66,21 @@ export type {
   FileObject,
   UploadFileRequest,
   ListFilesQuery,
+
+  // Prompts
+  Prompt,
+  ListPromptsQuery,
+  PromptRenderResponse,
   
   // Tracing
   TracingSessionRequest,
   TracingAgent,
   TracingSummary,
   TracingEvent,
+
+  // Tools
+  AgentToolDefinition,
+  AgentToolAdapter,
   
   // Common
   Usage,

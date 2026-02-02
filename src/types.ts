@@ -290,6 +290,54 @@ export interface ListFilesQuery {
 }
 
 // ============================================================================
+// Prompt Types
+// ============================================================================
+
+export interface Prompt {
+  id: string;
+  key: string;
+  name: string;
+  description?: string;
+  template: string;
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ListPromptsQuery {
+  search?: string;
+}
+
+export interface PromptRenderResponse {
+  prompt: {
+    key: string;
+    name: string;
+    description?: string;
+  };
+  rendered: string;
+}
+
+// ============================================================================
+// Agent Tool Types
+// ============================================================================
+
+export interface AgentToolDefinition {
+  key: string;
+  name: string;
+  description?: string;
+  schema?: Record<string, unknown>;
+  toolsetKey?: string | null;
+  executionType?: string;
+}
+
+export interface AgentToolAdapter {
+  name: string;
+  description?: string;
+  schema?: Record<string, unknown>;
+  invoke: (args: Record<string, unknown>) => Promise<unknown>;
+}
+
+// ============================================================================
 // Tracing Types
 // ============================================================================
 
