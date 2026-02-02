@@ -5,14 +5,15 @@ export class ToolsResource {
   constructor(private http: HttpClient) {}
 
   async listAgentTools(agentKey: string): Promise<AgentToolDefinition[]> {
-    const response = await this.http.get<{ tools: AgentToolDefinition[] }>(`/agents/${agentKey}/tools`);
+    const response = await this.http.request<{ tools: AgentToolDefinition[] }>('GET', `/agents/${agentKey}/tools`);
     return response.tools || [];
   }
 
   async executeAgentTool(agentKey: string, toolKey: string, args?: Record<string, unknown>) {
-    const response = await this.http.post<{ result: unknown }>(
+    const response = await this.http.request<{ result: unknown }>(
+      'POST',
       `/agents/${agentKey}/tools/${toolKey}/execute`,
-      { arguments: args ?? {} },
+      { body: { arguments: args ?? {} } },
     );
     return response.result;
   }
