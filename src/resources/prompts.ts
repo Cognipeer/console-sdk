@@ -1,5 +1,12 @@
 import { HttpClient } from '../http';
-import type { ListPromptsQuery, Prompt, PromptRenderResponse } from '../types';
+import type { 
+  ListPromptsQuery, 
+  Prompt, 
+  PromptRenderResponse,
+  GetPromptOptions,
+  RenderPromptOptions,
+  PromptVersionsResponse,
+} from '../types';
 
 /**
  * Prompts API resource
@@ -24,22 +31,40 @@ export class PromptsResource {
   /**
    * Get a prompt by key
    * @param key - Prompt key
+   * @param options - Optional parameters including version number
    */
-  async get(key: string): Promise<{ prompt: Prompt }> {
-    return this.http.request('GET', `/api/client/v1/prompts/${key}`);
+  async get(key: string, options?: GetPromptOptions): Promise<{ prompt: Prompt }> {
+    const query: Record<string, string | number | boolean | undefined> = {};
+    if (options?.version !== undefined) {
+      query.version = options.version;
+    }
+    return this.http.request('GET', `/api/client/v1/prompts/${key}`, { query });
   }
 
   /**
    * Render a prompt with data
    * @param key - Prompt key
-   * @param data - Template data
+   * @param options - Render options including data and optional version
    */
   async render(
     key: string,
-    data?: Record<string, unknown>
+    options?: RenderPromptOptions
   ): Promise<PromptRenderResponse> {
+    const query: Record<string, string | number | boolean | undefined> = {};
+    if (options?.version !== undefined) {
+      query.version = options.version;
+    }
     return this.http.request('POST', `/api/client/v1/prompts/${key}/render`, {
-      body: { data },
+      query,
+      body: { data: options?.data },
     });
+  }
+
+  /**
+   * List all versions of a prompt
+   * @param key - Prompt key
+   */
+  async listVersions(key: string): Promise<PromptVersionsResponse> {
+    return this.http.request('GET', `/api/client/v1/prompts/${key}/versions`);
   }
 }

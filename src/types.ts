@@ -300,12 +300,35 @@ export interface Prompt {
   description?: string;
   template: string;
   metadata?: Record<string, unknown>;
+  currentVersion?: number;
+  latestVersionId?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
+export interface PromptVersion {
+  id: string;
+  promptId: string;
+  version: number;
+  name: string;
+  description?: string;
+  template?: string;
+  isLatest: boolean;
+  createdBy: string;
+  createdAt?: string;
+}
+
 export interface ListPromptsQuery {
   search?: string;
+}
+
+export interface GetPromptOptions {
+  version?: number;
+}
+
+export interface RenderPromptOptions {
+  version?: number;
+  data?: Record<string, unknown>;
 }
 
 export interface PromptRenderResponse {
@@ -313,8 +336,17 @@ export interface PromptRenderResponse {
     key: string;
     name: string;
     description?: string;
+    version?: number;
   };
   rendered: string;
+}
+
+export interface PromptVersionsResponse {
+  prompt: {
+    key: string;
+    name: string;
+  };
+  versions: PromptVersion[];
 }
 
 // ============================================================================
