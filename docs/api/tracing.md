@@ -55,6 +55,7 @@ console.log('Session ID:', tracing.sessionId);
 | `agent.name` | `string` | No | Agent name |
 | `agent.model` | `string` | No | Default model name |
 | `agent.version` | `string` | No | Agent version |
+| `threadId` | `string` | No | Thread ID to group sessions across agents into a single workflow |
 | `config` | `Record<string, unknown>` | No | Custom config to store |
 | `debug` | `boolean` | No | Enable debug logging |
 | `logger` | `function` | No | Custom logger function |
@@ -80,6 +81,7 @@ When sending tracing data to CGate, use the following format:
 ```typescript
 interface TracingSessionRequest {
   sessionId: string;                    // Unique session identifier (e.g., "sess_ZOc-SYK2n0KcJejwXv")
+  threadId?: string;                    // Optional thread ID to group related sessions across agents
   startedAt: string;                    // ISO 8601 timestamp
   endedAt: string;                      // ISO 8601 timestamp
   durationMs: number;                   // Total duration in milliseconds
@@ -179,6 +181,7 @@ interface TracingSection {
 ```json
 {
   "sessionId": "sess_ZOc-SYK2n0KcJejwXv",
+  "threadId": "thread_order-workflow-42",
   "startedAt": "2025-12-11T14:15:23.200Z",
   "endedAt": "2025-12-11T14:15:28.390Z",
   "durationMs": 5190,
@@ -253,6 +256,53 @@ interface TracingSection {
   "errors": []
 }
 ```
+
+## Thread Correlation
+
+Use `threadId` to group related sessions across agents into a single logical thread. This is useful for multi-agent workflows where several agents collaborate on a single task.
+
+### Concept
+
+A **thread** is a logical grouping of tracing sessions. When multiple agents (or multiple invocations of the same agent) contribute to a single workflow, they can share a `threadId` so you can visualise the entire flow in the dashboard.
+
+### Usage
+
+Pass `threadId` when creating the tracing binding:
+
+```typescript
+// LangChain middleware
+const tracing = createCGateTracingMiddleware({
+  client,
+  threadId: 'thread_order-workflow-42',
+  agent: { name: 'planner-agent' },
+});
+
+// LangGraph tracing
+const tracing = createCGateLangGraphTracing({
+  client,
+  threadId: 'thread_order-workflow-42',
+  agent: { name: 'executor-agent' },
+});
+```
+
+Or include it directly in the session payload:
+
+```json
+{
+  "sessionId": "sess_abc",
+  "threadId": "thread_order-workflow-42",
+  "agent": { "name": "planner-agent" },
+  ...
+}
+```
+
+### Dashboard
+
+Navigate to **Tracing → Threads** in the dashboard to:
+
+- Browse all threads with session counts and aggregated metrics
+- Filter by status, agent name, or search by threadId
+- Click a thread to see the full timeline of sessions in chronological order
 
 ## Low-Level Methods
 

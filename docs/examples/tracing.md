@@ -36,6 +36,7 @@ const client = new CGateClient({
 const tracingHandler = new CGateTracingCallbackHandler({
   client,
   sessionId: 'my-session-123',
+  threadId: 'thread_support-ticket-99',
   agent: {
     name: 'my-langchain-agent',
     version: '1.0.0',
@@ -221,6 +222,7 @@ const tracing = createCGateLangGraphTracing({
     name: 'my-langgraph-agent',
     version: '1.0.0',
   },
+  threadId: 'thread_workflow-42',
   debug: true,
 });
 
@@ -336,6 +338,7 @@ const tracing = createCGateLangGraphTracing({
     version: '1.0.0',
     description: 'ReAct agent with web search',
   },
+  threadId: 'thread_research-task-7',
   debug: true,
 });
 
@@ -553,6 +556,43 @@ try {
 }
 ```
 
+## Thread Correlation (Multi-Agent Workflows)
+
+When multiple agents collaborate on a single task, use the same `threadId` across all of them to correlate the sessions in the dashboard.
+
+```typescript
+const THREAD_ID = `thread_order-${orderId}`;
+
+// Agent 1 – Planner
+const plannerTracing = createCGateLangGraphTracing({
+  client,
+  threadId: THREAD_ID,
+  agent: { name: 'planner-agent', version: '1.0.0' },
+});
+// ... run planner graph ...
+await plannerTracing.end();
+
+// Agent 2 – Executor
+const executorTracing = createCGateLangGraphTracing({
+  client,
+  threadId: THREAD_ID,
+  agent: { name: 'executor-agent', version: '1.0.0' },
+});
+// ... run executor graph ...
+await executorTracing.end();
+
+// Agent 3 – Reviewer
+const reviewerTracing = createCGateLangGraphTracing({
+  client,
+  threadId: THREAD_ID,
+  agent: { name: 'reviewer-agent', version: '1.0.0' },
+});
+// ... run reviewer graph ...
+await reviewerTracing.end();
+```
+
+All three sessions will appear under the same thread in **Tracing → Threads** in the dashboard, giving you a complete timeline of the workflow.
+
 ## Viewing Traces
 
 After running your agents, you can view traces in the Cognipeer Dashboard:
@@ -561,6 +601,12 @@ After running your agents, you can view traces in the Cognipeer Dashboard:
 2. Navigate to **Tracing** → **Sessions**
 3. Find your session by ID or agent name
 4. View the execution timeline, token usage, and event details
+
+To view multi-agent workflows grouped by thread:
+
+1. Navigate to **Tracing** → **Threads**
+2. Browse threads with aggregated metrics and session counts
+3. Click a thread to see the full chronological timeline of all participating sessions
 
 ## Best Practices
 

@@ -264,6 +264,7 @@ interface FileObject {
 interface Trace {
   id: string;
   name: string;
+  threadId?: string;
   status: 'running' | 'completed' | 'error';
   created_at: number;
   ended_at: number | null;

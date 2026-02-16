@@ -478,6 +478,7 @@ export interface TracingError {
 
 export interface TracingSessionRequest {
   sessionId: string;
+  threadId?: string;
   agent?: TracingAgent;
   config?: Record<string, unknown>;
   summary?: TracingSummary;

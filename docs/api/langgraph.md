@@ -82,6 +82,7 @@ Creates a LangGraph tracing binding.
 |--------|------|-------------|
 | `client` | `CGateClient \| CGateClientOptions` | SDK client or configuration |
 | `sessionId` | `string` | Optional session ID (auto-generated if omitted) |
+| `threadId` | `string` | Optional thread ID to group related sessions across agents |
 | `agent` | `TracingAgent` | Agent descriptor |
 | `summary` | `TracingSummary` | Initial summary |
 | `config` | `Record<string, unknown>` | Optional config blob |
