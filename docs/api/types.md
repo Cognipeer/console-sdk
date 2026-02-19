@@ -4,12 +4,12 @@ Complete TypeScript type definitions for the Cognipeer Console SDK.
 
 ## Client Types
 
-### `CognipeerClientOptions`
+### `ConsoleClientOptions`
 
 Configuration options for the client.
 
 ```typescript
-interface CognipeerClientOptions {
+interface ConsoleClientOptions {
   apiKey: string;
   baseURL?: string;
   timeout?: number;
@@ -429,7 +429,7 @@ All types are exported from the main package:
 
 ```typescript
 import type {
-  CognipeerClientOptions,
+  ConsoleClientOptions,
   ChatCompletionRequest,
   ChatCompletionResponse,
   EmbeddingRequest,

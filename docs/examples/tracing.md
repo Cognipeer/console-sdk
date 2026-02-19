@@ -24,11 +24,11 @@ npm install @langchain/langgraph
 Use `CognipeerTracingCallbackHandler` to capture events from LangChain chains and agents:
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 import { CognipeerTracingCallbackHandler } from '@cognipeer/console-sdk/integrations/langchain';
 import { ChatOpenAI } from '@langchain/openai';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
@@ -63,11 +63,11 @@ await tracingHandler.endSession();
 For cleaner code, use the `createCognipeerAgentTracing` helper:
 
 ```typescript
-import { CognipeerClient, createCognipeerAgentTracing } from '@cognipeer/console-sdk';
+import { ConsoleClient, createCognipeerAgentTracing } from '@cognipeer/console-sdk';
 import { ChatOpenAI } from '@langchain/openai';
 import { AgentExecutor, createOpenAIFunctionsAgent } from 'langchain/agents';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
@@ -111,11 +111,11 @@ await tracing.end();
 Use Cognipeer Console SDK's LangChain-compatible chat model for seamless integration:
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 import { CognipeerLangChainChatModel, createCognipeerAgentTracing } from '@cognipeer/console-sdk/integrations/langchain';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
@@ -206,12 +206,12 @@ await middleware.end();
 For LangGraph state machines, use `createCognipeerLangGraphTracing`:
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 import { createCognipeerLangGraphTracing } from '@cognipeer/console-sdk/integrations/langgraph';
 import { StateGraph, MessagesAnnotation, START, END } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
@@ -318,7 +318,7 @@ const graph = new StateGraph(MessagesAnnotation)
 Complete example of a ReAct agent with tool calling:
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 import { createCognipeerLangGraphTracing } from '@cognipeer/console-sdk/integrations/langgraph';
 import { StateGraph, MessagesAnnotation, START, END } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
@@ -326,7 +326,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { TavilySearchResults } from '@langchain/community/tools/tavily_search';
 import { AIMessage } from '@langchain/core/messages';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 

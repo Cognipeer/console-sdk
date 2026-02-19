@@ -8,7 +8,7 @@ Complete overview of the Cognipeer Console SDK project.
 console-sdk/
 ├── src/                          # Source code
 │   ├── index.ts                  # Main entry point & exports
-│   ├── client.ts                 # CognipeerClient class
+│   ├── client.ts                 # ConsoleClient class
 │   ├── http.ts                   # HTTP client utilities
 │   ├── types.ts                  # TypeScript type definitions
 │   ├── client.test.ts            # Unit tests

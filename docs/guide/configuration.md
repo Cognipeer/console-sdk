@@ -5,9 +5,9 @@ Learn how to configure the Cognipeer Console SDK client for different environmen
 ## Basic Configuration
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
 });
 ```
@@ -19,7 +19,7 @@ const client = new CognipeerClient({
 Your Cognipeer Console API token:
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```
@@ -33,7 +33,7 @@ Always use environment variables for API keys. Never commit API keys to version 
 Override the default API endpoint:
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
   baseURL: 'https://custom.api.example.com',
 });
@@ -46,7 +46,7 @@ const client = new CognipeerClient({
 Request timeout in milliseconds:
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
   timeout: 30000, // 30 seconds
 });
@@ -59,7 +59,7 @@ const client = new CognipeerClient({
 Maximum number of retry attempts for failed requests:
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
   maxRetries: 5,
 });
@@ -74,7 +74,7 @@ Provide a custom fetch implementation:
 ```typescript
 import fetch from 'node-fetch';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
   fetch: fetch as any,
 });
@@ -85,7 +85,7 @@ const client = new CognipeerClient({
 ### Development
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.DEV_API_KEY!,
   baseURL: 'http://localhost:3000/api/client/v1',
   timeout: 120000, // Longer timeout for debugging
@@ -95,7 +95,7 @@ const client = new CognipeerClient({
 ### Production
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.PROD_API_KEY!,
   baseURL: 'https://api.cognipeer.com/api/client/v1',
   timeout: 60000,
@@ -106,7 +106,7 @@ const client = new CognipeerClient({
 ### Testing
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'test-api-key',
   baseURL: 'http://localhost:3000/api/client/v1',
   maxRetries: 0, // No retries in tests
@@ -121,11 +121,11 @@ Create a single client instance for your application:
 
 ```typescript
 // config/client.ts
-let clientInstance: CognipeerClient | null = null;
+let clientInstance: ConsoleClient | null = null;
 
-export function getClient(): CognipeerClient {
+export function getClient(): ConsoleClient {
   if (!clientInstance) {
-    clientInstance = new CognipeerClient({
+    clientInstance = new ConsoleClient({
       apiKey: process.env.COGNIPEER_API_KEY!,
     });
   }
@@ -146,13 +146,13 @@ Create clients dynamically:
 function createClient(options: {
   environment: 'development' | 'production';
   apiKey: string;
-}): CognipeerClient {
+}): ConsoleClient {
   const baseURLs = {
     development: 'http://localhost:3000/api/client/v1',
     production: 'https://api.cognipeer.com/api/client/v1',
   };
 
-  return new CognipeerClient({
+  return new ConsoleClient({
     apiKey: options.apiKey,
     baseURL: baseURLs[options.environment],
   });
@@ -170,13 +170,13 @@ Manage multiple clients for different tenants:
 
 ```typescript
 class ClientManager {
-  private clients: Map<string, CognipeerClient> = new Map();
+  private clients: Map<string, ConsoleClient> = new Map();
 
-  getClient(tenantId: string, apiKey: string): CognipeerClient {
+  getClient(tenantId: string, apiKey: string): ConsoleClient {
     if (!this.clients.has(tenantId)) {
       this.clients.set(
         tenantId,
-        new CognipeerClient({ apiKey })
+        new ConsoleClient({ apiKey })
       );
     }
     return this.clients.get(tenantId)!;
@@ -195,7 +195,7 @@ Configure error handling globally:
 ```typescript
 import { CognipeerAPIError } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
@@ -225,7 +225,7 @@ const response = await safeRequest(() =>
 Add request/response logging:
 
 ```typescript
-class LoggingClient extends CognipeerClient {
+class LoggingClient extends ConsoleClient {
   async chat.completions.create(params: any) {
     console.log('[Request]', JSON.stringify(params, null, 2));
     const response = await super.chat.completions.create(params);
@@ -250,7 +250,7 @@ COGNIPEER_MAX_RETRIES=3
 Load configuration from environment:
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
   baseURL: process.env.COGNIPEER_BASE_URL,
   timeout: parseInt(process.env.COGNIPEER_TIMEOUT || '60000'),

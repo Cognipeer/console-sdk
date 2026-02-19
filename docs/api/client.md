@@ -1,10 +1,10 @@
-# CognipeerClient API Reference
+# ConsoleClient API Reference
 
 Complete API reference for the Cognipeer Console SDK client.
 
 ## Constructor
 
-### `new CognipeerClient(options)`
+### `new ConsoleClient(options)`
 
 Creates a new Cognipeer Console SDK client instance.
 
@@ -18,12 +18,12 @@ Creates a new Cognipeer Console SDK client instance.
 | `options.maxRetries` | `number` | No | Maximum retry attempts (default: `3`) |
 | `options.fetch` | `typeof fetch` | No | Custom fetch implementation |
 
-**Returns:** `CognipeerClient`
+**Returns:** `ConsoleClient`
 
 **Example:**
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
   baseURL: 'https://api.cognipeer.com',
   timeout: 30000,
@@ -106,10 +106,10 @@ console.log(baseURL); // "https://api.cognipeer.com/api/client/v1"
 
 ## Type Definitions
 
-### `CognipeerClientOptions`
+### `ConsoleClientOptions`
 
 ```typescript
-interface CognipeerClientOptions {
+interface ConsoleClientOptions {
   apiKey: string;
   baseURL?: string;
   timeout?: number;
@@ -298,11 +298,11 @@ const DEFAULT_MAX_RETRIES = 3;
 ### Singleton Pattern
 
 ```typescript
-let clientInstance: CognipeerClient | null = null;
+let clientInstance: ConsoleClient | null = null;
 
-export function getClient(): CognipeerClient {
+export function getClient(): ConsoleClient {
   if (!clientInstance) {
-    clientInstance = new CognipeerClient({
+    clientInstance = new ConsoleClient({
       apiKey: process.env.COGNIPEER_API_KEY!,
     });
   }
@@ -315,8 +315,8 @@ export function getClient(): CognipeerClient {
 ```typescript
 export function createClient(
   environment: 'dev' | 'prod'
-): CognipeerClient {
-  return new CognipeerClient({
+): ConsoleClient {
+  return new ConsoleClient({
     apiKey: process.env[`${environment.toUpperCase()}_API_KEY`]!,
   });
 }

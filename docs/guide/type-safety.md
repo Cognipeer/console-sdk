@@ -9,17 +9,17 @@ The Cognipeer Console SDK is written in TypeScript and provides comprehensive ty
 ## Type-Safe Client
 
 ```typescript
-import { CognipeerClient, CognipeerClientOptions } from '@cognipeer/console-sdk';
+import { ConsoleClient, ConsoleClientOptions } from '@cognipeer/console-sdk';
 
 // Options are fully typed
-const options: CognipeerClientOptions = {
+const options: ConsoleClientOptions = {
   apiKey: 'your-api-key',
   baseURL: 'https://api.cognipeer.com',
   timeout: 30000,
   maxRetries: 3,
 };
 
-const client = new CognipeerClient(options);
+const client = new ConsoleClient(options);
 ```
 
 ## Chat Completions
@@ -399,8 +399,8 @@ All types are exported for use in your application:
 ```typescript
 import type {
   // Client
-  CognipeerClient,
-  CognipeerClientOptions,
+  ConsoleClient,
+  ConsoleClientOptions,
   
   // Chat
   ChatCompletionRequest,

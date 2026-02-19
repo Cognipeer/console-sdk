@@ -22,9 +22,9 @@ class CognipeerError extends Error {
 Always wrap SDK calls in try-catch blocks:
 
 ```typescript
-import { CognipeerClient, CognipeerError } from '@cognipeer/console-sdk';
+import { ConsoleClient, CognipeerError } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({ apiKey: 'your-api-key' });
+const client = new ConsoleClient({ apiKey: 'your-api-key' });
 
 try {
   const response = await client.chat.completions.create({
@@ -164,7 +164,7 @@ try {
 Set custom timeouts for requests:
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
   timeout: 30000, // 30 seconds
 });

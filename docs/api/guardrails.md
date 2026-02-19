@@ -40,9 +40,9 @@ interface GuardrailEvaluateResponse {
 ### JavaScript Example
 
 ```javascript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_TOKEN,
   baseURL: 'https://your-cognipeer-host',
 });
@@ -63,9 +63,9 @@ if (!result.passed) {
 ### TypeScript Example
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_TOKEN as string,
   baseURL: 'https://your-cognipeer-host',
 });

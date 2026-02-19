@@ -50,9 +50,9 @@ pnpm add @cognipeer/console-sdk
 Create a new client instance with your API key:
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key-here',
 });
 ```
@@ -61,7 +61,7 @@ const client = new CognipeerClient({
 For security, we recommend storing your API key in an environment variable:
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```
@@ -119,7 +119,7 @@ for await (const chunk of stream) {
 The client supports several configuration options:
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
   baseURL: 'https://api.cognipeer.com', // Optional: custom API URL
   timeout: 60000, // Optional: request timeout (ms)

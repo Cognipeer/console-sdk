@@ -34,10 +34,10 @@ pnpm add @cognipeer/console-sdk
 ## Quick Start
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
 // Initialize the client
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
   baseURL: 'https://api.cognipeer.com', // Optional, defaults to production
 });
@@ -116,7 +116,7 @@ Full documentation is available at [cognipeer.github.io/console-sdk](https://cog
 ### Client Configuration
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: string;          // Required: Your API token
   baseURL?: string;        // Optional: API base URL (default: https://api.cognipeer.com)
   timeout?: number;        // Optional: Request timeout in ms (default: 60000)

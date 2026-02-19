@@ -1,10 +1,10 @@
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
 /**
  * Basic streaming example
  */
 async function basicStreaming() {
-  const client = new CognipeerClient({
+  const client = new ConsoleClient({
     apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
@@ -40,7 +40,7 @@ async function basicStreaming() {
  * Streaming with conversation history
  */
 async function streamingWithHistory() {
-  const client = new CognipeerClient({
+  const client = new ConsoleClient({
     apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
@@ -112,7 +112,7 @@ async function streamingWithHistory() {
  * Streaming with cancellation
  */
 async function streamingWithCancellation() {
-  const client = new CognipeerClient({
+  const client = new ConsoleClient({
     apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
@@ -159,7 +159,7 @@ async function streamingWithCancellation() {
  * Real-time UI update simulation
  */
 async function realtimeUIExample() {
-  const client = new CognipeerClient({
+  const client = new ConsoleClient({
     apiKey: process.env.COGNIPEER_API_KEY!,
   });
 

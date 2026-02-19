@@ -11,9 +11,9 @@ Streaming allows you to receive chat completions progressively as they are gener
 Enable streaming by setting `stream: true`:
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({ apiKey: 'your-api-key' });
+const client = new ConsoleClient({ apiKey: 'your-api-key' });
 
 const stream = await client.chat.completions.create({
   model: 'gpt-4',
@@ -71,9 +71,9 @@ Each chunk contains a delta:
 ## Complete Example
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({ apiKey: 'your-api-key' });
+const client = new ConsoleClient({ apiKey: 'your-api-key' });
 
 async function streamChat(prompt: string) {
   console.log('User:', prompt);
@@ -111,9 +111,9 @@ await streamChat('Write a haiku about coding');
 Streaming in the browser:
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({ apiKey: 'your-api-key' });
+const client = new ConsoleClient({ apiKey: 'your-api-key' });
 
 async function displayStreamingResponse(prompt: string) {
   const outputElement = document.getElementById('output');
@@ -329,13 +329,13 @@ Using streaming with React:
 
 ```typescript
 import { useState } from 'react';
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
 function ChatComponent() {
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const client = new CognipeerClient({ apiKey: 'your-api-key' });
+  const client = new ConsoleClient({ apiKey: 'your-api-key' });
 
   async function handleSubmit(prompt: string) {
     setLoading(true);

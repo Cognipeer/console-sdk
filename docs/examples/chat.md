@@ -11,9 +11,9 @@ npm install @cognipeer/console-sdk
 ## Basic Chat
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
@@ -287,9 +287,9 @@ jsonMode();
 ## Complete Example
 
 ```typescript
-import { CognipeerClient, CognipeerError } from '@cognipeer/console-sdk';
+import { ConsoleClient, CognipeerError } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 

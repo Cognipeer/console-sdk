@@ -7,7 +7,10 @@
  */
 
 // Main client
-export { CognipeerClient } from './client';
+export { ConsoleClient } from './client';
+
+/** @deprecated Use `ConsoleClient` instead. */
+export { ConsoleClient as CognipeerClient } from './client';
 
 // Types
 export * from './types';
@@ -34,7 +37,7 @@ export {
 // Re-export for convenience
 export type {
   // Configuration
-  CognipeerClientOptions,
+  ConsoleClientOptions,
   
   // Chat
   ChatMessage,

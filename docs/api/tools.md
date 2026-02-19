@@ -11,9 +11,9 @@ Tools are defined in Cognipeer Console and can be attached to agents. Use the SD
 Fetch all tools assigned to an agent (including toolsets).
 
 ```ts
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({ apiKey: process.env.COGNIPEER_API_KEY! });
+const client = new ConsoleClient({ apiKey: process.env.COGNIPEER_API_KEY! });
 
 const tools = await client.tools.listAgentTools('support-bot');
 console.log(tools);

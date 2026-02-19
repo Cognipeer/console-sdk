@@ -1,4 +1,4 @@
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
 /**
  * Complete RAG (Retrieval Augmented Generation) example
@@ -12,7 +12,7 @@ interface Document {
 
 class RAGSystem {
   constructor(
-    private client: CognipeerClient,
+    private client: ConsoleClient,
     private providerKey: string,
     private indexId: string
   ) {}
@@ -176,7 +176,7 @@ ${context}`,
 
 // Example usage
 async function main() {
-  const client = new CognipeerClient({
+  const client = new ConsoleClient({
     apiKey: process.env.COGNIPEER_API_KEY!,
   });
 

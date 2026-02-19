@@ -18,9 +18,9 @@ npm install @cognipeer/console-sdk
 ## 3. Initialize Client
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
 });
 ```
@@ -139,7 +139,7 @@ COGNIPEER_API_KEY=your-api-key
 ```
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```

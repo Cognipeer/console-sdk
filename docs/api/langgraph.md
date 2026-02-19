@@ -11,12 +11,12 @@ npm install @cognipeer/console-sdk @langchain/langgraph
 ## Quick Start
 
 ```typescript
-import { CognipeerClient, createCognipeerLangGraphTracing } from '@cognipeer/console-sdk';
+import { ConsoleClient, createCognipeerLangGraphTracing } from '@cognipeer/console-sdk';
 import { StateGraph, MessagesAnnotation, START, END } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 
 // Create Cognipeer client
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
 });
 
@@ -80,7 +80,7 @@ Creates a LangGraph tracing binding.
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `client` | `CognipeerClient \| CognipeerClientOptions` | SDK client or configuration |
+| `client` | `ConsoleClient \| ConsoleClientOptions` | SDK client or configuration |
 | `sessionId` | `string` | Optional session ID (auto-generated if omitted) |
 | `threadId` | `string` | Optional thread ID to group related sessions across agents |
 | `agent` | `TracingAgent` | Agent descriptor |

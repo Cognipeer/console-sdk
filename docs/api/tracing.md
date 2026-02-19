@@ -8,10 +8,10 @@ The recommended way to add tracing to LangChain v1 agents is using the `createCo
 
 ```typescript
 import { createAgent } from 'langchain';
-import { CognipeerClient, createCognipeerTracingMiddleware } from '@cognipeer/console-sdk';
+import { ConsoleClient, createCognipeerTracingMiddleware } from '@cognipeer/console-sdk';
 
 // Create client
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY,
   baseURL: process.env.COGNIPEER_BASE_URL,
 });
@@ -49,7 +49,7 @@ console.log('Session ID:', tracing.sessionId);
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `client` | `CognipeerClient \| CognipeerClientOptions` | Yes | SDK client or config |
+| `client` | `ConsoleClient \| ConsoleClientOptions` | Yes | SDK client or config |
 | `sessionId` | `string` | No | Custom session ID (auto-generated if omitted) |
 | `agent` | `TracingAgent` | No | Agent metadata |
 | `agent.name` | `string` | No | Agent name |

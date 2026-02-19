@@ -64,9 +64,9 @@ pnpm add @cognipeer/console-sdk
 ## Basic Usage
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'your-api-key',
 });
 

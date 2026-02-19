@@ -1,10 +1,10 @@
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
 /**
  * Basic chat completion example
  */
 async function basicChat() {
-  const client = new CognipeerClient({
+  const client = new ConsoleClient({
     apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
@@ -32,7 +32,7 @@ async function basicChat() {
  * Multi-turn conversation example
  */
 async function multiTurnChat() {
-  const client = new CognipeerClient({
+  const client = new ConsoleClient({
     apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
@@ -76,7 +76,7 @@ async function multiTurnChat() {
  * Temperature and creativity example
  */
 async function temperatureExample() {
-  const client = new CognipeerClient({
+  const client = new ConsoleClient({
     apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
@@ -107,7 +107,7 @@ async function temperatureExample() {
  * Max tokens example
  */
 async function maxTokensExample() {
-  const client = new CognipeerClient({
+  const client = new ConsoleClient({
     apiKey: process.env.COGNIPEER_API_KEY!,
   });
 

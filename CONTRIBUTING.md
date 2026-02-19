@@ -114,11 +114,11 @@ Write tests for new functionality:
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { CognipeerClient } from '../src';
+import { ConsoleClient } from '../src';
 
-describe('CognipeerClient', () => {
+describe('ConsoleClient', () => {
   it('should initialize with API key', () => {
-    const client = new CognipeerClient({ apiKey: 'test-key' });
+    const client = new ConsoleClient({ apiKey: 'test-key' });
     expect(client).toBeDefined();
   });
 });

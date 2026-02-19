@@ -22,9 +22,9 @@ The Cognipeer Console SDK uses API keys for authentication. All API requests mus
 Pass your API key when creating the client:
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: 'cg_1234567890abcdef',
 });
 ```
@@ -40,7 +40,7 @@ export COGNIPEER_API_KEY=cg_1234567890abcdef
 Then use it in your code:
 
 ```typescript
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```
@@ -58,9 +58,9 @@ With dotenv:
 
 ```typescript
 import 'dotenv/config';
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```
@@ -119,7 +119,7 @@ export function getClient() {
     throw new Error('No API key found');
   }
   
-  return new CognipeerClient({ apiKey });
+  return new ConsoleClient({ apiKey });
 }
 ```
 
@@ -129,7 +129,7 @@ export function getClient() {
 
 ```typescript
 // config/development.ts
-export const client = new CognipeerClient({
+export const client = new ConsoleClient({
   apiKey: process.env.DEV_COGNIPEER_API_KEY!,
   baseURL: 'http://localhost:3000/api/client/v1',
 });
@@ -139,7 +139,7 @@ export const client = new CognipeerClient({
 
 ```typescript
 // config/staging.ts
-export const client = new CognipeerClient({
+export const client = new ConsoleClient({
   apiKey: process.env.STAGING_COGNIPEER_API_KEY!,
   baseURL: 'https://staging-api.cognipeer.com/api/client/v1',
 });
@@ -149,7 +149,7 @@ export const client = new CognipeerClient({
 
 ```typescript
 // config/production.ts
-export const client = new CognipeerClient({
+export const client = new ConsoleClient({
   apiKey: process.env.PROD_COGNIPEER_API_KEY!,
   // Uses default production URL
 });
@@ -175,7 +175,7 @@ const configs = {
   },
 };
 
-export const client = new CognipeerClient(configs[env]);
+export const client = new ConsoleClient(configs[env]);
 ```
 
 ## Error Handling
@@ -213,10 +213,10 @@ For testing, use mock API keys:
 
 ```typescript
 // test/setup.ts
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
 export function createTestClient() {
-  return new CognipeerClient({
+  return new ConsoleClient({
     apiKey: 'test_mock_key_12345',
     baseURL: 'http://localhost:3000/api/client/v1',
   });

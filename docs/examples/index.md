@@ -32,9 +32,9 @@ Welcome to the Cognipeer Console SDK examples! Here you'll find practical exampl
 ### Chat Completion
 
 ```typescript
-import { CognipeerClient } from '@cognipeer/console-sdk';
+import { ConsoleClient } from '@cognipeer/console-sdk';
 
-const client = new CognipeerClient({
+const client = new ConsoleClient({
   apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
@@ -127,11 +127,11 @@ Build a conversational AI chatbot:
 
 ```typescript
 class Chatbot {
-  private client: CognipeerClient;
+  private client: ConsoleClient;
   private messages: ChatMessage[] = [];
 
   constructor(apiKey: string) {
-    this.client = new CognipeerClient({ apiKey });
+    this.client = new ConsoleClient({ apiKey });
     this.messages.push({
       role: 'system',
       content: 'You are a helpful assistant.',
@@ -166,7 +166,7 @@ console.log(await bot.chat('What can you help me with?'));
 ```typescript
 class KnowledgeBase {
   constructor(
-    private client: CognipeerClient,
+    private client: ConsoleClient,
     private providerKey: string,
     private indexId: string
   ) {}

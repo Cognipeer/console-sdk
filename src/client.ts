@@ -1,5 +1,5 @@
 import { HttpClient } from './http';
-import { CognipeerClientOptions } from './types';
+import { ConsoleClientOptions } from './types';
 import { ChatResource } from './resources/chat';
 import { EmbeddingsResource } from './resources/embeddings';
 import { VectorsResource } from './resources/vectors';
@@ -25,7 +25,7 @@ const DEFAULT_MAX_RETRIES = 3;
  * 
  * @example
  * ```typescript
- * const client = new CognipeerClient({
+ * const client = new ConsoleClient({
  *   apiKey: 'your-api-key',
  *   baseURL: 'https://api.cognipeer.com', // optional
  * });
@@ -48,7 +48,7 @@ const DEFAULT_MAX_RETRIES = 3;
  * }
  * ```
  */
-export class CognipeerClient {
+export class ConsoleClient {
   private http: HttpClient;
 
   /** Chat completions API */
@@ -85,7 +85,7 @@ export class CognipeerClient {
    * Create a new CG client
    * @param options - Client configuration
    */
-  constructor(options: CognipeerClientOptions) {
+  constructor(options: ConsoleClientOptions) {
     if (!options.apiKey) {
       throw new Error('API key is required');
     }

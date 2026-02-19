@@ -6,7 +6,7 @@
 // Configuration
 // ============================================================================
 
-export interface CognipeerClientOptions {
+export interface ConsoleClientOptions {
   /** API token for authentication (required) */
   apiKey: string;
   /** Base URL for the API (optional, defaults to production) */
@@ -18,6 +18,9 @@ export interface CognipeerClientOptions {
   /** Custom fetch implementation (optional) */
   fetch?: typeof fetch;
 }
+
+/** @deprecated Use `ConsoleClientOptions` instead. */
+export type CognipeerClientOptions = ConsoleClientOptions;
 
 // ============================================================================
 // Error Types

@@ -5,7 +5,7 @@ Manage reusable prompt templates with versioning and render them with data.
 ## Resource
 
 ```ts
-const client = new CognipeerClient({ apiKey: 'your-api-key' });
+const client = new ConsoleClient({ apiKey: 'your-api-key' });
 
 // Access prompts resource
 const prompts = client.prompts;
