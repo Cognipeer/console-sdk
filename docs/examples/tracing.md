@@ -1,10 +1,10 @@
 # Agent Tracing
 
-This guide covers how to implement tracing for your AI agents using CG SDK. Tracing helps you monitor agent execution, debug issues, and gain insights into your AI workflows.
+This guide covers how to implement tracing for your AI agents using Cognipeer Console SDK. Tracing helps you monitor agent execution, debug issues, and gain insights into your AI workflows.
 
 ## Overview
 
-CG SDK provides two main tracing integrations:
+Cognipeer Console SDK provides two main tracing integrations:
 
 1. **LangChain Tracing** - For LangChain agents and chains
 2. **LangGraph Tracing** - For LangGraph state machines and workflows
@@ -12,7 +12,7 @@ CG SDK provides two main tracing integrations:
 ## Installation
 
 ```bash
-npm install @cognipeer/cgate-sdk @langchain/core langchain
+npm install @cognipeer/console-sdk @langchain/core langchain
 # For LangGraph support
 npm install @langchain/langgraph
 ```
@@ -21,19 +21,19 @@ npm install @langchain/langgraph
 
 ### Basic Tracing with Callbacks
 
-Use `CGateTracingCallbackHandler` to capture events from LangChain chains and agents:
+Use `CognipeerTracingCallbackHandler` to capture events from LangChain chains and agents:
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
-import { CGateTracingCallbackHandler } from '@cognipeer/cgate-sdk/integrations/langchain';
+import { CognipeerClient } from '@cognipeer/console-sdk';
+import { CognipeerTracingCallbackHandler } from '@cognipeer/console-sdk/integrations/langchain';
 import { ChatOpenAI } from '@langchain/openai';
 
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
 // Create tracing handler
-const tracingHandler = new CGateTracingCallbackHandler({
+const tracingHandler = new CognipeerTracingCallbackHandler({
   client,
   sessionId: 'my-session-123',
   threadId: 'thread_support-ticket-99',
@@ -58,21 +58,21 @@ console.log(response.content);
 await tracingHandler.endSession();
 ```
 
-### Using createCGateAgentTracing Helper
+### Using createCognipeerAgentTracing Helper
 
-For cleaner code, use the `createCGateAgentTracing` helper:
+For cleaner code, use the `createCognipeerAgentTracing` helper:
 
 ```typescript
-import { CGateClient, createCGateAgentTracing } from '@cognipeer/cgate-sdk';
+import { CognipeerClient, createCognipeerAgentTracing } from '@cognipeer/console-sdk';
 import { ChatOpenAI } from '@langchain/openai';
 import { AgentExecutor, createOpenAIFunctionsAgent } from 'langchain/agents';
 
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
 // Create tracing binding
-const tracing = createCGateAgentTracing({
+const tracing = createCognipeerAgentTracing({
   client,
   agent: {
     name: 'customer-support-agent',
@@ -106,21 +106,21 @@ const result = await executor.invoke({
 await tracing.end();
 ```
 
-### Using CGateLangChainChatModel
+### Using CognipeerLangChainChatModel
 
-Use CG SDK's LangChain-compatible chat model for seamless integration:
+Use Cognipeer Console SDK's LangChain-compatible chat model for seamless integration:
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
-import { CGateLangChainChatModel, createCGateAgentTracing } from '@cognipeer/cgate-sdk/integrations/langchain';
+import { CognipeerClient } from '@cognipeer/console-sdk';
+import { CognipeerLangChainChatModel, createCognipeerAgentTracing } from '@cognipeer/console-sdk/integrations/langchain';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
-// Create CGate-powered chat model
-const model = new CGateLangChainChatModel({
+// Create Cognipeer-powered chat model
+const model = new CognipeerLangChainChatModel({
   client,
   model: 'gpt-4',
   temperature: 0.7,
@@ -128,7 +128,7 @@ const model = new CGateLangChainChatModel({
 });
 
 // With tracing
-const tracing = createCGateAgentTracing({ client });
+const tracing = createCognipeerAgentTracing({ client });
 
 const messages = [
   new SystemMessage('You are a helpful assistant.'),
@@ -146,14 +146,14 @@ await tracing.end();
 ### Streaming with Tracing
 
 ```typescript
-import { CGateLangChainChatModel, createCGateAgentTracing } from '@cognipeer/cgate-sdk/integrations/langchain';
+import { CognipeerLangChainChatModel, createCognipeerAgentTracing } from '@cognipeer/console-sdk/integrations/langchain';
 
-const model = new CGateLangChainChatModel({
+const model = new CognipeerLangChainChatModel({
   client,
   model: 'gpt-4',
 });
 
-const tracing = createCGateAgentTracing({ client });
+const tracing = createCognipeerAgentTracing({ client });
 
 const stream = await model.stream(
   [new HumanMessage('Tell me a story about a robot')],
@@ -172,9 +172,9 @@ await tracing.end();
 For advanced use cases, use the tracing middleware:
 
 ```typescript
-import { createCGateTracingMiddleware } from '@cognipeer/cgate-sdk/integrations/langchain';
+import { createCognipeerTracingMiddleware } from '@cognipeer/console-sdk/integrations/langchain';
 
-const middleware = createCGateTracingMiddleware({
+const middleware = createCognipeerTracingMiddleware({
   client,
   agent: {
     name: 'middleware-agent',
@@ -203,20 +203,20 @@ await middleware.end();
 
 ### Basic LangGraph Tracing
 
-For LangGraph state machines, use `createCGateLangGraphTracing`:
+For LangGraph state machines, use `createCognipeerLangGraphTracing`:
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
-import { createCGateLangGraphTracing } from '@cognipeer/cgate-sdk/integrations/langgraph';
+import { CognipeerClient } from '@cognipeer/console-sdk';
+import { createCognipeerLangGraphTracing } from '@cognipeer/console-sdk/integrations/langgraph';
 import { StateGraph, MessagesAnnotation, START, END } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
 // Create tracing
-const tracing = createCGateLangGraphTracing({
+const tracing = createCognipeerLangGraphTracing({
   client,
   agent: {
     name: 'my-langgraph-agent',
@@ -269,11 +269,11 @@ await tracing.end();
 Use `traceNodes` to wrap multiple node functions at once:
 
 ```typescript
-import { createCGateLangGraphTracing } from '@cognipeer/cgate-sdk/integrations/langgraph';
+import { createCognipeerLangGraphTracing } from '@cognipeer/console-sdk/integrations/langgraph';
 import { StateGraph, MessagesAnnotation, START, END } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 
-const tracing = createCGateLangGraphTracing({
+const tracing = createCognipeerLangGraphTracing({
   client,
   agent: { name: 'multi-node-agent', version: '1.0.0' },
 });
@@ -318,20 +318,20 @@ const graph = new StateGraph(MessagesAnnotation)
 Complete example of a ReAct agent with tool calling:
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
-import { createCGateLangGraphTracing } from '@cognipeer/cgate-sdk/integrations/langgraph';
+import { CognipeerClient } from '@cognipeer/console-sdk';
+import { createCognipeerLangGraphTracing } from '@cognipeer/console-sdk/integrations/langgraph';
 import { StateGraph, MessagesAnnotation, START, END } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { ChatOpenAI } from '@langchain/openai';
 import { TavilySearchResults } from '@langchain/community/tools/tavily_search';
 import { AIMessage } from '@langchain/core/messages';
 
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
 // Setup tracing
-const tracing = createCGateLangGraphTracing({
+const tracing = createCognipeerLangGraphTracing({
   client,
   agent: {
     name: 'react-agent',
@@ -439,11 +439,11 @@ For simpler code, use the `createTracedGraphInvoker` helper:
 
 ```typescript
 import { 
-  createCGateLangGraphTracing,
+  createCognipeerLangGraphTracing,
   createTracedGraphInvoker 
-} from '@cognipeer/cgate-sdk/integrations/langgraph';
+} from '@cognipeer/console-sdk/integrations/langgraph';
 
-const tracing = createCGateLangGraphTracing({ client });
+const tracing = createCognipeerLangGraphTracing({ client });
 
 // Create a traced invoker
 const tracedInvoke = createTracedGraphInvoker(tracing, 'MyAgent');
@@ -460,11 +460,11 @@ await tracing.end();
 
 ```typescript
 import { 
-  createCGateLangGraphTracing,
+  createCognipeerLangGraphTracing,
   createTracedGraphStreamer 
-} from '@cognipeer/cgate-sdk/integrations/langgraph';
+} from '@cognipeer/console-sdk/integrations/langgraph';
 
-const tracing = createCGateLangGraphTracing({ client });
+const tracing = createCognipeerLangGraphTracing({ client });
 const tracedStream = createTracedGraphStreamer(tracing, 'StreamingAgent');
 
 // Stream with automatic tracing
@@ -481,7 +481,7 @@ await tracing.end();
 ### Custom Agent Metadata
 
 ```typescript
-const tracing = createCGateLangGraphTracing({
+const tracing = createCognipeerLangGraphTracing({
   client,
   agent: {
     name: 'custom-agent',
@@ -564,7 +564,7 @@ When multiple agents collaborate on a single task, use the same `threadId` acros
 const THREAD_ID = `thread_order-${orderId}`;
 
 // Agent 1 – Planner
-const plannerTracing = createCGateLangGraphTracing({
+const plannerTracing = createCognipeerLangGraphTracing({
   client,
   threadId: THREAD_ID,
   agent: { name: 'planner-agent', version: '1.0.0' },
@@ -573,7 +573,7 @@ const plannerTracing = createCGateLangGraphTracing({
 await plannerTracing.end();
 
 // Agent 2 – Executor
-const executorTracing = createCGateLangGraphTracing({
+const executorTracing = createCognipeerLangGraphTracing({
   client,
   threadId: THREAD_ID,
   agent: { name: 'executor-agent', version: '1.0.0' },
@@ -582,7 +582,7 @@ const executorTracing = createCGateLangGraphTracing({
 await executorTracing.end();
 
 // Agent 3 – Reviewer
-const reviewerTracing = createCGateLangGraphTracing({
+const reviewerTracing = createCognipeerLangGraphTracing({
   client,
   threadId: THREAD_ID,
   agent: { name: 'reviewer-agent', version: '1.0.0' },
@@ -619,7 +619,7 @@ To view multi-agent workflows grouped by thread:
 
 ## API Reference
 
-### CGateTracingCallbackHandler
+### CognipeerTracingCallbackHandler
 
 | Method | Description |
 |--------|-------------|
@@ -627,7 +627,7 @@ To view multi-agent workflows grouped by thread:
 | `flush(status?)` | Flush buffered events |
 | `endSession(status?)` | End session and flush |
 
-### CGateLangGraphTracer
+### CognipeerLangGraphTracer
 
 | Method | Description |
 |--------|-------------|

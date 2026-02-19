@@ -1,27 +1,27 @@
 # LangGraph Integration
 
-CGate SDK provides seamless integration with LangGraph for tracing and monitoring your graph-based AI agent workflows.
+Cognipeer Console SDK provides seamless integration with LangGraph for tracing and monitoring your graph-based AI agent workflows.
 
 ## Installation
 
 ```bash
-npm install @cognipeer/cgate-sdk @langchain/langgraph
+npm install @cognipeer/console-sdk @langchain/langgraph
 ```
 
 ## Quick Start
 
 ```typescript
-import { CGateClient, createCGateLangGraphTracing } from '@cognipeer/cgate-sdk';
+import { CognipeerClient, createCognipeerLangGraphTracing } from '@cognipeer/console-sdk';
 import { StateGraph, MessagesAnnotation, START, END } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 
-// Create CGate client
-const client = new CGateClient({
+// Create Cognipeer client
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
 });
 
 // Create LangGraph tracing
-const tracing = createCGateLangGraphTracing({
+const tracing = createCognipeerLangGraphTracing({
   client,
   agent: {
     name: 'my-langgraph-agent',
@@ -72,7 +72,7 @@ async function run() {
 
 ## API Reference
 
-### `createCGateLangGraphTracing(options)`
+### `createCognipeerLangGraphTracing(options)`
 
 Creates a LangGraph tracing binding.
 
@@ -80,7 +80,7 @@ Creates a LangGraph tracing binding.
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `client` | `CGateClient \| CGateClientOptions` | SDK client or configuration |
+| `client` | `CognipeerClient \| CognipeerClientOptions` | SDK client or configuration |
 | `sessionId` | `string` | Optional session ID (auto-generated if omitted) |
 | `threadId` | `string` | Optional thread ID to group related sessions across agents |
 | `agent` | `TracingAgent` | Agent descriptor |
@@ -95,7 +95,7 @@ Creates a LangGraph tracing binding.
 | Property | Type | Description |
 |----------|------|-------------|
 | `sessionId` | `string` | Session ID for correlation |
-| `tracer` | `CGateLangGraphTracer` | Tracer instance |
+| `tracer` | `CognipeerLangGraphTracer` | Tracer instance |
 | `wrapNode` | `Function` | Wrap a single node with tracing |
 | `traceNodes` | `Function` | Wrap multiple nodes at once |
 | `startGraph` | `Function` | Start graph execution tracking |
@@ -226,7 +226,7 @@ const graph = new StateGraph(MessagesAnnotation)
 ### Streaming Support
 
 ```typescript
-import { createTracedGraphStreamer } from '@cognipeer/cgate-sdk';
+import { createTracedGraphStreamer } from '@cognipeer/console-sdk';
 
 const tracedStream = createTracedGraphStreamer(tracing, 'StreamingAgent');
 

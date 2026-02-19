@@ -1,5 +1,5 @@
 import { HttpClient } from './http';
-import { CGateClientOptions } from './types';
+import { CognipeerClientOptions } from './types';
 import { ChatResource } from './resources/chat';
 import { EmbeddingsResource } from './resources/embeddings';
 import { VectorsResource } from './resources/vectors';
@@ -7,6 +7,9 @@ import { FilesResource } from './resources/files';
 import { TracingResource } from './resources/tracing';
 import { ToolsResource } from './resources/tools';
 import { PromptsResource } from './resources/prompts';
+import { GuardrailsResource } from './resources/guardrails';
+import { MemoryResource } from './resources/memory';
+import { RagResource } from './resources/rag';
 
 /**
  * Default configuration values
@@ -22,7 +25,7 @@ const DEFAULT_MAX_RETRIES = 3;
  * 
  * @example
  * ```typescript
- * const client = new CGateClient({
+ * const client = new CognipeerClient({
  *   apiKey: 'your-api-key',
  *   baseURL: 'https://api.cognipeer.com', // optional
  * });
@@ -45,7 +48,7 @@ const DEFAULT_MAX_RETRIES = 3;
  * }
  * ```
  */
-export class CGateClient {
+export class CognipeerClient {
   private http: HttpClient;
 
   /** Chat completions API */
@@ -69,11 +72,20 @@ export class CGateClient {
   /** Tools API */
   public tools: ToolsResource;
 
+  /** Guardrails API */
+  public guardrails: GuardrailsResource;
+
+  /** Memory API */
+  public memory: MemoryResource;
+
+  /** RAG (Retrieval-Augmented Generation) API */
+  public rag: RagResource;
+
   /**
    * Create a new CG client
    * @param options - Client configuration
    */
-  constructor(options: CGateClientOptions) {
+  constructor(options: CognipeerClientOptions) {
     if (!options.apiKey) {
       throw new Error('API key is required');
     }
@@ -92,6 +104,9 @@ export class CGateClient {
     this.prompts = new PromptsResource(this.http);
     this.tracing = new TracingResource(this.http);
     this.tools = new ToolsResource(this.http);
+    this.guardrails = new GuardrailsResource(this.http);
+    this.memory = new MemoryResource(this.http);
+    this.rag = new RagResource(this.http);
   }
 
   /**

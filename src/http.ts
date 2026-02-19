@@ -1,4 +1,4 @@
-import { CGateAPIError, CGateError } from './types';
+import { CognipeerAPIError, CognipeerError } from './types';
 
 /**
  * HTTP client for making requests to the CG API
@@ -24,7 +24,7 @@ export class HttpClient {
     this.fetchImpl = fetchImpl || globalThis.fetch;
 
     if (!this.fetchImpl) {
-      throw new CGateError('Fetch is not available. Please provide a fetch implementation.');
+      throw new CognipeerError('Fetch is not available. Please provide a fetch implementation.');
     }
   }
 
@@ -70,7 +70,7 @@ export class HttpClient {
 
         // Don't retry on certain errors
         if (
-          error instanceof CGateAPIError ||
+          error instanceof CognipeerAPIError ||
           (error as Error).name === 'AbortError' ||
           attempt === this.maxRetries
         ) {
@@ -82,7 +82,7 @@ export class HttpClient {
       }
     }
 
-    throw lastError || new CGateError('Request failed after retries');
+    throw lastError || new CognipeerError('Request failed after retries');
   }
 
   /**
@@ -113,7 +113,7 @@ export class HttpClient {
     }
 
     if (!response.body) {
-      throw new CGateError('Response body is null');
+      throw new CognipeerError('Response body is null');
     }
 
     const reader = response.body.getReader();
@@ -174,7 +174,7 @@ export class HttpClient {
     return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.apiKey}`,
-      'User-Agent': '@cognipeer/cgate-sdk/1.0.0',
+      'User-Agent': '@cognipeer/console-sdk/1.0.0',
       ...customHeaders,
     };
   }
@@ -202,7 +202,7 @@ export class HttpClient {
       // If JSON parsing fails, use default error message
     }
 
-    throw new CGateAPIError(errorMessage, response.status, errorType, responseData);
+    throw new CognipeerAPIError(errorMessage, response.status, errorType, responseData);
   }
 
   /**

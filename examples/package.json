@@ -1,8 +1,8 @@
 {
-  "name": "cgate-sdk-examples",
+  "name": "console-sdk-examples",
   "version": "1.0.0",
   "private": true,
-  "description": "Examples for CG SDK",
+  "description": "Examples for Cognipeer Console SDK",
   "scripts": {
     "example:chat": "tsx chat-basic.ts",
     "example:streaming": "tsx chat-streaming.ts",
@@ -10,7 +10,7 @@
     "example:file": "tsx file-upload.ts"
   },
   "dependencies": {
-    "@cognipeer/cgate-sdk": "^1.0.0"
+    "@cognipeer/console-sdk": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

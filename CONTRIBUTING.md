@@ -1,14 +1,14 @@
 # CONTRIBUTING.md
 
-Thank you for your interest in contributing to the CG SDK!
+Thank you for your interest in contributing to the Cognipeer Console SDK!
 
 ## Development Setup
 
 1. Fork and clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/cgate-sdk.git
-cd cgate-sdk
+git clone https://github.com/YOUR_USERNAME/console-sdk.git
+cd console-sdk
 ```
 
 2. Install dependencies:
@@ -32,7 +32,7 @@ npm test
 ## Project Structure
 
 ```
-cgate-sdk/
+console-sdk/
 ├── src/
 │   ├── client.ts          # Main client
 │   ├── http.ts            # HTTP utilities
@@ -114,11 +114,11 @@ Write tests for new functionality:
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { CGateClient } from '../src';
+import { CognipeerClient } from '../src';
 
-describe('CGateClient', () => {
+describe('CognipeerClient', () => {
   it('should initialize with API key', () => {
-    const client = new CGateClient({ apiKey: 'test-key' });
+    const client = new CognipeerClient({ apiKey: 'test-key' });
     expect(client).toBeDefined();
   });
 });

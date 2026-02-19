@@ -1,13 +1,13 @@
 # Client Configuration
 
-Learn how to configure the CG SDK client for different environments and use cases.
+Learn how to configure the Cognipeer Console SDK client for different environments and use cases.
 
 ## Basic Configuration
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
 });
 ```
@@ -16,11 +16,11 @@ const client = new CGateClient({
 
 ### API Key (Required)
 
-Your CognipeerAI Gateway API token:
+Your Cognipeer Console API token:
 
 ```typescript
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```
 
@@ -33,7 +33,7 @@ Always use environment variables for API keys. Never commit API keys to version 
 Override the default API endpoint:
 
 ```typescript
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
   baseURL: 'https://custom.api.example.com',
 });
@@ -46,7 +46,7 @@ const client = new CGateClient({
 Request timeout in milliseconds:
 
 ```typescript
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
   timeout: 30000, // 30 seconds
 });
@@ -59,7 +59,7 @@ const client = new CGateClient({
 Maximum number of retry attempts for failed requests:
 
 ```typescript
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
   maxRetries: 5,
 });
@@ -74,7 +74,7 @@ Provide a custom fetch implementation:
 ```typescript
 import fetch from 'node-fetch';
 
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
   fetch: fetch as any,
 });
@@ -85,7 +85,7 @@ const client = new CGateClient({
 ### Development
 
 ```typescript
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: process.env.DEV_API_KEY!,
   baseURL: 'http://localhost:3000/api/client/v1',
   timeout: 120000, // Longer timeout for debugging
@@ -95,7 +95,7 @@ const client = new CGateClient({
 ### Production
 
 ```typescript
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: process.env.PROD_API_KEY!,
   baseURL: 'https://api.cognipeer.com/api/client/v1',
   timeout: 60000,
@@ -106,7 +106,7 @@ const client = new CGateClient({
 ### Testing
 
 ```typescript
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'test-api-key',
   baseURL: 'http://localhost:3000/api/client/v1',
   maxRetries: 0, // No retries in tests
@@ -121,12 +121,12 @@ Create a single client instance for your application:
 
 ```typescript
 // config/client.ts
-let clientInstance: CGateClient | null = null;
+let clientInstance: CognipeerClient | null = null;
 
-export function getClient(): CGateClient {
+export function getClient(): CognipeerClient {
   if (!clientInstance) {
-    clientInstance = new CGateClient({
-      apiKey: process.env.CGATE_API_KEY!,
+    clientInstance = new CognipeerClient({
+      apiKey: process.env.COGNIPEER_API_KEY!,
     });
   }
   return clientInstance;
@@ -146,13 +146,13 @@ Create clients dynamically:
 function createClient(options: {
   environment: 'development' | 'production';
   apiKey: string;
-}): CGateClient {
+}): CognipeerClient {
   const baseURLs = {
     development: 'http://localhost:3000/api/client/v1',
     production: 'https://api.cognipeer.com/api/client/v1',
   };
 
-  return new CGateClient({
+  return new CognipeerClient({
     apiKey: options.apiKey,
     baseURL: baseURLs[options.environment],
   });
@@ -160,7 +160,7 @@ function createClient(options: {
 
 const client = createClient({
   environment: 'production',
-  apiKey: process.env.CGATE_API_KEY!,
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```
 
@@ -170,13 +170,13 @@ Manage multiple clients for different tenants:
 
 ```typescript
 class ClientManager {
-  private clients: Map<string, CGateClient> = new Map();
+  private clients: Map<string, CognipeerClient> = new Map();
 
-  getClient(tenantId: string, apiKey: string): CGateClient {
+  getClient(tenantId: string, apiKey: string): CognipeerClient {
     if (!this.clients.has(tenantId)) {
       this.clients.set(
         tenantId,
-        new CGateClient({ apiKey })
+        new CognipeerClient({ apiKey })
       );
     }
     return this.clients.get(tenantId)!;
@@ -193,17 +193,17 @@ const clientB = manager.getClient('tenant-b', 'key-b');
 Configure error handling globally:
 
 ```typescript
-import { CGateAPIError } from '@cognipeer/cgate-sdk';
+import { CognipeerAPIError } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
 async function safeRequest<T>(fn: () => Promise<T>): Promise<T | null> {
   try {
     return await fn();
   } catch (error) {
-    if (error instanceof CGateAPIError) {
+    if (error instanceof CognipeerAPIError) {
       console.error('API Error:', error.message);
       console.error('Status:', error.statusCode);
     }
@@ -225,7 +225,7 @@ const response = await safeRequest(() =>
 Add request/response logging:
 
 ```typescript
-class LoggingClient extends CGateClient {
+class LoggingClient extends CognipeerClient {
   async chat.completions.create(params: any) {
     console.log('[Request]', JSON.stringify(params, null, 2));
     const response = await super.chat.completions.create(params);
@@ -241,20 +241,20 @@ Recommended environment variables:
 
 ```bash
 # .env.example
-CGATE_API_KEY=your-api-key
-CGATE_BASE_URL=https://api.cognipeer.com/api/client/v1
-CGATE_TIMEOUT=60000
-CGATE_MAX_RETRIES=3
+COGNIPEER_API_KEY=your-api-key
+COGNIPEER_BASE_URL=https://api.cognipeer.com/api/client/v1
+COGNIPEER_TIMEOUT=60000
+COGNIPEER_MAX_RETRIES=3
 ```
 
 Load configuration from environment:
 
 ```typescript
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
-  baseURL: process.env.CGATE_BASE_URL,
-  timeout: parseInt(process.env.CGATE_TIMEOUT || '60000'),
-  maxRetries: parseInt(process.env.CGATE_MAX_RETRIES || '3'),
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
+  baseURL: process.env.COGNIPEER_BASE_URL,
+  timeout: parseInt(process.env.COGNIPEER_TIMEOUT || '60000'),
+  maxRetries: parseInt(process.env.COGNIPEER_MAX_RETRIES || '3'),
 });
 ```
 

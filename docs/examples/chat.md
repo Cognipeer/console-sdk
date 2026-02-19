@@ -5,16 +5,16 @@ Basic example of using the Chat Completions API.
 ## Installation
 
 ```bash
-npm install @cognipeer/cgate-sdk
+npm install @cognipeer/console-sdk
 ```
 
 ## Basic Chat
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
 async function basicChat() {
@@ -228,7 +228,7 @@ chatWithTools();
 ## Error Handling
 
 ```typescript
-import { CGateError } from '@cognipeer/cgate-sdk';
+import { CognipeerError } from '@cognipeer/console-sdk';
 
 async function chatWithErrorHandling() {
   try {
@@ -244,7 +244,7 @@ async function chatWithErrorHandling() {
 
     console.log(response.choices[0].message.content);
   } catch (error) {
-    if (error instanceof CGateError) {
+    if (error instanceof CognipeerError) {
       console.error('API Error:', error.message);
       console.error('Status:', error.status);
       
@@ -287,10 +287,10 @@ jsonMode();
 ## Complete Example
 
 ```typescript
-import { CGateClient, CGateError } from '@cognipeer/cgate-sdk';
+import { CognipeerClient, CognipeerError } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
 async function main() {
@@ -340,7 +340,7 @@ async function main() {
     console.log('Total tokens:', response.usage);
 
   } catch (error) {
-    if (error instanceof CGateError) {
+    if (error instanceof CognipeerError) {
       console.error('Error:', error.message);
     } else {
       console.error('Unexpected error:', error);

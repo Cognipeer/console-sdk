@@ -1,6 +1,6 @@
-# CG SDK Examples
+# Cognipeer Console SDK Examples
 
-This directory contains practical examples for using the CG SDK.
+This directory contains practical examples for using the Cognipeer Console SDK.
 
 ## Setup
 
@@ -13,7 +13,7 @@ npm install
 2. Set your API key:
 
 ```bash
-export CGATE_API_KEY=your-api-key
+export COGNIPEER_API_KEY=your-api-key
 ```
 
 ## Running Examples
@@ -52,9 +52,9 @@ npm run example:file
 ## Prerequisites
 
 - Node.js 18+
-- CognipeerAI Gateway account
+- Cognipeer Console account
 - API key from your dashboard
 
 ## Documentation
 
-See the [full documentation](https://cognipeer.github.io/cgate-sdk) for more details.
+See the [full documentation](https://cognipeer.github.io/console-sdk) for more details.

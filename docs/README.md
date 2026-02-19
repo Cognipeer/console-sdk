@@ -1,15 +1,15 @@
-# CG SDK Documentation
+# Cognipeer Console SDK Documentation
 
-Official documentation for the CognipeerAI Gateway SDK.
+Official documentation for the Cognipeer Console SDK.
 
-📖 **[View Documentation](https://cognipeer.github.io/cgate-sdk/)**
+📖 **[View Documentation](https://cognipeer.github.io/console-sdk/)**
 
 ## Quick Links
 
-- [Getting Started](https://cognipeer.github.io/cgate-sdk/guide/getting-started)
-- [API Reference](https://cognipeer.github.io/cgate-sdk/api/client)
-- [Examples](https://cognipeer.github.io/cgate-sdk/examples/)
-- [GitHub Repository](https://github.com/Cognipeer/cgate-sdk)
+- [Getting Started](https://cognipeer.github.io/console-sdk/guide/getting-started)
+- [API Reference](https://cognipeer.github.io/console-sdk/api/client)
+- [Examples](https://cognipeer.github.io/console-sdk/examples/)
+- [GitHub Repository](https://github.com/Cognipeer/console-sdk)
 
 ## Local Development
 

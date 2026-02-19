@@ -1,11 +1,11 @@
 # Quick Start Guide
 
-Get up and running with CG SDK in 5 minutes!
+Get up and running with Cognipeer Console SDK in 5 minutes!
 
 ## 1. Installation
 
 ```bash
-npm install @cognipeer/cgate-sdk
+npm install @cognipeer/console-sdk
 ```
 
 ## 2. Get API Key
@@ -18,9 +18,9 @@ npm install @cognipeer/cgate-sdk
 ## 3. Initialize Client
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
 });
 ```
@@ -58,7 +58,7 @@ for await (const chunk of stream) {
 
 ## Next Steps
 
-- [Full Documentation](https://cognipeer.github.io/cgate-sdk)
+- [Full Documentation](https://cognipeer.github.io/console-sdk)
 - [API Reference](/api/client)
 - [Examples](/examples/)
 - [Chat Guide](/api/chat)
@@ -135,19 +135,19 @@ await client.tracing.ingest({
 
 ```bash
 # .env
-CGATE_API_KEY=your-api-key
+COGNIPEER_API_KEY=your-api-key
 ```
 
 ```typescript
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```
 
 ## Error Handling
 
 ```typescript
-import { CGateAPIError } from '@cognipeer/cgate-sdk';
+import { CognipeerAPIError } from '@cognipeer/console-sdk';
 
 try {
   const response = await client.chat.completions.create({
@@ -155,7 +155,7 @@ try {
     messages: [{ role: 'user', content: 'Hello!' }],
   });
 } catch (error) {
-  if (error instanceof CGateAPIError) {
+  if (error instanceof CognipeerAPIError) {
     console.error('API Error:', error.message);
     console.error('Status:', error.statusCode);
   }
@@ -170,7 +170,7 @@ Full type safety out of the box:
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 const request: ChatCompletionRequest = {
   model: 'gpt-4',
@@ -180,6 +180,6 @@ const request: ChatCompletionRequest = {
 
 ## Need Help?
 
-- 📖 [Documentation](https://cognipeer.github.io/cgate-sdk)
-- 🐛 [Issues](https://github.com/Cognipeer/cgate-sdk/issues)
+- 📖 [Documentation](https://cognipeer.github.io/console-sdk)
+- 🐛 [Issues](https://github.com/Cognipeer/console-sdk/issues)
 - 📧 [Email](mailto:support@cognipeer.com)

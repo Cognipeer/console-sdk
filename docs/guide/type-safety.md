@@ -1,25 +1,25 @@
 # Type Safety
 
-Learn how to leverage TypeScript for type-safe AI applications with the CG SDK.
+Learn how to leverage TypeScript for type-safe AI applications with the Cognipeer Console SDK.
 
 ## Full TypeScript Support
 
-The CG SDK is written in TypeScript and provides comprehensive type definitions for all API methods, parameters, and responses.
+The Cognipeer Console SDK is written in TypeScript and provides comprehensive type definitions for all API methods, parameters, and responses.
 
 ## Type-Safe Client
 
 ```typescript
-import { CGateClient, CGateClientOptions } from '@cognipeer/cgate-sdk';
+import { CognipeerClient, CognipeerClientOptions } from '@cognipeer/console-sdk';
 
 // Options are fully typed
-const options: CGateClientOptions = {
+const options: CognipeerClientOptions = {
   apiKey: 'your-api-key',
   baseURL: 'https://api.cognipeer.com',
   timeout: 30000,
   maxRetries: 3,
 };
 
-const client = new CGateClient(options);
+const client = new CognipeerClient(options);
 ```
 
 ## Chat Completions
@@ -31,7 +31,7 @@ import type {
   ChatCompletionRequest,
   ChatMessage,
   ChatCompletionResponse,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 // Messages are strongly typed
 const messages: ChatMessage[] = [
@@ -69,7 +69,7 @@ import type {
   UserMessage,
   AssistantMessage,
   ToolMessage,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 const systemMsg: SystemMessage = {
   role: 'system',
@@ -101,7 +101,7 @@ const toolMsg: ToolMessage = {
 import type {
   ChatCompletionChunk,
   ChatChoiceDelta,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 const stream = await client.chat.completions.create({
   model: 'gpt-4',
@@ -128,7 +128,7 @@ import type {
   EmbeddingRequest,
   EmbeddingResponse,
   EmbeddingObject,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 const request: EmbeddingRequest = {
   model: 'text-embedding-3-small',
@@ -151,7 +151,7 @@ import type {
   VectorUpsertRequest,
   VectorQueryRequest,
   VectorMatch,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 // Provider type is constrained
 const provider: VectorProvider = 'pinecone'; // or 'chroma', 'qdrant', 'weaviate'
@@ -204,7 +204,7 @@ import type {
   Tool,
   FunctionDefinition,
   ToolCall,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 // Type-safe tool definition
 const tool: Tool = {
@@ -253,7 +253,7 @@ import type {
   FileUploadRequest,
   FileObject,
   FileListResponse,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 // Type-safe file upload
 const uploadRequest: FileUploadRequest = {
@@ -277,7 +277,7 @@ import type {
   Trace,
   TraceEvent,
   TraceWithEvents,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 // Type-safe trace creation
 const trace: Trace = await client.tracing.createTrace({
@@ -303,7 +303,7 @@ await client.tracing.addEvent(trace.id, {
 ## Error Handling
 
 ```typescript
-import { CGateError } from '@cognipeer/cgate-sdk';
+import { CognipeerError } from '@cognipeer/console-sdk';
 
 try {
   const response = await client.chat.completions.create({
@@ -311,8 +311,8 @@ try {
     messages: [{ role: 'user', content: 'Hello' }],
   });
 } catch (error) {
-  // Type guard for CGateError
-  if (error instanceof CGateError) {
+  // Type guard for CognipeerError
+  if (error instanceof CognipeerError) {
     // Properties are typed
     const status: number | undefined = error.status;
     const code: string | undefined = error.code;
@@ -331,7 +331,7 @@ try {
 Create reusable type guards:
 
 ```typescript
-import type { AssistantMessage } from '@cognipeer/cgate-sdk';
+import type { AssistantMessage } from '@cognipeer/console-sdk';
 
 // Check if message has tool calls
 function hasToolCalls(message: AssistantMessage): boolean {
@@ -365,7 +365,7 @@ Build type-safe helper functions:
 import type {
   ChatMessage,
   ChatCompletionResponse,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 async function chat(
   messages: ChatMessage[],
@@ -399,8 +399,8 @@ All types are exported for use in your application:
 ```typescript
 import type {
   // Client
-  CGateClient,
-  CGateClientOptions,
+  CognipeerClient,
+  CognipeerClientOptions,
   
   // Chat
   ChatCompletionRequest,
@@ -427,13 +427,13 @@ import type {
   TraceEvent,
   
   // Errors
-  CGateError,
+  CognipeerError,
   
   // Tools
   Tool,
   ToolCall,
   FunctionDefinition,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 ```
 
 ## IDE Support
@@ -460,7 +460,7 @@ import type {
   ChatMessage,
   EmbeddingResponse,
   VectorMatch,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 interface Document {
   id: string;

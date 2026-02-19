@@ -1,14 +1,14 @@
 # Authentication
 
-Learn how to authenticate with the CognipeerAI Gateway API.
+Learn how to authenticate with the Cognipeer Console API.
 
 ## API Keys
 
-The CG SDK uses API keys for authentication. All API requests must include a valid API key.
+The Cognipeer Console SDK uses API keys for authentication. All API requests must include a valid API key.
 
 ## Getting Your API Key
 
-1. Sign up at [CognipeerAI Gateway](https://cognipeer.com)
+1. Sign up at [Cognipeer Console](https://cognipeer.com)
 2. Navigate to your dashboard
 3. Go to **Settings** → **API Tokens**
 4. Click **Create New Token**
@@ -22,9 +22,9 @@ The CG SDK uses API keys for authentication. All API requests must include a val
 Pass your API key when creating the client:
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'cg_1234567890abcdef',
 });
 ```
@@ -34,14 +34,14 @@ const client = new CGateClient({
 Store your API key in an environment variable:
 
 ```bash
-export CGATE_API_KEY=cg_1234567890abcdef
+export COGNIPEER_API_KEY=cg_1234567890abcdef
 ```
 
 Then use it in your code:
 
 ```typescript
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```
 
@@ -51,17 +51,17 @@ For local development, use a `.env` file:
 
 ```bash
 # .env
-CGATE_API_KEY=cg_1234567890abcdef
+COGNIPEER_API_KEY=cg_1234567890abcdef
 ```
 
 With dotenv:
 
 ```typescript
 import 'dotenv/config';
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```
 
@@ -87,7 +87,7 @@ const client = new CGateClient({
 
 ### Creating Tokens
 
-In your CognipeerAI Gateway dashboard:
+In your Cognipeer Console dashboard:
 
 1. Navigate to **API Tokens**
 2. Click **Create Token**
@@ -113,13 +113,13 @@ Rotate tokens regularly for security:
 ```typescript
 // config.ts
 export function getClient() {
-  const apiKey = process.env.CGATE_API_KEY || process.env.CGATE_API_KEY_BACKUP;
+  const apiKey = process.env.COGNIPEER_API_KEY || process.env.COGNIPEER_API_KEY_BACKUP;
   
   if (!apiKey) {
     throw new Error('No API key found');
   }
   
-  return new CGateClient({ apiKey });
+  return new CognipeerClient({ apiKey });
 }
 ```
 
@@ -129,8 +129,8 @@ export function getClient() {
 
 ```typescript
 // config/development.ts
-export const client = new CGateClient({
-  apiKey: process.env.DEV_CGATE_API_KEY!,
+export const client = new CognipeerClient({
+  apiKey: process.env.DEV_COGNIPEER_API_KEY!,
   baseURL: 'http://localhost:3000/api/client/v1',
 });
 ```
@@ -139,8 +139,8 @@ export const client = new CGateClient({
 
 ```typescript
 // config/staging.ts
-export const client = new CGateClient({
-  apiKey: process.env.STAGING_CGATE_API_KEY!,
+export const client = new CognipeerClient({
+  apiKey: process.env.STAGING_COGNIPEER_API_KEY!,
   baseURL: 'https://staging-api.cognipeer.com/api/client/v1',
 });
 ```
@@ -149,8 +149,8 @@ export const client = new CGateClient({
 
 ```typescript
 // config/production.ts
-export const client = new CGateClient({
-  apiKey: process.env.PROD_CGATE_API_KEY!,
+export const client = new CognipeerClient({
+  apiKey: process.env.PROD_COGNIPEER_API_KEY!,
   // Uses default production URL
 });
 ```
@@ -163,19 +163,19 @@ const env = process.env.NODE_ENV || 'development';
 
 const configs = {
   development: {
-    apiKey: process.env.DEV_CGATE_API_KEY!,
+    apiKey: process.env.DEV_COGNIPEER_API_KEY!,
     baseURL: 'http://localhost:3000/api/client/v1',
   },
   staging: {
-    apiKey: process.env.STAGING_CGATE_API_KEY!,
+    apiKey: process.env.STAGING_COGNIPEER_API_KEY!,
     baseURL: 'https://staging-api.cognipeer.com/api/client/v1',
   },
   production: {
-    apiKey: process.env.PROD_CGATE_API_KEY!,
+    apiKey: process.env.PROD_COGNIPEER_API_KEY!,
   },
 };
 
-export const client = new CGateClient(configs[env]);
+export const client = new CognipeerClient(configs[env]);
 ```
 
 ## Error Handling
@@ -183,7 +183,7 @@ export const client = new CGateClient(configs[env]);
 ### Invalid API Key
 
 ```typescript
-import { CGateAPIError } from '@cognipeer/cgate-sdk';
+import { CognipeerAPIError } from '@cognipeer/console-sdk';
 
 try {
   const response = await client.chat.completions.create({
@@ -191,7 +191,7 @@ try {
     messages: [{ role: 'user', content: 'Hello!' }],
   });
 } catch (error) {
-  if (error instanceof CGateAPIError && error.statusCode === 401) {
+  if (error instanceof CognipeerAPIError && error.statusCode === 401) {
     console.error('Invalid API key. Please check your credentials.');
     // Handle authentication error
   }
@@ -201,7 +201,7 @@ try {
 ### Expired Token
 
 ```typescript
-if (error instanceof CGateAPIError && error.errorType === 'token_expired') {
+if (error instanceof CognipeerAPIError && error.errorType === 'token_expired') {
   console.error('Token expired. Please refresh your API key.');
   // Notify user to refresh token
 }
@@ -213,10 +213,10 @@ For testing, use mock API keys:
 
 ```typescript
 // test/setup.ts
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
 export function createTestClient() {
-  return new CGateClient({
+  return new CognipeerClient({
     apiKey: 'test_mock_key_12345',
     baseURL: 'http://localhost:3000/api/client/v1',
   });
@@ -242,7 +242,7 @@ jobs:
       - run: npm install
       - run: npm test
         env:
-          CGATE_API_KEY: ${{ secrets.CGATE_API_KEY }}
+          COGNIPEER_API_KEY: ${{ secrets.COGNIPEER_API_KEY }}
 ```
 
 ### Environment Secrets

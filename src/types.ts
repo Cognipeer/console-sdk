@@ -6,7 +6,7 @@
 // Configuration
 // ============================================================================
 
-export interface CGateClientOptions {
+export interface CognipeerClientOptions {
   /** API token for authentication (required) */
   apiKey: string;
   /** Base URL for the API (optional, defaults to production) */
@@ -23,18 +23,18 @@ export interface CGateClientOptions {
 // Error Types
 // ============================================================================
 
-export class CGateError extends Error {
+export class CognipeerError extends Error {
   constructor(
     message: string,
     public statusCode?: number,
     public response?: unknown
   ) {
     super(message);
-    this.name = 'CGateError';
+    this.name = 'CognipeerError';
   }
 }
 
-export class CGateAPIError extends CGateError {
+export class CognipeerAPIError extends CognipeerError {
   constructor(
     message: string,
     statusCode: number,
@@ -42,7 +42,7 @@ export class CGateAPIError extends CGateError {
     response?: unknown
   ) {
     super(message, statusCode, response);
-    this.name = 'CGateAPIError';
+    this.name = 'CognipeerAPIError';
   }
 }
 
@@ -92,6 +92,14 @@ export interface ChatCompletionRequest {
   request_id?: string;
   tools?: Tool[];
   tool_choice?: 'none' | 'auto' | Record<string, unknown>;
+  /** Optional memory configuration for context-aware recall */
+  memory?: {
+    storeKey: string;
+    topK?: number;
+    scope?: MemoryScope;
+    scopeId?: string;
+    maxTokens?: number;
+  };
 }
 
 export interface Usage {
@@ -302,8 +310,63 @@ export interface Prompt {
   metadata?: Record<string, unknown>;
   currentVersion?: number;
   latestVersionId?: string;
+  deployments?: Partial<Record<PromptEnvironment, PromptDeploymentState>>;
+  deploymentHistory?: PromptDeploymentEvent[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export type PromptEnvironment = 'dev' | 'staging' | 'prod';
+
+export type PromptDeploymentAction = 'promote' | 'plan' | 'activate' | 'rollback';
+
+export interface PromptDeploymentState {
+  environment: PromptEnvironment;
+  versionId: string;
+  version: number;
+  rolloutStatus: 'planned' | 'active';
+  rolloutStrategy: 'manual';
+  rollbackVersionId?: string;
+  rollbackVersion?: number;
+  note?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface PromptDeploymentEvent {
+  id: string;
+  environment: PromptEnvironment;
+  action: PromptDeploymentAction;
+  versionId: string;
+  version: number;
+  note?: string;
+  createdBy?: string;
+  createdAt?: string;
+}
+
+export interface PromptComparison {
+  fromVersion: PromptVersion;
+  toVersion: PromptVersion;
+  templateDiff: Array<{
+    type: 'added' | 'removed' | 'unchanged';
+    line: string;
+  }>;
+  metadataDiff: Array<{
+    key: string;
+    fromValue: unknown;
+    toValue: unknown;
+    changed: boolean;
+  }>;
+  deploymentHistory: PromptDeploymentEvent[];
+  comments: Array<{
+    id: string;
+    content: string;
+    version?: number;
+    versionId?: string;
+    createdBy?: string;
+    createdByName?: string;
+    createdAt?: string;
+  }>;
 }
 
 export interface PromptVersion {
@@ -324,11 +387,41 @@ export interface ListPromptsQuery {
 
 export interface GetPromptOptions {
   version?: number;
+  environment?: PromptEnvironment;
 }
 
 export interface RenderPromptOptions {
   version?: number;
+  environment?: PromptEnvironment;
   data?: Record<string, unknown>;
+}
+
+export interface DeployPromptOptions {
+  action: PromptDeploymentAction;
+  environment: PromptEnvironment;
+  versionId?: string;
+  note?: string;
+}
+
+export interface PromptDeploymentsResponse {
+  prompt: {
+    id: string;
+    key: string;
+    name: string;
+  };
+  deployments: {
+    deployments: Partial<Record<PromptEnvironment, PromptDeploymentState>>;
+    history: PromptDeploymentEvent[];
+  } | null;
+}
+
+export interface PromptCompareResponse {
+  prompt: {
+    id: string;
+    key: string;
+    name: string;
+  };
+  comparison: PromptComparison;
 }
 
 export interface PromptRenderResponse {
@@ -347,6 +440,40 @@ export interface PromptVersionsResponse {
     name: string;
   };
   versions: PromptVersion[];
+}
+
+// ============================================================================
+// Guardrail Types
+// ============================================================================
+
+export type GuardrailTarget = 'input' | 'output' | 'both';
+export type GuardrailAction = 'block' | 'warn' | 'flag';
+export type GuardrailFindingType = 'pii' | 'moderation' | 'prompt_shield' | 'custom';
+export type GuardrailSeverity = 'low' | 'medium' | 'high';
+
+export interface GuardrailEvaluateRequest {
+  guardrail_key: string;
+  text: string;
+  target?: GuardrailTarget;
+}
+
+export interface GuardrailFinding {
+  type: GuardrailFindingType;
+  category: string;
+  severity: GuardrailSeverity;
+  message: string;
+  action: GuardrailAction;
+  block: boolean;
+  value?: string;
+}
+
+export interface GuardrailEvaluateResponse {
+  passed: boolean;
+  guardrail_key: string;
+  guardrail_name: string;
+  action: GuardrailAction;
+  findings: GuardrailFinding[];
+  message: string | null;
 }
 
 // ============================================================================
@@ -488,6 +615,315 @@ export interface TracingSessionRequest {
   durationMs?: number;
   errors?: TracingError[];
   events?: TracingEvent[];
+}
+
+// ============================================================================
+// Memory Types
+// ============================================================================
+
+/**
+ * Scope of a memory item
+ */
+export type MemoryScope = 'user' | 'agent' | 'session' | 'global';
+
+/**
+ * Source that created a memory item
+ */
+export type MemorySource = 'user_input' | 'agent_output' | 'system' | 'api' | 'extraction';
+
+/**
+ * Status of a memory store
+ */
+export type MemoryStoreStatus = 'active' | 'inactive' | 'error';
+
+/**
+ * Status of a memory item
+ */
+export type MemoryItemStatus = 'active' | 'archived' | 'deleted';
+
+/**
+ * Memory store configuration
+ */
+export interface MemoryStoreConfig {
+  deduplication?: boolean;
+  autoEmbed?: boolean;
+  defaultTopK?: number;
+  defaultMinScore?: number;
+  defaultScope?: MemoryScope;
+  maxMemories?: number;
+}
+
+/**
+ * A memory store definition
+ */
+export interface MemoryStore {
+  _id?: string;
+  key: string;
+  name: string;
+  description?: string;
+  vectorProviderKey: string;
+  vectorIndexKey?: string;
+  embeddingModelKey: string;
+  config?: MemoryStoreConfig;
+  status: MemoryStoreStatus;
+  memoryCount: number;
+  createdAt?: string;
+  lastActivityAt?: string;
+}
+
+/**
+ * A single memory item
+ */
+export interface MemoryItem {
+  _id?: string;
+  storeKey: string;
+  content: string;
+  contentHash?: string;
+  scope: MemoryScope;
+  scopeId?: string;
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  source?: MemorySource;
+  importance?: number;
+  accessCount?: number;
+  vectorId?: string;
+  status?: MemoryItemStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Request to create a memory store
+ */
+export interface CreateMemoryStoreRequest {
+  name: string;
+  description?: string;
+  vectorProviderKey: string;
+  embeddingModelKey: string;
+  config?: Partial<MemoryStoreConfig>;
+}
+
+/**
+ * Request to update a memory store
+ */
+export interface UpdateMemoryStoreRequest {
+  name?: string;
+  description?: string;
+  config?: Partial<MemoryStoreConfig>;
+  status?: MemoryStoreStatus;
+}
+
+/**
+ * Request to add a memory
+ */
+export interface AddMemoryRequest {
+  content: string;
+  scope?: MemoryScope;
+  scopeId?: string;
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  source?: MemorySource;
+  importance?: number;
+}
+
+/**
+ * Request to update a memory item
+ */
+export interface UpdateMemoryRequest {
+  content?: string;
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  importance?: number;
+  status?: MemoryItemStatus;
+}
+
+/**
+ * Request to search memories semantically
+ */
+export interface MemorySearchRequest {
+  query: string;
+  topK?: number;
+  scope?: MemoryScope;
+  scopeId?: string;
+  tags?: string[];
+  minScore?: number;
+}
+
+/**
+ * A single memory search match
+ */
+export interface MemorySearchMatch {
+  id: string;
+  content: string;
+  score: number;
+  scope: MemoryScope;
+  scopeId?: string;
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  source?: MemorySource;
+  importance?: number;
+  createdAt?: string;
+}
+
+/**
+ * Response from a memory search
+ */
+export interface MemorySearchResponse {
+  memories: MemorySearchMatch[];
+  query: string;
+  storeKey: string;
+}
+
+/**
+ * Request for chat-context-aware memory recall
+ */
+export interface MemoryRecallRequest {
+  query: string;
+  topK?: number;
+  scope?: MemoryScope;
+  scopeId?: string;
+  maxTokens?: number;
+}
+
+/**
+ * Response from memory recall
+ */
+export interface MemoryRecallResponse {
+  context: string;
+  memories: MemorySearchMatch[];
+  storeKey: string;
+}
+
+/**
+ * Batch add result
+ */
+export interface MemoryBatchResult {
+  added: number;
+  skipped: number;
+  errors: Array<{ index: number; error: string }>;
+}
+
+// ============================================================================
+// RAG Types
+// ============================================================================
+
+export type RagChunkStrategy = 'recursive_character' | 'token';
+export type RagDocumentStatus = 'pending' | 'processing' | 'indexed' | 'failed';
+
+export interface RagChunkConfig {
+  strategy: RagChunkStrategy;
+  chunkSize: number;
+  chunkOverlap: number;
+  separators?: string[];
+  encoding?: string;
+}
+
+export interface RagModule {
+  _id: string;
+  key: string;
+  name: string;
+  description?: string;
+  embeddingModelKey: string;
+  vectorProviderKey: string;
+  vectorIndexKey: string;
+  fileBucketKey?: string;
+  fileProviderKey?: string;
+  chunkConfig: RagChunkConfig;
+  status: string;
+  totalDocuments?: number;
+  totalChunks?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RagDocument {
+  _id: string;
+  ragModuleKey: string;
+  fileKey?: string;
+  fileName: string;
+  status: RagDocumentStatus;
+  chunkCount?: number;
+  errorMessage?: string;
+  lastIndexedAt?: string;
+  createdAt?: string;
+}
+
+export interface RagIngestRequest {
+  fileName: string;
+  content: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** File upload ingest – send base64 / data-URL encoded file data */
+export interface RagIngestFileRequest {
+  fileName: string;
+  /** Base64 or data-URL encoded file content */
+  data: string;
+  contentType?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RagIngestResponse {
+  document: RagDocument;
+  chunkCount: number;
+}
+
+export interface RagQueryRequest {
+  query: string;
+  topK?: number;
+  filter?: Record<string, unknown>;
+}
+
+export interface RagQueryMatch {
+  id: string;
+  score: number;
+  content?: string;
+  fileName?: string;
+  chunkIndex?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RagQueryResult {
+  matches: RagQueryMatch[];
+  query: string;
+  topK: number;
+  latencyMs: number;
+}
+
+export interface RagQueryResponse {
+  result: RagQueryResult;
+}
+
+export interface RagDeleteDocumentResponse {
+  success: boolean;
+  deletedChunks?: number;
+}
+
+/** Optional body for re-ingest — omit entirely to re-process using existing chunks */
+export interface RagReingestRequest {
+  /** New text content to replace the document with */
+  content?: string;
+  /** Base64 or data-URL encoded file to replace the document with */
+  data?: string;
+  /** Alias of `data` for base64 payloads */
+  base64?: string;
+  fileName?: string;
+  contentType?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RagReingestFileRequest {
+  fileName: string;
+  /** Base64 or data-URL encoded file content */
+  data?: string;
+  /** Alias of `data` for base64 payloads */
+  base64?: string;
+  contentType?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RagReingestResponse {
+  document: RagDocument;
 }
 
 // ============================================================================

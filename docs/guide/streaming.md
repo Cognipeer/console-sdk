@@ -11,9 +11,9 @@ Streaming allows you to receive chat completions progressively as they are gener
 Enable streaming by setting `stream: true`:
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({ apiKey: 'your-api-key' });
+const client = new CognipeerClient({ apiKey: 'your-api-key' });
 
 const stream = await client.chat.completions.create({
   model: 'gpt-4',
@@ -71,9 +71,9 @@ Each chunk contains a delta:
 ## Complete Example
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({ apiKey: 'your-api-key' });
+const client = new CognipeerClient({ apiKey: 'your-api-key' });
 
 async function streamChat(prompt: string) {
   console.log('User:', prompt);
@@ -111,9 +111,9 @@ await streamChat('Write a haiku about coding');
 Streaming in the browser:
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({ apiKey: 'your-api-key' });
+const client = new CognipeerClient({ apiKey: 'your-api-key' });
 
 async function displayStreamingResponse(prompt: string) {
   const outputElement = document.getElementById('output');
@@ -229,7 +229,7 @@ for await (const chunk of stream) {
 Handle errors during streaming:
 
 ```typescript
-import { CGateError } from '@cognipeer/cgate-sdk';
+import { CognipeerError } from '@cognipeer/console-sdk';
 
 try {
   const stream = await client.chat.completions.create({
@@ -242,7 +242,7 @@ try {
     process.stdout.write(chunk.choices[0]?.delta?.content || '');
   }
 } catch (error) {
-  if (error instanceof CGateError) {
+  if (error instanceof CognipeerError) {
     console.error('Stream error:', error.message);
     console.error('Status:', error.status);
   } else {
@@ -329,13 +329,13 @@ Using streaming with React:
 
 ```typescript
 import { useState } from 'react';
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
 function ChatComponent() {
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const client = new CGateClient({ apiKey: 'your-api-key' });
+  const client = new CognipeerClient({ apiKey: 'your-api-key' });
 
   async function handleSubmit(prompt: string) {
     setLoading(true);

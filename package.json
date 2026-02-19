@@ -1,7 +1,7 @@
 {
-  "name": "@cognipeer/cgate-sdk",
+  "name": "@cognipeer/console-sdk",
   "version": "1.0.4",
-  "description": "TypeScript SDK for CognipeerAI Gateway - Multi-tenant AI services platform",
+  "description": "TypeScript SDK for Cognipeer Console - Multi-tenant AI services platform",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -43,12 +43,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Cognipeer/cgate-sdk.git"
+    "url": "git+https://github.com/Cognipeer/console-sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/Cognipeer/cgate-sdk/issues"
+    "url": "https://github.com/Cognipeer/console-sdk/issues"
   },
-  "homepage": "https://cognipeer.github.io/cgate-sdk",
+  "homepage": "https://cognipeer.github.io/console-sdk",
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",

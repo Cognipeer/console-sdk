@@ -1,11 +1,11 @@
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
 /**
  * Basic chat completion example
  */
 async function basicChat() {
-  const client = new CGateClient({
-    apiKey: process.env.CGATE_API_KEY!,
+  const client = new CognipeerClient({
+    apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
   console.log('=== Basic Chat Example ===\n');
@@ -32,8 +32,8 @@ async function basicChat() {
  * Multi-turn conversation example
  */
 async function multiTurnChat() {
-  const client = new CGateClient({
-    apiKey: process.env.CGATE_API_KEY!,
+  const client = new CognipeerClient({
+    apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
   console.log('\n=== Multi-Turn Conversation ===\n');
@@ -76,8 +76,8 @@ async function multiTurnChat() {
  * Temperature and creativity example
  */
 async function temperatureExample() {
-  const client = new CGateClient({
-    apiKey: process.env.CGATE_API_KEY!,
+  const client = new CognipeerClient({
+    apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
   console.log('\n=== Temperature Example ===\n');
@@ -107,8 +107,8 @@ async function temperatureExample() {
  * Max tokens example
  */
 async function maxTokensExample() {
-  const client = new CGateClient({
-    apiKey: process.env.CGATE_API_KEY!,
+  const client = new CognipeerClient({
+    apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
   console.log('\n=== Max Tokens Example ===\n');

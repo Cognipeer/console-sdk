@@ -1,9 +1,9 @@
 import { defineConfig } from 'vitepress';
 
 export default defineConfig({
-  title: 'CG SDK',
-  description: 'Official TypeScript SDK for CognipeerAI Gateway',
-  base: '/cgate-sdk/',
+  title: 'Cognipeer Console SDK',
+  description: 'Official TypeScript SDK for Cognipeer Console',
+  base: '/console-sdk/',
   ignoreDeadLinks: true,
   themeConfig: {
     logo: '/logo.svg',
@@ -46,6 +46,7 @@ export default defineConfig({
             { text: 'Client', link: '/api/client' },
             { text: 'Chat', link: '/api/chat' },
             { text: 'Embeddings', link: '/api/embeddings' },
+            { text: 'Guardrails', link: '/api/guardrails' },
             { text: 'Tools', link: '/api/tools' },
             { text: 'Vectors', link: '/api/vectors' },
             { text: 'Files', link: '/api/files' },
@@ -71,7 +72,7 @@ export default defineConfig({
       ],
     },
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/Cognipeer/cgate-sdk' },
+      { icon: 'github', link: 'https://github.com/Cognipeer/console-sdk' },
     ],
     footer: {
       message: 'Released under the MIT License.',
@@ -82,7 +83,7 @@ export default defineConfig({
     },
   },
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/cgate-sdk/favicon.svg' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/console-sdk/favicon.svg' }],
     ['meta', { name: 'theme-color', content: '#3eaf7c' }],
     ['meta', { name: 'og:type', content: 'website' }],
     ['meta', { name: 'og:locale', content: 'en' }],

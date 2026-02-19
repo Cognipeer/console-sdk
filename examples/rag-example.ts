@@ -1,4 +1,4 @@
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
 /**
  * Complete RAG (Retrieval Augmented Generation) example
@@ -12,7 +12,7 @@ interface Document {
 
 class RAGSystem {
   constructor(
-    private client: CGateClient,
+    private client: CognipeerClient,
     private providerKey: string,
     private indexId: string
   ) {}
@@ -176,8 +176,8 @@ ${context}`,
 
 // Example usage
 async function main() {
-  const client = new CGateClient({
-    apiKey: process.env.CGATE_API_KEY!,
+  const client = new CognipeerClient({
+    apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
   // Initialize RAG system

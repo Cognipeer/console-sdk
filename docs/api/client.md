@@ -1,29 +1,29 @@
-# CGateClient API Reference
+# CognipeerClient API Reference
 
-Complete API reference for the CG SDK client.
+Complete API reference for the Cognipeer Console SDK client.
 
 ## Constructor
 
-### `new CGateClient(options)`
+### `new CognipeerClient(options)`
 
-Creates a new CG SDK client instance.
+Creates a new Cognipeer Console SDK client instance.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `options.apiKey` | `string` | Yes | Your CognipeerAI Gateway API key |
+| `options.apiKey` | `string` | Yes | Your Cognipeer Console API key |
 | `options.baseURL` | `string` | No | Custom API base URL (default: `https://api.cognipeer.com/api/client/v1`) |
 | `options.timeout` | `number` | No | Request timeout in milliseconds (default: `60000`) |
 | `options.maxRetries` | `number` | No | Maximum retry attempts (default: `3`) |
 | `options.fetch` | `typeof fetch` | No | Custom fetch implementation |
 
-**Returns:** `CGateClient`
+**Returns:** `CognipeerClient`
 
 **Example:**
 
 ```typescript
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
   baseURL: 'https://api.cognipeer.com',
   timeout: 30000,
@@ -81,6 +81,14 @@ Agent tracing API resource.
 
 See [Tracing API](/api/tracing) for details.
 
+### `client.guardrails`
+
+Guardrail evaluation API resource.
+
+**Type:** `GuardrailsResource`
+
+See [Guardrails API](/api/guardrails) for details.
+
 ## Methods
 
 ### `client.getBaseURL()`
@@ -98,10 +106,10 @@ console.log(baseURL); // "https://api.cognipeer.com/api/client/v1"
 
 ## Type Definitions
 
-### `CGateClientOptions`
+### `CognipeerClientOptions`
 
 ```typescript
-interface CGateClientOptions {
+interface CognipeerClientOptions {
   apiKey: string;
   baseURL?: string;
   timeout?: number;
@@ -218,12 +226,12 @@ interface VectorIndex {
 
 ## Error Types
 
-### `CGateError`
+### `CognipeerError`
 
 Base error class for all SDK errors.
 
 ```typescript
-class CGateError extends Error {
+class CognipeerError extends Error {
   constructor(
     message: string,
     statusCode?: number,
@@ -237,12 +245,12 @@ class CGateError extends Error {
 - `statusCode?: number` - HTTP status code (if applicable)
 - `response?: unknown` - Raw response data
 
-### `CGateAPIError`
+### `CognipeerAPIError`
 
 Error class for API-specific errors.
 
 ```typescript
-class CGateAPIError extends CGateError {
+class CognipeerAPIError extends CognipeerError {
   constructor(
     message: string,
     statusCode: number,
@@ -253,13 +261,13 @@ class CGateAPIError extends CGateError {
 ```
 
 **Properties:**
-- All properties from `CGateError`
+- All properties from `CognipeerError`
 - `errorType?: string` - API error type (e.g., 'invalid_request_error')
 
 **Example:**
 
 ```typescript
-import { CGateAPIError } from '@cognipeer/cgate-sdk';
+import { CognipeerAPIError } from '@cognipeer/console-sdk';
 
 try {
   const response = await client.chat.completions.create({
@@ -267,7 +275,7 @@ try {
     messages: [{ role: 'user', content: 'Hello!' }],
   });
 } catch (error) {
-  if (error instanceof CGateAPIError) {
+  if (error instanceof CognipeerAPIError) {
     console.error('Status:', error.statusCode);
     console.error('Type:', error.errorType);
     console.error('Message:', error.message);
@@ -290,12 +298,12 @@ const DEFAULT_MAX_RETRIES = 3;
 ### Singleton Pattern
 
 ```typescript
-let clientInstance: CGateClient | null = null;
+let clientInstance: CognipeerClient | null = null;
 
-export function getClient(): CGateClient {
+export function getClient(): CognipeerClient {
   if (!clientInstance) {
-    clientInstance = new CGateClient({
-      apiKey: process.env.CGATE_API_KEY!,
+    clientInstance = new CognipeerClient({
+      apiKey: process.env.COGNIPEER_API_KEY!,
     });
   }
   return clientInstance;
@@ -307,8 +315,8 @@ export function getClient(): CGateClient {
 ```typescript
 export function createClient(
   environment: 'dev' | 'prod'
-): CGateClient {
-  return new CGateClient({
+): CognipeerClient {
+  return new CognipeerClient({
     apiKey: process.env[`${environment.toUpperCase()}_API_KEY`]!,
   });
 }
@@ -323,7 +331,7 @@ async function safeRequest<T>(
   try {
     return await fn();
   } catch (error) {
-    if (error instanceof CGateAPIError) {
+    if (error instanceof CognipeerAPIError) {
       console.error('API Error:', error.message);
     }
     return null;

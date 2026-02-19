@@ -1,8 +1,8 @@
-# CognipeerAI Gateway SDK
+# Cognipeer Console SDK
 
-Official TypeScript/JavaScript SDK for [CognipeerAI Gateway](https://cognipeer.com) - A multi-tenant SaaS platform for AI and Agentic services.
+Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com) - A multi-tenant SaaS platform for AI and Agentic services.
 
-[![npm version](https://img.shields.io/npm/v/@cognipeer/cgate-sdk)](https://www.npmjs.com/package/@cognipeer/cgate-sdk)
+[![npm version](https://img.shields.io/npm/v/@cognipeer/console-sdk)](https://www.npmjs.com/package/@cognipeer/console-sdk)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -13,30 +13,31 @@ Official TypeScript/JavaScript SDK for [CognipeerAI Gateway](https://cognipeer.c
 - 🗄️ **Vector Operations** - Manage vector databases (Pinecone, Chroma, Qdrant, etc.)
 - 📁 **File Management** - Upload and manage files with markdown conversion
 - 🔍 **Agent Tracing** - Observability for agent executions
+- 🛡️ **Guardrails** - Evaluate content with tenant guardrail policies
 - 🔒 **Type-Safe** - Full TypeScript support with comprehensive types
 - ⚡ **Modern** - ESM and CommonJS support, works in Node.js and browsers
 
 ## Installation
 
 ```bash
-npm install @cognipeer/cgate-sdk
+npm install @cognipeer/console-sdk
 ```
 
 ```bash
-yarn add @cognipeer/cgate-sdk
+yarn add @cognipeer/console-sdk
 ```
 
 ```bash
-pnpm add @cognipeer/cgate-sdk
+pnpm add @cognipeer/console-sdk
 ```
 
 ## Quick Start
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
 // Initialize the client
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
   baseURL: 'https://api.cognipeer.com', // Optional, defaults to production
 });
@@ -99,22 +100,23 @@ const file = await client.files.upload('my-bucket', {
 
 ## Documentation
 
-Full documentation is available at [cognipeer.github.io/cgate-sdk](https://cognipeer.github.io/cgate-sdk)
+Full documentation is available at [cognipeer.github.io/console-sdk](https://cognipeer.github.io/console-sdk)
 
-- [Getting Started](https://cognipeer.github.io/cgate-sdk/guide/getting-started)
-- [Chat API](https://cognipeer.github.io/cgate-sdk/api/chat)
-- [Embeddings API](https://cognipeer.github.io/cgate-sdk/api/embeddings)
-- [Vector API](https://cognipeer.github.io/cgate-sdk/api/vectors)
-- [Files API](https://cognipeer.github.io/cgate-sdk/api/files)
-- [Tracing API](https://cognipeer.github.io/cgate-sdk/api/tracing)
-- [Examples](https://cognipeer.github.io/cgate-sdk/examples/)
+- [Getting Started](https://cognipeer.github.io/console-sdk/guide/getting-started)
+- [Chat API](https://cognipeer.github.io/console-sdk/api/chat)
+- [Embeddings API](https://cognipeer.github.io/console-sdk/api/embeddings)
+- [Guardrails API](https://cognipeer.github.io/console-sdk/api/guardrails)
+- [Vector API](https://cognipeer.github.io/console-sdk/api/vectors)
+- [Files API](https://cognipeer.github.io/console-sdk/api/files)
+- [Tracing API](https://cognipeer.github.io/console-sdk/api/tracing)
+- [Examples](https://cognipeer.github.io/console-sdk/examples/)
 
 ## API Reference
 
 ### Client Configuration
 
 ```typescript
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: string;          // Required: Your API token
   baseURL?: string;        // Optional: API base URL (default: https://api.cognipeer.com)
   timeout?: number;        // Optional: Request timeout in ms (default: 60000)
@@ -149,8 +151,20 @@ const client = new CGateClient({
 - `client.files.list(bucketKey, query?)` - List files
 - `client.files.upload(bucketKey, data)` - Upload file
 
+#### Prompts
+- `client.prompts.list(query?)` - List prompt templates
+- `client.prompts.get(key, options?)` - Get prompt (supports `version` / `environment`)
+- `client.prompts.render(key, options?)` - Render prompt with data
+- `client.prompts.listVersions(key)` - List version history
+- `client.prompts.getDeployments(key)` - Get environment deployment states and history
+- `client.prompts.deploy(key, options)` - Run `promote/plan/activate/rollback`
+- `client.prompts.compare(key, fromVersionId, toVersionId)` - Compare two versions
+
 #### Tracing
 - `client.tracing.ingest(data)` - Ingest tracing session
+
+#### Guardrails
+- `client.guardrails.evaluate(data)` - Evaluate text against a guardrail
 
 ## Examples
 
@@ -172,5 +186,5 @@ MIT © [CognipeerAI](https://cognipeer.com)
 ## Support
 
 - 📧 Email: support@cognipeer.com
-- 📖 Documentation: [cognipeer.github.io/cgate-sdk](https://cognipeer.github.io/cgate-sdk)
-- 🐛 Issues: [GitHub Issues](https://github.com/Cognipeer/cgate-sdk/issues)
+- 📖 Documentation: [cognipeer.github.io/console-sdk](https://cognipeer.github.io/console-sdk)
+- 🐛 Issues: [GitHub Issues](https://github.com/Cognipeer/console-sdk/issues)

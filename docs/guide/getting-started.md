@@ -1,10 +1,10 @@
 # Getting Started
 
-Welcome to the CG SDK! This guide will help you get started with the CognipeerAI Gateway SDK.
+Welcome to the Cognipeer Console SDK! This guide will help you get started with the Cognipeer Console SDK.
 
-## What is CG SDK?
+## What is Cognipeer Console SDK?
 
-The CG SDK is the official TypeScript/JavaScript client library for [CognipeerAI Gateway](https://cognipeer.com), a multi-tenant SaaS platform for AI and Agentic services. It provides:
+The Cognipeer Console SDK is the official TypeScript/JavaScript client library for [Cognipeer Console](https://cognipeer.com), a multi-tenant SaaS platform for AI and Agentic services. It provides:
 
 - **Chat Completions**: OpenAI-compatible chat API with streaming
 - **Embeddings**: Text vectorization for semantic search
@@ -15,7 +15,7 @@ The CG SDK is the official TypeScript/JavaScript client library for [CognipeerAI
 ## Prerequisites
 
 - Node.js 18 or higher
-- A CognipeerAI Gateway account and API key
+- A Cognipeer Console account and API key
 
 ## Installation
 
@@ -24,22 +24,22 @@ Install the SDK using your preferred package manager:
 ::: code-group
 
 ```bash [npm]
-npm install @cognipeer/cgate-sdk
+npm install @cognipeer/console-sdk
 ```
 
 ```bash [yarn]
-yarn add @cognipeer/cgate-sdk
+yarn add @cognipeer/console-sdk
 ```
 
 ```bash [pnpm]
-pnpm add @cognipeer/cgate-sdk
+pnpm add @cognipeer/console-sdk
 ```
 
 :::
 
 ## Get Your API Key
 
-1. Sign up at [CognipeerAI Gateway](https://cognipeer.com)
+1. Sign up at [Cognipeer Console](https://cognipeer.com)
 2. Navigate to your dashboard
 3. Go to **Settings** > **API Tokens**
 4. Create a new API token
@@ -50,9 +50,9 @@ pnpm add @cognipeer/cgate-sdk
 Create a new client instance with your API key:
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key-here',
 });
 ```
@@ -61,8 +61,8 @@ const client = new CGateClient({
 For security, we recommend storing your API key in an environment variable:
 
 ```typescript
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 ```
 :::
@@ -119,7 +119,7 @@ for await (const chunk of stream) {
 The client supports several configuration options:
 
 ```typescript
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
   baseURL: 'https://api.cognipeer.com', // Optional: custom API URL
   timeout: 60000, // Optional: request timeout (ms)
@@ -146,7 +146,7 @@ import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
   EmbeddingRequest,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 
 // Full intellisense and type checking
 const request: ChatCompletionRequest = {
@@ -160,5 +160,5 @@ const request: ChatCompletionRequest = {
 ## Getting Help
 
 - 📖 [Full Documentation](/api/client)
-- 🐛 [Report Issues](https://github.com/Cognipeer/cgate-sdk/issues)
+- 🐛 [Report Issues](https://github.com/Cognipeer/console-sdk/issues)
 - 📧 [Email Support](mailto:support@cognipeer.com)

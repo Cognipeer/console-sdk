@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-10-08
 
 ### Added
-- Initial release of CG SDK
+- Initial release of Cognipeer Console SDK
 - Chat completions with streaming support
 - Embeddings API
 - Vector operations (Pinecone, Chroma, Qdrant)
@@ -30,5 +30,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Request/response validation
 - Multi-provider support
 
-[1.0.2]: https://github.com/Cognipeer/cgate-sdk/compare/v1.0.0...v1.0.2
-[1.0.0]: https://github.com/Cognipeer/cgate-sdk/releases/tag/v1.0.0
+[1.0.2]: https://github.com/Cognipeer/console-sdk/compare/v1.0.0...v1.0.2
+[1.0.0]: https://github.com/Cognipeer/console-sdk/releases/tag/v1.0.0

@@ -1,6 +1,9 @@
 import { HttpClient } from '../http';
 import type { 
+  DeployPromptOptions,
   ListPromptsQuery, 
+  PromptCompareResponse,
+  PromptDeploymentsResponse,
   Prompt, 
   PromptRenderResponse,
   GetPromptOptions,
@@ -38,6 +41,9 @@ export class PromptsResource {
     if (options?.version !== undefined) {
       query.version = options.version;
     }
+    if (options?.environment !== undefined) {
+      query.environment = options.environment;
+    }
     return this.http.request('GET', `/api/client/v1/prompts/${key}`, { query });
   }
 
@@ -54,6 +60,9 @@ export class PromptsResource {
     if (options?.version !== undefined) {
       query.version = options.version;
     }
+    if (options?.environment !== undefined) {
+      query.environment = options.environment;
+    }
     return this.http.request('POST', `/api/client/v1/prompts/${key}/render`, {
       query,
       body: { data: options?.data },
@@ -66,5 +75,43 @@ export class PromptsResource {
    */
   async listVersions(key: string): Promise<PromptVersionsResponse> {
     return this.http.request('GET', `/api/client/v1/prompts/${key}/versions`);
+  }
+
+  /**
+   * Get deployment state and history for a prompt
+   * @param key - Prompt key
+   */
+  async getDeployments(key: string): Promise<PromptDeploymentsResponse> {
+    return this.http.request('GET', `/api/client/v1/prompts/${key}/deployments`);
+  }
+
+  /**
+   * Mutate deployment flow for a prompt (promote/plan/activate/rollback)
+   * @param key - Prompt key
+   * @param options - Deployment flow action
+   */
+  async deploy(key: string, options: DeployPromptOptions): Promise<PromptDeploymentsResponse> {
+    return this.http.request('POST', `/api/client/v1/prompts/${key}/deployments`, {
+      body: options,
+    });
+  }
+
+  /**
+   * Compare two prompt versions
+   * @param key - Prompt key
+   * @param fromVersionId - Base version id
+   * @param toVersionId - Target version id
+   */
+  async compare(
+    key: string,
+    fromVersionId: string,
+    toVersionId: string,
+  ): Promise<PromptCompareResponse> {
+    return this.http.request('GET', `/api/client/v1/prompts/${key}/compare`, {
+      query: {
+        fromVersionId,
+        toVersionId,
+      },
+    });
   }
 }

@@ -2,19 +2,19 @@
 layout: home
 
 hero:
-  name: CG SDK
-  text: CognipeerAI Gateway SDK
+  name: Cognipeer Console SDK
+  text: Cognipeer Console SDK
   tagline: Official TypeScript/JavaScript SDK for AI services
   image:
-    src: /cgate-sdk/logo.svg
-    alt: CG SDK
+    src: /console-sdk/logo.svg
+    alt: Cognipeer Console SDK
   actions:
     - theme: brand
       text: Get Started
       link: /guide/getting-started
     - theme: alt
       text: View on GitHub
-      link: https://github.com/Cognipeer/cgate-sdk
+      link: https://github.com/Cognipeer/console-sdk
 
 features:
   - icon: 🤖
@@ -48,15 +48,15 @@ features:
 ::: code-group
 
 ```bash [npm]
-npm install @cognipeer/cgate-sdk
+npm install @cognipeer/console-sdk
 ```
 
 ```bash [yarn]
-yarn add @cognipeer/cgate-sdk
+yarn add @cognipeer/console-sdk
 ```
 
 ```bash [pnpm]
-pnpm add @cognipeer/cgate-sdk
+pnpm add @cognipeer/console-sdk
 ```
 
 :::
@@ -64,9 +64,9 @@ pnpm add @cognipeer/cgate-sdk
 ## Basic Usage
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
 });
 
@@ -93,7 +93,7 @@ for await (const chunk of stream) {
 }
 ```
 
-## Why CG SDK?
+## Why Cognipeer Console SDK?
 
 - **OpenAI Compatible**: Drop-in replacement for OpenAI SDK with extended features
 - **Multi-Provider**: Support for multiple LLM and vector database providers
@@ -104,13 +104,13 @@ for await (const chunk of stream) {
 ## Learn More
 
 ::: tip 📖 Documentation
-Check out the [Getting Started Guide](/cgate-sdk/guide/getting-started) to learn more.
+Check out the [Getting Started Guide](/console-sdk/guide/getting-started) to learn more.
 :::
 
 ::: info 💡 Examples
-Explore our [Examples](/cgate-sdk/examples/) for common use cases and patterns.
+Explore our [Examples](/console-sdk/examples/) for common use cases and patterns.
 :::
 
 ::: warning 🆘 Support
-Need help? [Open an issue](https://github.com/Cognipeer/cgate-sdk/issues) on GitHub.
+Need help? [Open an issue](https://github.com/Cognipeer/console-sdk/issues) on GitHub.
 :::

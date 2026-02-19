@@ -4,16 +4,16 @@ Manage agent-bound tools and execute them via API tokens.
 
 ## Overview
 
-Tools are defined in CognipeerAI Gateway and can be attached to agents. Use the SDK to list tools for an agent, execute a tool, or convert definitions to Agent SDK-compatible tool objects.
+Tools are defined in Cognipeer Console and can be attached to agents. Use the SDK to list tools for an agent, execute a tool, or convert definitions to Agent SDK-compatible tool objects.
 
 ## listAgentTools
 
 Fetch all tools assigned to an agent (including toolsets).
 
 ```ts
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({ apiKey: process.env.CGATE_API_KEY! });
+const client = new CognipeerClient({ apiKey: process.env.COGNIPEER_API_KEY! });
 
 const tools = await client.tools.listAgentTools('support-bot');
 console.log(tools);

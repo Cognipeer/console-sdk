@@ -1,14 +1,14 @@
-# CG SDK - Project Structure
+# Cognipeer Console SDK - Project Structure
 
-Complete overview of the CognipeerAI Gateway SDK project.
+Complete overview of the Cognipeer Console SDK project.
 
 ## 📁 Project Structure
 
 ```
-cgate-sdk/
+console-sdk/
 ├── src/                          # Source code
 │   ├── index.ts                  # Main entry point & exports
-│   ├── client.ts                 # CGateClient class
+│   ├── client.ts                 # CognipeerClient class
 │   ├── http.ts                   # HTTP client utilities
 │   ├── types.ts                  # TypeScript type definitions
 │   ├── client.test.ts            # Unit tests
@@ -100,8 +100,8 @@ cgate-sdk/
 
 ```bash
 # Clone and setup
-git clone https://github.com/Cognipeer/cgate-sdk.git
-cd cgate-sdk
+git clone https://github.com/Cognipeer/console-sdk.git
+cd console-sdk
 
 # Run setup script
 ./setup.sh
@@ -151,7 +151,7 @@ npm run docs:preview
 ```bash
 cd examples
 npm install
-export CGATE_API_KEY=your-api-key
+export COGNIPEER_API_KEY=your-api-key
 npm run example:chat
 npm run example:streaming
 npm run example:rag
@@ -282,7 +282,7 @@ Custom error classes for better error management:
 try {
   await client.chat.completions.create({...});
 } catch (error) {
-  if (error instanceof CGateAPIError) {
+  if (error instanceof CognipeerAPIError) {
     console.error(error.statusCode, error.errorType);
   }
 }
@@ -306,8 +306,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines
 
 ## 🆘 Support
 
-- 📖 [Documentation](https://cognipeer.github.io/cgate-sdk)
-- 🐛 [Issues](https://github.com/Cognipeer/cgate-sdk/issues)
+- 📖 [Documentation](https://cognipeer.github.io/console-sdk)
+- 🐛 [Issues](https://github.com/Cognipeer/console-sdk/issues)
 - 📧 [Email](mailto:support@cognipeer.com)
 
 ---

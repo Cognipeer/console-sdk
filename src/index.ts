@@ -1,5 +1,5 @@
 /**
- * @cognipeer/cgate-sdk
+ * @cognipeer/console-sdk
  * 
  * Official TypeScript SDK for CognipeerAI Gateway
  * 
@@ -7,26 +7,26 @@
  */
 
 // Main client
-export { CGateClient } from './client';
+export { CognipeerClient } from './client';
 
 // Types
 export * from './types';
 
 // Errors
-export { CGateError, CGateAPIError } from './types';
+export { CognipeerError, CognipeerAPIError } from './types';
 
 // LangChain integrations
 export {
-  CGateLangChainChatModel,
-  CGateTracingCallbackHandler,
-  createCGateAgentTracing,
-  createCGateTracingMiddleware,
+  CognipeerLangChainChatModel,
+  CognipeerTracingCallbackHandler,
+  createCognipeerAgentTracing,
+  createCognipeerTracingMiddleware,
 } from './integrations/langchain';
 
 // LangGraph integrations
 export {
-  CGateLangGraphTracer,
-  createCGateLangGraphTracing,
+  CognipeerLangGraphTracer,
+  createCognipeerLangGraphTracing,
   createTracedGraphInvoker,
   createTracedGraphStreamer,
 } from './integrations/langgraph';
@@ -34,7 +34,7 @@ export {
 // Re-export for convenience
 export type {
   // Configuration
-  CGateClientOptions,
+  CognipeerClientOptions,
   
   // Chat
   ChatMessage,
@@ -68,9 +68,30 @@ export type {
   ListFilesQuery,
 
   // Prompts
+  DeployPromptOptions,
+  PromptCompareResponse,
+  PromptComparison,
+  PromptDeploymentsResponse,
+  PromptDeploymentAction,
+  PromptDeploymentEvent,
+  PromptDeploymentState,
+  PromptEnvironment,
   Prompt,
+  PromptVersion,
   ListPromptsQuery,
+  GetPromptOptions,
+  RenderPromptOptions,
   PromptRenderResponse,
+  PromptVersionsResponse,
+
+  // Guardrails
+  GuardrailTarget,
+  GuardrailAction,
+  GuardrailFindingType,
+  GuardrailSeverity,
+  GuardrailEvaluateRequest,
+  GuardrailEvaluateResponse,
+  GuardrailFinding,
   
   // Tracing
   TracingSessionRequest,
@@ -78,9 +99,43 @@ export type {
   TracingSummary,
   TracingEvent,
 
+  // Memory
+  MemoryScope,
+  MemorySource,
+  MemoryStoreStatus,
+  MemoryItemStatus,
+  MemoryStoreConfig,
+  MemoryStore,
+  MemoryItem,
+  CreateMemoryStoreRequest,
+  UpdateMemoryStoreRequest,
+  AddMemoryRequest,
+  UpdateMemoryRequest,
+  MemorySearchRequest,
+  MemorySearchMatch,
+  MemorySearchResponse,
+  MemoryRecallRequest,
+  MemoryRecallResponse,
+  MemoryBatchResult,
+
   // Tools
   AgentToolDefinition,
   AgentToolAdapter,
+
+  // RAG
+  RagModule,
+  RagDocument,
+  RagChunkConfig,
+  RagChunkStrategy,
+  RagDocumentStatus,
+  RagIngestRequest,
+  RagIngestFileRequest,
+  RagIngestResponse,
+  RagQueryRequest,
+  RagQueryResponse,
+  RagQueryMatch,
+  RagQueryResult,
+  RagDeleteDocumentResponse,
   
   // Common
   Usage,
@@ -88,8 +143,8 @@ export type {
 
 // LangGraph types
 export type {
-  CGateLangGraphTracingOptions,
-  CGateLangGraphTracingBinding,
+  CognipeerLangGraphTracingOptions,
+  CognipeerLangGraphTracingBinding,
   NodeExecutionContext,
   GraphExecutionContext,
 } from './integrations/langgraph';

@@ -1,15 +1,15 @@
 # Error Handling
 
-Learn how to properly handle errors in your CG SDK applications.
+Learn how to properly handle errors in your Cognipeer Console SDK applications.
 
 ## Error Types
 
-The SDK uses a custom `CGateError` class that extends the native `Error` class with additional properties.
+The SDK uses a custom `CognipeerError` class that extends the native `Error` class with additional properties.
 
-### CGateError
+### CognipeerError
 
 ```typescript
-class CGateError extends Error {
+class CognipeerError extends Error {
   status?: number;      // HTTP status code
   code?: string;        // Error code
   type?: string;        // Error type
@@ -22,9 +22,9 @@ class CGateError extends Error {
 Always wrap SDK calls in try-catch blocks:
 
 ```typescript
-import { CGateClient, CGateError } from '@cognipeer/cgate-sdk';
+import { CognipeerClient, CognipeerError } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({ apiKey: 'your-api-key' });
+const client = new CognipeerClient({ apiKey: 'your-api-key' });
 
 try {
   const response = await client.chat.completions.create({
@@ -34,8 +34,8 @@ try {
   
   console.log(response.choices[0].message.content);
 } catch (error) {
-  if (error instanceof CGateError) {
-    console.error('CG SDK Error:', error.message);
+  if (error instanceof CognipeerError) {
+    console.error('Cognipeer Console SDK Error:', error.message);
     console.error('Status:', error.status);
     console.error('Code:', error.code);
   } else {
@@ -52,7 +52,7 @@ try {
 try {
   const response = await client.chat.completions.create({...});
 } catch (error) {
-  if (error instanceof CGateError && error.status === 401) {
+  if (error instanceof CognipeerError && error.status === 401) {
     console.error('Invalid API key. Please check your credentials.');
     // Handle authentication error
   }
@@ -65,7 +65,7 @@ try {
 try {
   const response = await client.chat.completions.create({...});
 } catch (error) {
-  if (error instanceof CGateError && error.status === 429) {
+  if (error instanceof CognipeerError && error.status === 429) {
     console.error('Rate limit exceeded. Please retry after some time.');
     // Implement exponential backoff
   }
@@ -78,7 +78,7 @@ try {
 try {
   const response = await client.chat.completions.create({...});
 } catch (error) {
-  if (error instanceof CGateError && error.status === 400) {
+  if (error instanceof CognipeerError && error.status === 400) {
     console.error('Invalid request:', error.message);
     // Check request parameters
   }
@@ -94,7 +94,7 @@ try {
     messages: [{ role: 'user', content: 'Hello' }],
   });
 } catch (error) {
-  if (error instanceof CGateError && error.status === 404) {
+  if (error instanceof CognipeerError && error.status === 404) {
     console.error('Model not found:', error.message);
     // Use a different model
   }
@@ -107,7 +107,7 @@ try {
 try {
   const response = await client.chat.completions.create({...});
 } catch (error) {
-  if (error instanceof CGateError && error.status && error.status >= 500) {
+  if (error instanceof CognipeerError && error.status && error.status >= 500) {
     console.error('Server error. Please try again later.');
     // Implement retry logic
   }
@@ -128,7 +128,7 @@ async function withRetry<T>(
     try {
       return await fn();
     } catch (error) {
-      if (error instanceof CGateError) {
+      if (error instanceof CognipeerError) {
         // Retry on rate limits and server errors
         if (error.status === 429 || (error.status && error.status >= 500)) {
           if (i < maxRetries - 1) {
@@ -164,7 +164,7 @@ try {
 Set custom timeouts for requests:
 
 ```typescript
-const client = new CGateClient({
+const client = new CognipeerClient({
   apiKey: 'your-api-key',
   timeout: 30000, // 30 seconds
 });
@@ -172,7 +172,7 @@ const client = new CGateClient({
 try {
   const response = await client.chat.completions.create({...});
 } catch (error) {
-  if (error instanceof CGateError && error.code === 'ETIMEDOUT') {
+  if (error instanceof CognipeerError && error.code === 'ETIMEDOUT') {
     console.error('Request timed out');
     // Handle timeout
   }
@@ -223,7 +223,7 @@ try {
     process.stdout.write(chunk.choices[0]?.delta?.content || '');
   }
 } catch (error) {
-  if (error instanceof CGateError) {
+  if (error instanceof CognipeerError) {
     console.error('Streaming error:', error.message);
   }
 }
@@ -246,7 +246,7 @@ async function getChatResponse(prompt: string) {
       
       return response.choices[0].message.content;
     } catch (error) {
-      if (error instanceof CGateError) {
+      if (error instanceof CognipeerError) {
         if (error.status === 404) {
           console.log(`Model ${model} not available, trying next...`);
           continue;
@@ -263,7 +263,7 @@ async function getChatResponse(prompt: string) {
 ## Best Practices
 
 1. **Always catch errors**: Never leave SDK calls unhandled
-2. **Check error types**: Use `instanceof CGateError` to identify SDK errors
+2. **Check error types**: Use `instanceof CognipeerError` to identify SDK errors
 3. **Log errors**: Include status codes and error messages in logs
 4. **Implement retries**: Use exponential backoff for transient errors
 5. **Validate input**: Check parameters before making API calls
@@ -295,7 +295,7 @@ try {
 } catch (error) {
   if (error instanceof TypeError && error.message.includes('fetch')) {
     console.error('Network error. Check your internet connection.');
-  } else if (error instanceof CGateError) {
+  } else if (error instanceof CognipeerError) {
     console.error('API error:', error.message);
   }
 }

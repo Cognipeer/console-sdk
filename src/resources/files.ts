@@ -40,6 +40,33 @@ export class FilesResource {
       body: data,
     });
   }
+
+  /**
+   * Get a file object metadata
+   * @param bucketKey - Bucket identifier
+   * @param objectKey - Object identifier
+   */
+  async get(bucketKey: string, objectKey: string): Promise<{ file: FileObject }> {
+    return this.http.request(
+      'GET',
+      `/api/client/v1/files/buckets/${encodeURIComponent(bucketKey)}/objects/${encodeURIComponent(objectKey)}`,
+    );
+  }
+
+  /**
+   * Delete a file object from bucket
+   * @param bucketKey - Bucket identifier
+   * @param objectKey - Object identifier
+   */
+  async delete(
+    bucketKey: string,
+    objectKey: string,
+  ): Promise<{ message: string; bucketKey: string; objectKey: string }> {
+    return this.http.request(
+      'DELETE',
+      `/api/client/v1/files/buckets/${encodeURIComponent(bucketKey)}/objects/${encodeURIComponent(objectKey)}`,
+    );
+  }
 }
 
 /**

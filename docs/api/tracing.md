@@ -4,20 +4,20 @@ The Tracing API provides built-in observability for agent executions, allowing y
 
 ## LangChain v1 Middleware Integration
 
-The recommended way to add tracing to LangChain v1 agents is using the `createCGateTracingMiddleware` function:
+The recommended way to add tracing to LangChain v1 agents is using the `createCognipeerTracingMiddleware` function:
 
 ```typescript
 import { createAgent } from 'langchain';
-import { CGateClient, createCGateTracingMiddleware } from '@cognipeer/cgate-sdk';
+import { CognipeerClient, createCognipeerTracingMiddleware } from '@cognipeer/console-sdk';
 
 // Create client
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY,
-  baseURL: process.env.CGATE_BASE_URL,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY,
+  baseURL: process.env.COGNIPEER_BASE_URL,
 });
 
 // Create tracing middleware
-const tracing = createCGateTracingMiddleware({
+const tracing = createCognipeerTracingMiddleware({
   client,
   agent: {
     name: 'my-agent',
@@ -49,7 +49,7 @@ console.log('Session ID:', tracing.sessionId);
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `client` | `CGateClient \| CGateClientOptions` | Yes | SDK client or config |
+| `client` | `CognipeerClient \| CognipeerClientOptions` | Yes | SDK client or config |
 | `sessionId` | `string` | No | Custom session ID (auto-generated if omitted) |
 | `agent` | `TracingAgent` | No | Agent metadata |
 | `agent.name` | `string` | No | Agent name |
@@ -65,9 +65,9 @@ console.log('Session ID:', tracing.sessionId);
 The middleware returns a binding object:
 
 ```typescript
-interface CGateTracingMiddlewareBinding {
+interface CognipeerTracingMiddlewareBinding {
   middleware: AgentMiddleware;  // Pass to agent.middleware
-  handler: CGateTracingCallbackHandler;  // Direct handler access
+  handler: CognipeerTracingCallbackHandler;  // Direct handler access
   sessionId: string;  // Current session ID
   flush: (status?: 'success' | 'error' | 'running') => Promise<void>;
   end: (status?: 'success' | 'error') => Promise<void>;
@@ -76,7 +76,7 @@ interface CGateTracingMiddlewareBinding {
 
 ## Session Payload Format
 
-When sending tracing data to CGate, use the following format:
+When sending tracing data to Cognipeer, use the following format:
 
 ```typescript
 interface TracingSessionRequest {
@@ -271,14 +271,14 @@ Pass `threadId` when creating the tracing binding:
 
 ```typescript
 // LangChain middleware
-const tracing = createCGateTracingMiddleware({
+const tracing = createCognipeerTracingMiddleware({
   client,
   threadId: 'thread_order-workflow-42',
   agent: { name: 'planner-agent' },
 });
 
 // LangGraph tracing
-const tracing = createCGateLangGraphTracing({
+const tracing = createCognipeerLangGraphTracing({
   client,
   threadId: 'thread_order-workflow-42',
   agent: { name: 'executor-agent' },

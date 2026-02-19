@@ -1,15 +1,15 @@
 # Type Definitions
 
-Complete TypeScript type definitions for the CG SDK.
+Complete TypeScript type definitions for the Cognipeer Console SDK.
 
 ## Client Types
 
-### `CGateClientOptions`
+### `CognipeerClientOptions`
 
 Configuration options for the client.
 
 ```typescript
-interface CGateClientOptions {
+interface CognipeerClientOptions {
   apiKey: string;
   baseURL?: string;
   timeout?: number;
@@ -334,10 +334,10 @@ interface ToolChoice {
 
 ## Error Types
 
-### `CGateError`
+### `CognipeerError`
 
 ```typescript
-class CGateError extends Error {
+class CognipeerError extends Error {
   status?: number;
   code?: string;
   type?: string;
@@ -383,9 +383,9 @@ interface DeleteResponse {
 Utility functions for type checking:
 
 ```typescript
-// Check if error is CGateError
-function isCGateError(error: unknown): error is CGateError {
-  return error instanceof CGateError;
+// Check if error is CognipeerError
+function isCognipeerError(error: unknown): error is CognipeerError {
+  return error instanceof CognipeerError;
 }
 
 // Check if message has tool calls
@@ -429,7 +429,7 @@ All types are exported from the main package:
 
 ```typescript
 import type {
-  CGateClientOptions,
+  CognipeerClientOptions,
   ChatCompletionRequest,
   ChatCompletionResponse,
   EmbeddingRequest,
@@ -438,9 +438,9 @@ import type {
   FileObject,
   Trace,
   TraceEvent,
-  CGateError,
+  CognipeerError,
   // ... and more
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 ```
 
 ## Related

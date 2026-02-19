@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial release of CG SDK
+- Initial release of Cognipeer Console SDK
 - Chat completions API with streaming support
 - Embeddings API for text vectorization
 - Vector operations API for managing vector databases
@@ -87,4 +87,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[1.0.0]: https://github.com/Cognipeer/cgate-sdk/releases/tag/v1.0.0
+[1.0.0]: https://github.com/Cognipeer/console-sdk/releases/tag/v1.0.0

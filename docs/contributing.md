@@ -1,6 +1,6 @@
-# Contributing to CG SDK
+# Contributing to Cognipeer Console SDK
 
-Thank you for your interest in contributing to CG SDK! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Cognipeer Console SDK! This document provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
@@ -11,8 +11,8 @@ Please be respectful and constructive in all interactions with the community.
 1. Fork the repository
 2. Clone your fork:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/cgate-sdk.git
-   cd cgate-sdk
+   git clone https://github.com/YOUR_USERNAME/console-sdk.git
+   cd console-sdk
    ```
 3. Install dependencies:
    ```bash

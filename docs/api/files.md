@@ -6,7 +6,7 @@ The Files API allows you to upload and manage files, with automatic markdown con
 
 ### `files.upload(params)`
 
-Upload a file to CognipeerAI Gateway.
+Upload a file to Cognipeer Console.
 
 **Parameters:**
 
@@ -222,7 +222,7 @@ await client.vectors.upsert({
 ## Error Handling
 
 ```typescript
-import { CGateError } from '@cognipeer/cgate-sdk';
+import { CognipeerError } from '@cognipeer/console-sdk';
 
 try {
   const file = await client.files.upload({
@@ -230,7 +230,7 @@ try {
     filename: 'document.pdf',
   });
 } catch (error) {
-  if (error instanceof CGateError) {
+  if (error instanceof CognipeerError) {
     if (error.status === 413) {
       console.error('File too large');
     } else if (error.status === 415) {

@@ -1,11 +1,11 @@
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
 /**
  * Basic streaming example
  */
 async function basicStreaming() {
-  const client = new CGateClient({
-    apiKey: process.env.CGATE_API_KEY!,
+  const client = new CognipeerClient({
+    apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
   console.log('=== Basic Streaming Example ===\n');
@@ -40,8 +40,8 @@ async function basicStreaming() {
  * Streaming with conversation history
  */
 async function streamingWithHistory() {
-  const client = new CGateClient({
-    apiKey: process.env.CGATE_API_KEY!,
+  const client = new CognipeerClient({
+    apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
   console.log('\n=== Streaming with History ===\n');
@@ -112,8 +112,8 @@ async function streamingWithHistory() {
  * Streaming with cancellation
  */
 async function streamingWithCancellation() {
-  const client = new CGateClient({
-    apiKey: process.env.CGATE_API_KEY!,
+  const client = new CognipeerClient({
+    apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
   console.log('\n=== Streaming with Cancellation ===\n');
@@ -159,8 +159,8 @@ async function streamingWithCancellation() {
  * Real-time UI update simulation
  */
 async function realtimeUIExample() {
-  const client = new CGateClient({
-    apiKey: process.env.CGATE_API_KEY!,
+  const client = new CognipeerClient({
+    apiKey: process.env.COGNIPEER_API_KEY!,
   });
 
   console.log('\n=== Real-time UI Update Example ===\n');

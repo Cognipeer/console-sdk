@@ -1,6 +1,6 @@
 # Examples
 
-Welcome to the CG SDK examples! Here you'll find practical examples for common use cases.
+Welcome to the Cognipeer Console SDK examples! Here you'll find practical examples for common use cases.
 
 ## Available Examples
 
@@ -32,10 +32,10 @@ Welcome to the CG SDK examples! Here you'll find practical examples for common u
 ### Chat Completion
 
 ```typescript
-import { CGateClient } from '@cognipeer/cgate-sdk';
+import { CognipeerClient } from '@cognipeer/console-sdk';
 
-const client = new CGateClient({
-  apiKey: process.env.CGATE_API_KEY!,
+const client = new CognipeerClient({
+  apiKey: process.env.COGNIPEER_API_KEY!,
 });
 
 const response = await client.chat.completions.create({
@@ -104,14 +104,14 @@ const response = await client.chat.completions.create({
 Clone the repository and run examples:
 
 ```bash
-git clone https://github.com/Cognipeer/cgate-sdk
-cd cgate-sdk/examples
+git clone https://github.com/Cognipeer/console-sdk
+cd console-sdk/examples
 
 # Install dependencies
 npm install
 
 # Set your API key
-export CGATE_API_KEY=your-api-key
+export COGNIPEER_API_KEY=your-api-key
 
 # Run an example
 npm run example:chat
@@ -127,11 +127,11 @@ Build a conversational AI chatbot:
 
 ```typescript
 class Chatbot {
-  private client: CGateClient;
+  private client: CognipeerClient;
   private messages: ChatMessage[] = [];
 
   constructor(apiKey: string) {
-    this.client = new CGateClient({ apiKey });
+    this.client = new CognipeerClient({ apiKey });
     this.messages.push({
       role: 'system',
       content: 'You are a helpful assistant.',
@@ -156,7 +156,7 @@ class Chatbot {
   }
 }
 
-const bot = new Chatbot(process.env.CGATE_API_KEY!);
+const bot = new Chatbot(process.env.COGNIPEER_API_KEY!);
 console.log(await bot.chat('Hello!'));
 console.log(await bot.chat('What can you help me with?'));
 ```
@@ -166,7 +166,7 @@ console.log(await bot.chat('What can you help me with?'));
 ```typescript
 class KnowledgeBase {
   constructor(
-    private client: CGateClient,
+    private client: CognipeerClient,
     private providerKey: string,
     private indexId: string
   ) {}
@@ -220,10 +220,10 @@ import type {
   ChatCompletionResponse,
   EmbeddingResponse,
   QueryVectorsResponse,
-} from '@cognipeer/cgate-sdk';
+} from '@cognipeer/console-sdk';
 ```
 
 ## Need Help?
 
 - 📖 [API Reference](/api/client)
-- 🐛 [Report Issues](https://github.com/Cognipeer/cgate-sdk/issues)
+- 🐛 [Report Issues](https://github.com/Cognipeer/console-sdk/issues)

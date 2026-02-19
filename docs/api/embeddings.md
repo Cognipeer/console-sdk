@@ -77,7 +77,7 @@ response.data.forEach((item, index) => {
 ## Error Handling
 
 ```typescript
-import { CGateError } from '@cognipeer/cgate-sdk';
+import { CognipeerError } from '@cognipeer/console-sdk';
 
 try {
   const response = await client.embeddings.create({
@@ -86,7 +86,7 @@ try {
   });
   console.log(response.data);
 } catch (error) {
-  if (error instanceof CGateError) {
+  if (error instanceof CognipeerError) {
     console.error('Status:', error.status);
     console.error('Message:', error.message);
   }

@@ -186,7 +186,7 @@ const response2 = await client.chat.completions.create({
 ## Error Handling
 
 ```typescript
-import { CGateAPIError } from '@cognipeer/cgate-sdk';
+import { CognipeerAPIError } from '@cognipeer/console-sdk';
 
 try {
   const response = await client.chat.completions.create({
@@ -194,7 +194,7 @@ try {
     messages: [{ role: 'user', content: 'Hello!' }],
   });
 } catch (error) {
-  if (error instanceof CGateAPIError) {
+  if (error instanceof CognipeerAPIError) {
     console.error('API Error:', error.message);
     console.error('Status:', error.statusCode);
     console.error('Type:', error.errorType);
