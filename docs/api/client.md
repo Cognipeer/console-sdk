@@ -350,6 +350,8 @@ const response = await safeRequest(() =>
 
 - [Chat API](/api/chat)
 - [Embeddings API](/api/embeddings)
+- [Config API](/api/config)
+- [LangGraph API](/api/langgraph)
 - [Vectors API](/api/vectors)
 - [Files API](/api/files)
 - [Tracing API](/api/tracing)

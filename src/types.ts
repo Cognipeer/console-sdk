@@ -930,6 +930,123 @@ export interface RagReingestResponse {
 }
 
 // ============================================================================
+// Config Types
+// ============================================================================
+
+export type ConfigValueType = 'string' | 'number' | 'boolean' | 'json';
+
+export interface ConfigGroup {
+  _id: string;
+  key: string;
+  name: string;
+  description?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  createdBy: string;
+  updatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConfigGroupWithItems extends ConfigGroup {
+  items: ConfigItem[];
+}
+
+export interface ConfigItem {
+  _id: string;
+  groupId: string;
+  key: string;
+  name: string;
+  description?: string;
+  value: string;
+  valueType: ConfigValueType;
+  isSecret: boolean;
+  tags?: string[];
+  version: number;
+  metadata?: Record<string, unknown>;
+  createdBy: string;
+  updatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateConfigGroupRequest {
+  name: string;
+  key?: string;
+  description?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateConfigGroupRequest {
+  name?: string;
+  description?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateConfigItemRequest {
+  name: string;
+  key?: string;
+  description?: string;
+  value: string;
+  valueType?: ConfigValueType;
+  isSecret?: boolean;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateConfigItemRequest {
+  name?: string;
+  description?: string;
+  value?: string;
+  valueType?: ConfigValueType;
+  isSecret?: boolean;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConfigAuditLog {
+  _id: string;
+  configKey: string;
+  action: string;
+  previousValue?: string;
+  newValue?: string;
+  version?: number;
+  performedBy: string;
+  ipAddress?: string;
+  userAgent?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface ResolveConfigRequest {
+  keys: string[];
+}
+
+export interface ResolvedConfigValue {
+  value: string;
+  valueType: ConfigValueType;
+  version: number;
+}
+
+export interface ResolvedConfigMap {
+  [key: string]: ResolvedConfigValue;
+}
+
+export interface ListConfigGroupsQuery {
+  tags?: string[];
+  search?: string;
+}
+
+export interface ListConfigItemsQuery {
+  groupId?: string;
+  isSecret?: boolean;
+  tags?: string[];
+  search?: string;
+}
+
+// ============================================================================
 // Response Wrappers
 // ============================================================================
 

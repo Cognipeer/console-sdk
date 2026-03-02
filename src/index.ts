@@ -140,6 +140,22 @@ export type {
   RagQueryResult,
   RagDeleteDocumentResponse,
   
+  // Config
+  ConfigValueType,
+  ConfigGroup,
+  ConfigGroupWithItems,
+  ConfigItem,
+  ConfigAuditLog,
+  CreateConfigGroupRequest,
+  UpdateConfigGroupRequest,
+  CreateConfigItemRequest,
+  UpdateConfigItemRequest,
+  ResolveConfigRequest,
+  ResolvedConfigValue,
+  ResolvedConfigMap,
+  ListConfigGroupsQuery,
+  ListConfigItemsQuery,
+
   // Common
   Usage,
 } from './types';
