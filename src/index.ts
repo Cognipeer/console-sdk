@@ -158,6 +158,23 @@ export type {
 
   // Common
   Usage,
+
+  // Agents
+  Agent,
+  AgentConfig,
+  AgentStatus,
+  AgentChatRequest,
+  AgentChatResponse,
+  ListAgentsQuery,
+
+  // Agent Responses API
+  AgentResponseCreateRequest,
+  AgentResponse,
+  ResponseInputItem,
+  ResponseInputContent,
+  ResponseOutputText,
+  ResponseOutputMessage,
+  ResponseUsage,
 } from './types';
 
 // LangGraph types

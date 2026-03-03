@@ -1062,3 +1062,114 @@ export interface ApiResponse<T> {
   message?: string;
   error?: string | { message: string; type?: string };
 }
+
+// ────────────────────────────────────────────────────────────────────
+// Agents
+// ────────────────────────────────────────────────────────────────────
+
+export type AgentStatus = 'active' | 'inactive' | 'draft';
+
+export interface AgentConfig {
+  modelKey: string;
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+}
+
+export interface Agent {
+  key: string;
+  name: string;
+  description?: string;
+  config: AgentConfig;
+  status: AgentStatus;
+  createdAt?: string;
+}
+
+export interface ListAgentsQuery {
+  status?: AgentStatus;
+}
+
+export interface AgentChatRequest {
+  message: string;
+  conversationId?: string;
+}
+
+export interface AgentChatResponse {
+  content: string;
+  conversationId: string;
+  agentKey: string;
+}
+
+// ============================================================================
+// Agent Responses API Types (OpenAI Responses API compatible)
+// ============================================================================
+
+/** Input item for the Responses API `input` field */
+export interface ResponseInputItem {
+  role: 'user' | 'system' | 'assistant';
+  content: string | ResponseInputContent[];
+}
+
+/** Content part inside an input item */
+export interface ResponseInputContent {
+  type: 'input_text';
+  text: string;
+}
+
+/** Request body for the Responses API */
+export interface AgentResponseCreateRequest {
+  /** Agent name or key — identifies which agent to invoke */
+  model: string;
+  /** User input: a plain string or array of message items */
+  input: string | ResponseInputItem[];
+  /** ID of the previous response to continue the conversation */
+  previous_response_id?: string;
+  /** System prompt override */
+  instructions?: string;
+  /** Sampling temperature */
+  temperature?: number;
+  /** Top-p sampling */
+  top_p?: number;
+  /** Maximum output tokens */
+  max_output_tokens?: number;
+}
+
+/** Text content within a response output message */
+export interface ResponseOutputText {
+  type: 'output_text';
+  text: string;
+}
+
+/** A single output message in the response */
+export interface ResponseOutputMessage {
+  id: string;
+  type: 'message';
+  role: 'assistant';
+  content: ResponseOutputText[];
+}
+
+/** Token usage information */
+export interface ResponseUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+/** Full response returned by the Responses API */
+export interface AgentResponse {
+  /** Unique response ID (use as `previous_response_id` for follow-ups) */
+  id: string;
+  object: 'response';
+  /** Agent name */
+  model: string;
+  /** Output messages from the agent */
+  output: ResponseOutputMessage[];
+  /** Completion status */
+  status: 'completed' | 'failed';
+  /** Token usage */
+  usage: ResponseUsage;
+  /** Unix timestamp (seconds) */
+  created_at: number;
+  /** Previous response ID if this is a follow-up */
+  previous_response_id: string | null;
+}

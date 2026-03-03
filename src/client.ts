@@ -11,6 +11,7 @@ import { GuardrailsResource } from './resources/guardrails';
 import { MemoryResource } from './resources/memory';
 import { RagResource } from './resources/rag';
 import { ConfigResource } from './resources/config';
+import { AgentsResource } from './resources/agents';
 
 /**
  * Default configuration values
@@ -85,6 +86,9 @@ export class ConsoleClient {
   /** Config (secrets and configuration management) API */
   public config: ConfigResource;
 
+  /** Agents API */
+  public agents: AgentsResource;
+
   /**
    * Create a new CG client
    * @param options - Client configuration
@@ -112,6 +116,7 @@ export class ConsoleClient {
     this.memory = new MemoryResource(this.http);
     this.rag = new RagResource(this.http);
     this.config = new ConfigResource(this.http);
+    this.agents = new AgentsResource(this.http);
   }
 
   /**
