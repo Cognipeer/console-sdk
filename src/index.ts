@@ -124,6 +124,10 @@ export type {
   // Tools
   AgentToolDefinition,
   AgentToolAdapter,
+  ToolDefinition,
+  ToolAction,
+  ToolExecutionResult,
+  ToolActionAdapter,
 
   // RAG
   RagModule,

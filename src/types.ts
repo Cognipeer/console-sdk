@@ -500,6 +500,41 @@ export interface AgentToolAdapter {
 }
 
 // ============================================================================
+// Tool Types (Unified Tool System)
+// ============================================================================
+
+export interface ToolAction {
+  key: string;
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+export interface ToolDefinition {
+  key: string;
+  name: string;
+  description?: string;
+  type: 'openapi' | 'mcp';
+  status: string;
+  actions: ToolAction[];
+  createdAt?: string;
+}
+
+export interface ToolExecutionResult {
+  result: unknown;
+  latencyMs: number;
+  toolKey: string;
+  actionKey: string;
+}
+
+export interface ToolActionAdapter {
+  name: string;
+  description?: string;
+  schema?: Record<string, unknown>;
+  invoke: (args: Record<string, unknown>) => Promise<unknown>;
+}
+
+// ============================================================================
 // Tracing Types
 // ============================================================================
 
@@ -1082,6 +1117,10 @@ export interface Agent {
   description?: string;
   config: AgentConfig;
   status: AgentStatus;
+  /** Currently published version number (null = never published) */
+  publishedVersion?: number | null;
+  /** Total number of versions published */
+  latestVersion?: number;
   createdAt?: string;
 }
 
@@ -1126,6 +1165,8 @@ export interface AgentResponseCreateRequest {
   previous_response_id?: string;
   /** System prompt override */
   instructions?: string;
+  /** Request a specific published version of the agent */
+  version?: number;
   /** Sampling temperature */
   temperature?: number;
   /** Top-p sampling */
@@ -1172,4 +1213,6 @@ export interface AgentResponse {
   created_at: number;
   /** Previous response ID if this is a follow-up */
   previous_response_id: string | null;
+  /** Published version used for this response (null if not versioned) */
+  version: number | null;
 }
