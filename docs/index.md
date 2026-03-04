@@ -20,12 +20,21 @@ features:
   - icon: 🤖
     title: Chat Completions
     details: OpenAI-compatible chat API with full streaming support. Build conversational AI applications with ease.
+  - icon: 🤝
+    title: Agents
+    details: Invoke AI agents via the Responses API with multi-turn conversations, tool bindings, and version pinning.
+  - icon: 🔧
+    title: Tools
+    details: List, execute, and convert unified tools (OpenAPI/MCP) into Agent SDK-compatible objects.
   - icon: 📊
     title: Embeddings
     details: Convert text into vector representations for semantic search and similarity matching.
   - icon: 🗄️
     title: Vector Operations
-    details: Manage vector databases (Pinecone, Chroma, Qdrant) with a unified API.
+    details: Manage vector databases (Pinecone, Qdrant, Weaviate, S3 Vectors) with a unified API.
+  - icon: ⚙️
+    title: Config Management
+    details: Manage secrets and configuration with groups, encryption, resolution, and audit logs.
   - icon: 📁
     title: File Management
     details: Upload files with automatic markdown conversion for document processing.
@@ -38,9 +47,6 @@ features:
   - icon: ⚡
     title: Modern & Fast
     details: ESM and CommonJS support. Works in Node.js and browsers.
-  - icon: 🛠️
-    title: Developer Friendly
-    details: Intuitive API design with excellent documentation and examples.
 ---
 
 ## Quick Start

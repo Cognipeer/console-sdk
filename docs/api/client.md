@@ -89,6 +89,30 @@ Guardrail evaluation API resource.
 
 See [Guardrails API](/api/guardrails) for details.
 
+### `client.agents`
+
+Agents API resource — list, retrieve, and invoke agents using the Responses API format.
+
+**Type:** `AgentsResource`
+
+See [Agents API](/api/agents) for details.
+
+### `client.tools`
+
+Unified tools API resource — list, retrieve, execute tools and convert them to Agent SDK-compatible objects.
+
+**Type:** `ToolsResource`
+
+See [Tools API](/api/tools) for details.
+
+### `client.config`
+
+Configuration management API resource — manage config groups, items, secrets, and audit logs.
+
+**Type:** `ConfigResource`
+
+See [Config API](/api/config) for details.
+
 ## Methods
 
 ### `client.getBaseURL()`
@@ -350,10 +374,13 @@ const response = await safeRequest(() =>
 
 - [Chat API](/api/chat)
 - [Embeddings API](/api/embeddings)
+- [Agents API](/api/agents)
+- [Tools API](/api/tools)
 - [Config API](/api/config)
 - [LangGraph API](/api/langgraph)
 - [Vectors API](/api/vectors)
 - [Files API](/api/files)
 - [Tracing API](/api/tracing)
+- [Guardrails API](/api/guardrails)
 - [Error Handling](/guide/error-handling)
 - [Configuration](/guide/configuration)
