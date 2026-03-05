@@ -258,34 +258,76 @@ interface FileObject {
 
 ## Tracing Types
 
-### `Trace`
+### `TracingSessionRequest`
 
 ```typescript
-interface Trace {
-  id: string;
-  name: string;
+interface TracingSessionRequest {
+  sessionId: string;
   threadId?: string;
-  status: 'running' | 'completed' | 'error';
-  created_at: number;
-  ended_at: number | null;
-  duration_ms: number | null;
-  metadata?: Record<string, any>;
-  tags?: string[];
+  agent?: {
+    name?: string;
+    version?: string;
+    model?: string;
+  };
+  config?: Record<string, unknown>;
+  summary?: {
+    totalDurationMs?: number;
+    totalInputTokens?: number;
+    totalOutputTokens?: number;
+    totalCachedInputTokens?: number;
+    totalBytesIn?: number;
+    totalBytesOut?: number;
+    eventCounts?: Record<string, number>;
+  };
+  status?: 'success' | 'error' | 'running' | 'completed' | string;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+  errors?: Array<{
+    message: string;
+    type?: string;
+    timestamp?: string;
+  }>;
+  events?: TracingEvent[];
+  traceId?: string;
+  rootSpanId?: string;
+  source?: 'custom' | 'otlp';
 }
 ```
 
-### `TraceEvent`
+### `TracingEvent`
 
 ```typescript
-interface TraceEvent {
-  id: string;
-  trace_id: string;
-  type: 'llm' | 'tool' | 'agent' | 'custom';
-  name: string;
-  timestamp: number;
-  input?: any;
-  output?: any;
-  metadata?: Record<string, any>;
+interface TracingEvent {
+  sessionId?: string;
+  id?: string;
+  type?: string;
+  label?: string;
+  sequence?: number;
+  timestamp?: string;
+  status?: string;
+  durationMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cachedInputTokens?: number;
+  requestBytes?: number;
+  responseBytes?: number;
+  model?: string;
+  actor?: {
+    scope?: 'agent' | 'tool' | 'system';
+    name?: string;
+    role?: string;
+  };
+  sections?: Array<Record<string, unknown>>;
+  data?: {
+    sections?: Array<Record<string, unknown>>;
+  };
+  error?: string;
+  metadata?: Record<string, unknown>;
+  traceId?: string;
+  spanId?: string;
+  parentSpanId?: string;
 }
 ```
 

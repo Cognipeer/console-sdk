@@ -629,6 +629,10 @@ export interface TracingEvent {
   };
   error?: string;
   metadata?: Record<string, unknown>;
+  // OTel span correlation fields
+  traceId?: string;
+  spanId?: string;
+  parentSpanId?: string;
   // Legacy fields for backwards compatibility
   modelName?: string;
   toolName?: string;
@@ -653,6 +657,12 @@ export interface TracingSessionRequest {
   durationMs?: number;
   errors?: TracingError[];
   events?: TracingEvent[];
+  /** W3C trace ID (32 hex chars) linking this session to an OTel trace */
+  traceId?: string;
+  /** Root span ID for this session */
+  rootSpanId?: string;
+  /** Ingestion source: 'custom' (default) or 'otlp' */
+  source?: 'custom' | 'otlp';
 }
 
 // ============================================================================

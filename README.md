@@ -13,6 +13,7 @@ Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com
 - 🗄️ **Vector Operations** - Manage vector databases (Pinecone, Chroma, Qdrant, etc.)
 - 📁 **File Management** - Upload and manage files with markdown conversion
 - 🔍 **Agent Tracing** - Observability for agent executions
+- 🌐 **OpenTelemetry Exporter** - Send OTel spans directly to Cognipeer OTLP endpoint
 - 🛡️ **Guardrails** - Evaluate content with tenant guardrail policies
 - 🔒 **Type-Safe** - Full TypeScript support with comprehensive types
 - ⚡ **Modern** - ESM and CommonJS support, works in Node.js and browsers
@@ -162,6 +163,25 @@ const client = new ConsoleClient({
 
 #### Tracing
 - `client.tracing.ingest(data)` - Ingest tracing session
+
+### OpenTelemetry Integration
+
+```typescript
+import { CognipeerOTelSpanExporter } from '@cognipeer/console-sdk';
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
+
+const exporter = new CognipeerOTelSpanExporter({
+  apiKey: process.env.COGNIPEER_API_KEY!,
+  baseURL: process.env.COGNIPEER_BASE_URL || 'https://api.cognipeer.com',
+});
+
+const provider = new NodeTracerProvider();
+provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+provider.register();
+```
+
+The exporter forwards spans to `/api/client/v1/traces` using OTLP/HTTP JSON.
 
 #### Guardrails
 - `client.guardrails.evaluate(data)` - Evaluate text against a guardrail

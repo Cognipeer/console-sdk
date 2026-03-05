@@ -34,6 +34,16 @@ export {
   createTracedGraphStreamer,
 } from './integrations/langgraph';
 
+// OpenTelemetry integration
+export {
+  CognipeerOTelSpanExporter,
+} from './integrations/opentelemetry';
+
+export type {
+  CognipeerOTelExporterOptions,
+  ReadableSpan as OTelReadableSpan,
+} from './integrations/opentelemetry';
+
 // Re-export for convenience
 export type {
   // Configuration

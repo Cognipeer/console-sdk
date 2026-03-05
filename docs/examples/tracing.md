@@ -4,10 +4,32 @@ This guide covers how to implement tracing for your AI agents using Cognipeer Co
 
 ## Overview
 
-Cognipeer Console SDK provides two main tracing integrations:
+Cognipeer Console SDK provides three main tracing integrations:
 
 1. **LangChain Tracing** - For LangChain agents and chains
 2. **LangGraph Tracing** - For LangGraph state machines and workflows
+3. **OpenTelemetry Exporter** - For OTLP-native instrumentation pipelines
+
+## OpenTelemetry Exporter Integration
+
+Use `CognipeerOTelSpanExporter` to ship spans from existing OTel instrumentation.
+
+```typescript
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { CognipeerOTelSpanExporter } from '@cognipeer/console-sdk';
+
+const exporter = new CognipeerOTelSpanExporter({
+  apiKey: process.env.COGNIPEER_API_KEY!,
+  baseURL: process.env.COGNIPEER_BASE_URL || 'https://api.cognipeer.com',
+});
+
+const provider = new NodeTracerProvider();
+provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+provider.register();
+```
+
+The exporter posts OTLP/HTTP JSON payloads to `/api/client/v1/traces`.
 
 ## Installation
 
