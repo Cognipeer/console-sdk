@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+# package-lock.json is needed for CI/CD
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Testing
+coverage/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Docs build
+docs/.vitepress/dist
+docs/.vitepress/cache
