@@ -45,11 +45,13 @@ await client.memory.add(store.key, {
 ## List Memory
 
 ```typescript
-const items = await client.memory.list(store.key, {
+const { items, total } = await client.memory.list(store.key, {
   scope: 'user',
   scopeId: 'user_123',
   limit: 20,
 });
+
+console.log(items.length, total);
 ```
 
 ## Search Memory
@@ -61,6 +63,8 @@ const search = await client.memory.search(store.key, {
   scopeId: 'user_123',
   topK: 5,
 });
+
+console.log(search.memories);
 ```
 
 ## Recall Context
@@ -76,6 +80,8 @@ const recall = await client.memory.recall(store.key, {
 
 console.log(recall.context);
 ```
+
+The SDK maps search responses to `{ memories, query, storeKey }` and recall responses to `{ context, memories, storeKey }`.
 
 ## Delete by Context
 

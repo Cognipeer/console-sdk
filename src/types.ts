@@ -677,7 +677,7 @@ export type MemoryScope = 'user' | 'agent' | 'session' | 'global';
 /**
  * Source that created a memory item
  */
-export type MemorySource = 'user_input' | 'agent_output' | 'system' | 'api' | 'extraction';
+export type MemorySource = 'chat' | 'api' | 'agent' | 'manual';
 
 /**
  * Status of a memory store
@@ -687,7 +687,7 @@ export type MemoryStoreStatus = 'active' | 'inactive' | 'error';
 /**
  * Status of a memory item
  */
-export type MemoryItemStatus = 'active' | 'archived' | 'deleted';
+export type MemoryItemStatus = 'active' | 'archived' | 'expired';
 
 /**
  * Memory store configuration

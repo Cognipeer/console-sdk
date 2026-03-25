@@ -7,11 +7,13 @@ This example shows a simple memory workflow: create a store, write scoped memori
 ```bash
 cd examples
 export COGNIPEER_API_KEY=your-api-key
-export COGNIPEER_BASE_URL=https://your-console.example.com/api/client/v1
+export COGNIPEER_BASE_URL=https://your-console.example.com
 export COGNIPEER_VECTOR_PROVIDER_KEY=pinecone-main
 export COGNIPEER_EMBEDDING_MODEL_KEY=text-embedding-3-small
 npm run example:memory
 ```
+
+Use the console host or origin for `COGNIPEER_BASE_URL`. The SDK adds `/api/client/v1` internally.
 
 ## Example Code
 
