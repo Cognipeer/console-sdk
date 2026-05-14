@@ -29,6 +29,9 @@ features:
   - icon: 🔧
     title: Tools
     details: List, execute, and convert unified tools (OpenAPI/MCP) into Agent SDK-compatible objects.
+  - icon: 🌐
+    title: Browser Automation
+    details: Create browser profiles, drive live sessions, and expose each browser as its own MCP endpoint for Browser Use-compatible clients.
   - icon: 📊
     title: Embeddings
     details: Convert text into vector representations for semantic search and similarity matching.

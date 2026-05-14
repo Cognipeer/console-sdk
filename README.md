@@ -12,6 +12,7 @@ Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com
 - 📊 **Embeddings** - Text vectorization for semantic search
 - 🗄️ **Vector Operations** - Manage vector databases (Pinecone, Chroma, Qdrant, etc.)
 - 📁 **File Management** - Upload and manage files with markdown conversion
+- 🌐 **Browser Automation** - Manage browser profiles, drive live sessions, and expose per-browser MCP endpoints
 - 🔍 **Agent Tracing** - Observability for agent executions
 - 🧠 **Memory Stores** - Persist, search, and recall scoped memories
 - 🌐 **OpenTelemetry Exporter** - Send OTel spans directly to Cognipeer OTLP endpoint
@@ -181,6 +182,36 @@ const client = new ConsoleClient({
 - `client.files.list(bucketKey, query?)` - List files
 - `client.files.upload(bucketKey, data)` - Upload file
 
+#### Browsers
+- `client.browsers.create(data)` - Create a browser profile
+- `client.browsers.list(query?)` - List browser profiles
+- `client.browsers.get(idOrKey)` - Get browser profile details
+- `client.browsers.update(idOrKey, data)` - Update a browser profile
+- `client.browsers.delete(idOrKey)` - Delete a browser profile
+
+#### Browser Sessions
+- `client.browserSessions.create(data)` - Create a browser session under a browser profile
+- `client.browserSessions.list(query?)` - List browser sessions
+- `client.browserSessions.get(sessionId)` - Get browser session details
+- `client.browserSessions.listEvents(sessionId, query?)` - List session event history
+- `client.browserSessions.action(sessionKey, action)` - Execute a browser action
+- `client.browserSessions.extract(sessionKey, input)` - Extract text, HTML, or attributes
+- `client.browserSessions.snapshot(sessionKey)` - Capture the current aria snapshot
+- `client.browserSessions.screenshotLive(sessionKey, query?)` - Fetch a raw viewport screenshot
+- `client.browserSessions.screenshot(sessionKey, input?)` - Persist a screenshot artifact
+- `client.browserSessions.pdf(sessionKey, input?)` - Export a PDF artifact
+- `client.browserSessions.close(sessionKey)` - Close a live session
+- `client.browserSessions.delete(sessionId)` - Delete a stored session record
+
+#### Browser MCP
+- `client.browserMcp.getConnectionInfo(browserKey)` - Build SSE/message endpoint URLs for MCP clients
+- `client.browserMcp.getSseUrl(browserKey)` - Get the SSE endpoint for a browser MCP server
+- `client.browserMcp.getMessageUrl(browserKey, sessionId)` - Build the JSON-RPC message URL
+- `client.browserMcp.initialize(browserKey)` - Read the MCP server metadata
+- `client.browserMcp.listTools(browserKey)` - List Browser Use MCP tools
+
+Standalone `client.browserAgents` management has been removed. To give a Console-managed agent browser capabilities, configure the `Browser Use` system tool in Console. Use `client.browserSessions` or `client.browserMcp` for direct browser automation from the SDK.
+
 #### Prompts
 - `client.prompts.list(query?)` - List prompt templates
 - `client.prompts.get(key, options?)` - Get prompt (supports `version` / `environment`)
@@ -237,9 +268,8 @@ Check out the [examples](./examples) directory for more detailed usage:
 
 - [Chat with streaming](./examples/chat-streaming.ts)
 - [RAG with vectors](./examples/rag-example.ts)
-- [File processing](./examples/file-upload.ts)
-- [Agent tracing](./examples/agent-tracing.ts)
 - [Scoped memory](./examples/memory-basic.ts)
+- [Browser API reference](https://cognipeer.github.io/console-sdk/api/browser)
 
 ## Contributing
 

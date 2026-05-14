@@ -17,6 +17,27 @@ Use it when you need to:
 | List agents | `client.agents.list()` | `GET /agents` | [Agents](https://cognipeer.github.io/cognipeer-console/api/agents) |
 | Get agent | `client.agents.get(agentKey)` | `GET /agents/:agentKey` | [Agents](https://cognipeer.github.io/cognipeer-console/api/agents) |
 | Invoke agent | `client.agents.responses.create()` | `POST /responses` | [Agents](https://cognipeer.github.io/cognipeer-console/api/agents) |
+| List browsers | `client.browsers.list()` | `GET /browser/browsers` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Create browser | `client.browsers.create(data)` | `POST /browser/browsers` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Get browser | `client.browsers.get(idOrKey)` | `GET /browser/browsers/:idOrKey` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Update browser | `client.browsers.update(idOrKey, data)` | `PATCH /browser/browsers/:idOrKey` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Delete browser | `client.browsers.delete(idOrKey)` | `DELETE /browser/browsers/:idOrKey` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Create browser session | `client.browserSessions.create(data)` | `POST /browser/sessions` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| List browser sessions | `client.browserSessions.list()` | `GET /browser/sessions` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Get browser session | `client.browserSessions.get(sessionId)` | `GET /browser/sessions/:sessionId` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| List browser session events | `client.browserSessions.listEvents(sessionId)` | `GET /browser/sessions/:sessionId/events` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Run browser action | `client.browserSessions.action(sessionKey, action)` | `POST /browser/sessions/:sessionKey/actions` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Extract browser content | `client.browserSessions.extract(sessionKey, data)` | `POST /browser/sessions/:sessionKey/extract` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Capture browser snapshot | `client.browserSessions.snapshot(sessionKey)` | `GET /browser/sessions/:sessionKey/snapshot` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Capture live screenshot | `client.browserSessions.screenshotLive(sessionKey)` | `GET /browser/sessions/:sessionKey/screenshot/live` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Persist screenshot | `client.browserSessions.screenshot(sessionKey, data)` | `POST /browser/sessions/:sessionKey/screenshot` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Export browser PDF | `client.browserSessions.pdf(sessionKey, data)` | `POST /browser/sessions/:sessionKey/pdf` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Close browser session | `client.browserSessions.close(sessionKey)` | `DELETE /browser/sessions/:sessionKey` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Delete browser session | `client.browserSessions.delete(sessionId)` | `DELETE /browser/sessions/by-id/:sessionId` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Get browser MCP SSE URL | `client.browserMcp.getSseUrl(browserKey)` | `GET /browser/:browserKey/mcp/sse` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Build browser MCP message URL | `client.browserMcp.getMessageUrl(browserKey, sessionId)` | `POST /browser/:browserKey/mcp/message?sessionId=...` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Initialize browser MCP server | `client.browserMcp.initialize(browserKey)` | `POST /browser/:browserKey/mcp/message` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| List browser MCP tools | `client.browserMcp.listTools(browserKey)` | `POST /browser/:browserKey/mcp/message` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
 | List vector providers | `client.vectors.providers.list()` | `GET /vector/providers` | [Vector](https://cognipeer.github.io/cognipeer-console/api/vector) |
 | Create vector provider | `client.vectors.providers.create()` | `POST /vector/providers` | [Vector](https://cognipeer.github.io/cognipeer-console/api/vector) |
 | List indexes | `client.vectors.indexes.list(providerKey)` | `GET /vector/providers/:providerKey/indexes` | [Vector](https://cognipeer.github.io/cognipeer-console/api/vector) |
@@ -56,6 +77,8 @@ Use it when you need to:
 | Delete RAG document | `client.rag.deleteDocument(moduleKey, documentId)` | `DELETE /rag/modules/:moduleKey/documents/:documentId` | [RAG](https://cognipeer.github.io/cognipeer-console/api/rag) |
 
 ## Ownership Rule
+
+Standalone browser agent management has been removed from the client API. Browser-aware agent orchestration now happens inside Console by attaching the `Browser Use` system tool to a managed agent configuration.
 
 - Use the **Console docs** when you need platform semantics, deployment context, or raw endpoint behavior.
 - Use the **SDK docs** when you need method signatures, request helpers, typed responses, or code examples.

@@ -54,8 +54,11 @@ npm run example:memory
 - `chat-basic.ts` - Basic chat completions and multi-turn conversations
 - `chat-streaming.ts` - Streaming responses with real-time updates
 - `rag-example.ts` - Complete RAG implementation with vector search
-- `file-upload.ts` - File upload and markdown conversion
 - `memory-basic.ts` - Create a memory store, add scoped memories, search, and recall them
+
+Browser automation examples are currently documented in the API reference:
+
+- `/api/browser` - Browser profiles, sessions, and per-browser MCP endpoints
 
 ## Prerequisites
 

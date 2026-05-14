@@ -13,7 +13,7 @@ export default defineConfig({
       { text: 'API Reference', link: '/api/client' },
       { text: 'Examples', link: '/examples/' },
       {
-        text: 'v1.0.0',
+        text: 'v1.0.5',
         items: [
           { text: 'Changelog', link: '/changelog' },
           { text: 'Contributing', link: '/contributing' },
@@ -50,6 +50,7 @@ export default defineConfig({
             { text: 'Chat', link: '/api/chat' },
             { text: 'Embeddings', link: '/api/embeddings' },
             { text: 'Agents', link: '/api/agents' },
+            { text: 'Browser', link: '/api/browser' },
             { text: 'Tools', link: '/api/tools' },
             { text: 'Config', link: '/api/config' },
             { text: 'Guardrails', link: '/api/guardrails' },

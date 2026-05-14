@@ -12,6 +12,7 @@ import { MemoryResource } from './resources/memory';
 import { RagResource } from './resources/rag';
 import { ConfigResource } from './resources/config';
 import { AgentsResource } from './resources/agents';
+import { BrowserMcpResource, BrowserSessionsResource, BrowsersResource } from './resources/browser';
 
 /**
  * Default configuration values
@@ -89,6 +90,15 @@ export class ConsoleClient {
   /** Agents API */
   public agents: AgentsResource;
 
+  /** Browser sessions (Playwright) API */
+  public browserSessions: BrowserSessionsResource;
+
+  /** Browsers (parent profiles for sessions and Browser Use / MCP integration) */
+  public browsers: BrowsersResource;
+
+  /** Browser MCP helper API */
+  public browserMcp: BrowserMcpResource;
+
   /**
   * Create a new Console client
    * @param options - Client configuration
@@ -117,6 +127,9 @@ export class ConsoleClient {
     this.rag = new RagResource(this.http);
     this.config = new ConfigResource(this.http);
     this.agents = new AgentsResource(this.http);
+    this.browserSessions = new BrowserSessionsResource(this.http);
+    this.browsers = new BrowsersResource(this.http);
+    this.browserMcp = new BrowserMcpResource(this.http);
   }
 
   /**

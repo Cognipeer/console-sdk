@@ -256,6 +256,72 @@ interface FileObject {
 }
 ```
 
+## Browser Types
+
+### `Browser`
+
+```typescript
+interface Browser {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  key: string;
+  name: string;
+  description?: string;
+  status: 'active' | 'disabled';
+  artifactBucketKey?: string;
+  defaultSessionConfig?: BrowserSessionConfig;
+  defaultModelKey?: string;
+  defaultRunOptions?: { maxSteps?: number; temperature?: number; runtimeProfile?: string };
+  metadata?: Record<string, unknown>;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+```
+
+### `BrowserSession`
+
+```typescript
+interface BrowserSession {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  browserId: string;
+  sessionKey: string;
+  status: 'pending' | 'running' | 'idle' | 'closed' | 'expired' | 'errored';
+  name?: string;
+  agentId?: string;
+  agentKey?: string;
+  currentUrl?: string;
+  pageTitle?: string;
+  artifactBucketKey?: string;
+  config?: BrowserSessionConfig;
+  metadata?: Record<string, unknown>;
+  errorMessage?: string;
+  startedAt?: string;
+  lastActivityAt?: string;
+  endedAt?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  eventCount?: number;
+}
+```
+
+### `BrowserMcpConnectionInfo`
+
+```typescript
+interface BrowserMcpConnectionInfo {
+  browserKey: string;
+  sseUrl: string;
+  messageUrlTemplate: string;
+  authHeader: string;
+}
+```
+
+The standalone `BrowserAgent*` types were removed together with the old browser agent API. Browser-aware agent runs now flow through Console-managed agents with the `Browser Use` system tool attached.
+
 ## Tracing Types
 
 ### `TracingSessionRequest`

@@ -1225,3 +1225,290 @@ export interface AgentResponse {
   /** Published version used for this response (null if not versioned) */
   version: number | null;
 }
+
+// ── Browser sessions, profiles & MCP ────────────────────────────────
+export type BrowserSessionStatus = 'pending' | 'running' | 'idle' | 'closed' | 'expired' | 'errored';
+export type BrowserStatus = 'active' | 'disabled';
+export type BrowserSessionEventStatus = 'success' | 'error';
+export type BrowserSessionEventType =
+  | 'create'
+  | 'goto'
+  | 'click'
+  | 'hover'
+  | 'type'
+  | 'press'
+  | 'wait'
+  | 'scroll'
+  | 'extract'
+  | 'snapshot'
+  | 'screenshot'
+  | 'pdf'
+  | 'tool_call'
+  | 'agent_event'
+  | 'close'
+  | 'error';
+export type BrowserMcpToolName =
+  | 'browser_navigate'
+  | 'browser_click'
+  | 'browser_hover'
+  | 'browser_type'
+  | 'browser_press'
+  | 'browser_wait'
+  | 'browser_snapshot'
+  | 'browser_extract'
+  | 'browser_screenshot'
+  | 'browser_close';
+
+export interface BrowserAccessRules {
+  allowList?: string[];
+  blockList?: string[];
+}
+
+export interface BrowserSessionConfig {
+  headless?: boolean;
+  viewport?: { width: number; height: number };
+  userAgent?: string;
+  locale?: string;
+  maxLifetimeMs?: number;
+  idleTimeoutMs?: number;
+  access?: BrowserAccessRules;
+}
+
+export interface BrowserArtifactRef {
+  bucketKey: string;
+  fileId: string;
+  objectKey: string;
+  contentType?: string;
+  url?: string;
+}
+
+export interface BrowserSessionLastScreenshot {
+  bucketKey: string;
+  fileId: string;
+  objectKey: string;
+  capturedAt?: string;
+}
+
+export interface BrowserSession {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  browserId: string;
+  agentId?: string;
+  agentKey?: string;
+  sessionKey: string;
+  name?: string;
+  status: BrowserSessionStatus;
+  currentUrl?: string;
+  pageTitle?: string;
+  artifactBucketKey?: string;
+  config?: BrowserSessionConfig;
+  metadata?: Record<string, unknown>;
+  lastScreenshot?: BrowserSessionLastScreenshot;
+  errorMessage?: string;
+  startedAt?: string;
+  lastActivityAt?: string;
+  endedAt?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  eventCount?: number;
+}
+
+export interface BrowserSessionEvent {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  sessionId: string;
+  sequence: number;
+  type: BrowserSessionEventType;
+  status?: BrowserSessionEventStatus;
+  url?: string;
+  selector?: string;
+  ref?: string;
+  durationMs?: number;
+  artifact?: BrowserArtifactRef;
+  data?: Record<string, unknown>;
+  errorMessage?: string;
+  createdAt?: string;
+}
+
+export interface BrowserActionGoto {
+  type: 'goto';
+  url: string;
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+  timeout?: number;
+}
+export interface BrowserActionClick {
+  type: 'click';
+  ref?: string;
+  selector?: string;
+  button?: 'left' | 'right' | 'middle';
+  timeout?: number;
+}
+export interface BrowserActionHover {
+  type: 'hover';
+  ref?: string;
+  selector?: string;
+  timeout?: number;
+}
+export interface BrowserActionType {
+  type: 'type';
+  ref?: string;
+  selector?: string;
+  text: string;
+  delay?: number;
+  clear?: boolean;
+}
+export interface BrowserActionPress {
+  type: 'press';
+  ref?: string;
+  selector?: string;
+  key: string;
+}
+export interface BrowserActionWait {
+  type: 'wait';
+  ms?: number;
+  ref?: string;
+  selector?: string;
+  state?: 'attached' | 'detached' | 'visible' | 'hidden';
+}
+export interface BrowserActionScroll {
+  type: 'scroll';
+  ref?: string;
+  selector?: string;
+  x?: number;
+  y?: number;
+}
+export type BrowserAction =
+  | BrowserActionGoto
+  | BrowserActionClick
+  | BrowserActionHover
+  | BrowserActionType
+  | BrowserActionPress
+  | BrowserActionWait
+  | BrowserActionScroll;
+
+export interface BrowserActionResult {
+  ok: boolean;
+  url?: string;
+  pageTitle?: string;
+  ariaSnapshot?: string;
+  artifact?: BrowserArtifactRef;
+  errorMessage?: string;
+}
+
+export interface BrowserExtractInput {
+  ref?: string;
+  selector?: string;
+  mode?: 'text' | 'html' | 'attr';
+  attribute?: string;
+  multiple?: boolean;
+}
+
+export interface BrowserExtractResult {
+  ok: boolean;
+  values: string[];
+  errorMessage?: string;
+}
+
+export interface BrowserSnapshotResult {
+  ariaSnapshot: string;
+  url: string;
+}
+
+export interface BrowserArtifactResult {
+  artifact: BrowserArtifactRef;
+  eventId: string;
+}
+
+export interface BrowserScreenshotInput {
+  fullPage?: boolean;
+  ref?: string;
+  selector?: string;
+  type?: 'png' | 'jpeg';
+  quality?: number;
+}
+
+export interface BrowserPdfInput {
+  format?: 'A4' | 'Letter' | 'Legal' | 'A3' | 'A5';
+  landscape?: boolean;
+  printBackground?: boolean;
+}
+
+export interface Browser {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  key: string;
+  name: string;
+  description?: string;
+  status: BrowserStatus;
+  artifactBucketKey?: string;
+  defaultSessionConfig?: BrowserSessionConfig;
+  defaultModelKey?: string;
+  defaultRunOptions?: { maxSteps?: number; temperature?: number; runtimeProfile?: string };
+  metadata?: Record<string, unknown>;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BrowserCreateInput {
+  key?: string;
+  name: string;
+  description?: string;
+  status?: BrowserStatus;
+  artifactBucketKey?: string;
+  defaultSessionConfig?: BrowserSessionConfig;
+  defaultModelKey?: string;
+  defaultRunOptions?: { maxSteps?: number; temperature?: number; runtimeProfile?: string };
+  metadata?: Record<string, unknown>;
+}
+
+export interface BrowserUpdateInput {
+  name?: string;
+  description?: string;
+  status?: BrowserStatus;
+  artifactBucketKey?: string;
+  defaultSessionConfig?: BrowserSessionConfig;
+  defaultModelKey?: string;
+  defaultRunOptions?: { maxSteps?: number; temperature?: number; runtimeProfile?: string };
+  metadata?: Record<string, unknown>;
+}
+
+export interface BrowserCreateSessionInput {
+  browserId: string;
+  name?: string;
+  agentId?: string;
+  agentKey?: string;
+  artifactBucketKey?: string;
+  config?: BrowserSessionConfig;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BrowserMcpInitializeResult {
+  capabilities?: {
+    tools?: {
+      listChanged?: boolean;
+    };
+  };
+  protocolVersion: string;
+  serverInfo: {
+    name: string;
+    version: string;
+  };
+}
+
+export interface BrowserMcpToolDescriptor {
+  name: BrowserMcpToolName;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface BrowserMcpConnectionInfo {
+  browserKey: string;
+  sseUrl: string;
+  messageUrlTemplate: string;
+  authHeader: string;
+}

@@ -151,6 +151,16 @@ export class HttpClient {
   }
 
   /**
+   * Resolve a relative API path into an absolute URL using the configured base URL.
+   */
+  resolveURL(
+    path: string,
+    query?: Record<string, string | number | boolean | undefined>,
+  ): string {
+    return this.buildURL(path, query);
+  }
+
+  /**
    * Build full URL with query parameters
    */
   private buildURL(path: string, query?: Record<string, string | number | boolean | undefined>): string {

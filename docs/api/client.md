@@ -107,6 +107,30 @@ Agents API resource — list, retrieve, and invoke agents using the Responses AP
 
 See [Agents API](/api/agents) for details.
 
+### `client.browsers`
+
+Browser profile API resource — manage the reusable browser containers that own Browser Use defaults, browser sessions, and per-browser MCP endpoints.
+
+**Type:** `BrowsersResource`
+
+See [Browser API](/api/browser) for details.
+
+### `client.browserSessions`
+
+Browser session API resource — create Playwright-backed sessions, execute discrete browser actions, inspect snapshots, and persist artifacts.
+
+**Type:** `BrowserSessionsResource`
+
+See [Browser API](/api/browser) for details.
+
+### `client.browserMcp`
+
+Browser MCP helper resource — build browser-scoped MCP URLs and discover the Browser Use toolset exposed by a browser profile.
+
+**Type:** `BrowserMcpResource`
+
+See [Browser API](/api/browser) for details.
+
 ### `client.tools`
 
 Unified tools API resource — list, retrieve, execute tools and convert them to Agent SDK-compatible objects.
@@ -257,6 +281,16 @@ interface VectorIndex {
   updatedAt: string;
 }
 ```
+
+### Browser Resources
+
+The browser surface is split into three SDK resources:
+
+- `client.browsers` for browser profiles.
+- `client.browserSessions` for direct browser automation.
+- `client.browserMcp` for Browser Use-compatible MCP connection helpers.
+
+The old standalone `client.browserAgents` surface has been removed. If you want a Console-managed agent to browse the web, attach the `Browser Use` system tool inside Console and invoke that agent through `client.agents`.
 
 ## Error Types
 
