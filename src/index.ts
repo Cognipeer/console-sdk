@@ -189,6 +189,85 @@ export type {
   ResponseOutputText,
   ResponseOutputMessage,
   ResponseUsage,
+
+  // Audio + OCR
+  AudioFileInput,
+  AudioFileSource,
+  AudioTranscriptionRequest,
+  AudioTranscriptionResponse,
+  AudioTranslationRequest,
+  AudioTranslationResponse,
+  AudioSpeechRequest,
+  AudioSpeechResponse,
+  SttResponseFormat,
+  SttTimestampGranularity,
+  TtsOutputFormat,
+  OcrFeature,
+  OcrDocumentInput,
+  OcrExtractRequest,
+  OcrExtractResponse,
+  OcrPage,
+
+  // Automations
+  Automation,
+  AutomationStatus,
+
+  // Crawler
+  Crawler,
+  CrawlerStatus,
+  CrawlerUrlEntry,
+  CreateCrawlerRequest,
+  UpdateCrawlerRequest,
+  RunCrawlerRequest,
+  CrawlOnContainerRequest,
+  AdhocCrawlRequest,
+  CrawlJob,
+  CrawlJobStatus,
+  CrawlResult,
+  CrawlRunAcceptedResponse,
+  ListCrawlersQuery,
+  ListCrawlJobsQuery,
+  ListCrawlJobResultsQuery,
+
+  // JS Sandbox
+  JsSandboxRuntime,
+  JsSandboxRuntimeStatus,
+  JsSandboxExecuteRequest,
+  JsSandboxExecutionResult,
+  JsSandboxExecutionStatus,
+  JsSandboxLogEntry,
+
+  // Reranker
+  Reranker,
+  RerankerDocumentInput,
+  RerankerRunRequest,
+  RerankerRunResponse,
+  RerankerResultItem,
+
+  // MCP
+  McpServerInfo,
+  McpInitializeResult,
+  McpToolDescriptor,
+  McpToolsListResult,
+  McpExecuteRequest,
+  McpExecuteResponse,
+  McpConsoleListToolsResponse,
+  McpConnectionInfo,
+
+  // Tracing streaming + OTLP
+  TracingStreamStartRequest,
+  TracingStreamStartResponse,
+  TracingStreamEventResponse,
+  TracingStreamEndRequest,
+  TracingStreamEndResponse,
+  OtlpExportTraceServiceRequest,
+  OtlpIngestResponse,
+
+  // File providers
+  FileProvider,
+  FileProviderStatus,
+  CreateFileProviderRequest,
+  ListFileProvidersQuery,
 } from './types';
 
 // LangGraph types

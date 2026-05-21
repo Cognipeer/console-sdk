@@ -9,13 +9,20 @@ Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com
 ## Features
 
 - 🤖 **Chat Completions** - OpenAI-compatible chat API with streaming support
+- 🧑‍✈️ **Agents** - Invoke Console-managed agents via the OpenAI Responses API
 - 📊 **Embeddings** - Text vectorization for semantic search
 - 🗄️ **Vector Operations** - Manage vector databases (Pinecone, Chroma, Qdrant, etc.)
-- 📁 **File Management** - Upload and manage files with markdown conversion
+- 📁 **File Management** - Upload, download, and manage files with markdown conversion + file providers
+- 🎙️ **Audio** - OpenAI-compatible STT, translation, and TTS
+- 📄 **OCR** - Document text extraction with layout/table/KV features
+- 🕸️ **Crawler** - Scheduled and ad-hoc web crawling jobs
+- ⚙️ **Automations** - Trigger and pause built-in scheduled jobs
+- 🧪 **JS Sandbox** - Execute JavaScript inside a managed isolate
+- 🔀 **Rerankers** - Cohere-compatible reranking
+- 🛰️ **MCP** - Talk to the built-in Console MCP server and tenant-configured MCP servers
 - 🌐 **Browser Automation** - Manage browser profiles, drive live sessions, and expose per-browser MCP endpoints
-- 🔍 **Agent Tracing** - Observability for agent executions
+- 🔍 **Agent Tracing** - Streaming + bulk ingest, OTLP/HTTP JSON, plus OpenTelemetry exporter
 - 🧠 **Memory Stores** - Persist, search, and recall scoped memories
-- 🌐 **OpenTelemetry Exporter** - Send OTel spans directly to Cognipeer OTLP endpoint
 - 🛡️ **Guardrails** - Evaluate content with tenant guardrail policies
 - 🔒 **Type-Safe** - Full TypeScript support with comprehensive types
 - ⚡ **Modern** - ESM and CommonJS support, works in Node.js and browsers
@@ -42,7 +49,7 @@ import { ConsoleClient } from '@cognipeer/console-sdk';
 // Initialize the client
 const client = new ConsoleClient({
   apiKey: 'your-api-key',
-  baseURL: 'https://your-console.example.com/api/client/v1', // Optional, defaults to production
+  baseURL: 'https://your-console.example.com', // Optional, defaults to https://api.cognipeer.com
 });
 
 // Chat completion
@@ -135,6 +142,13 @@ If you need the platform itself, deployment guidance, tenant architecture, provi
 - [Console API Mapping](https://cognipeer.github.io/console-sdk/api/console-mapping)
 - [Chat API](https://cognipeer.github.io/console-sdk/api/chat)
 - [Embeddings API](https://cognipeer.github.io/console-sdk/api/embeddings)
+- [Audio API](https://cognipeer.github.io/console-sdk/api/audio)
+- [OCR API](https://cognipeer.github.io/console-sdk/api/ocr)
+- [Crawler API](https://cognipeer.github.io/console-sdk/api/crawler)
+- [Automations API](https://cognipeer.github.io/console-sdk/api/automations)
+- [JS Sandbox API](https://cognipeer.github.io/console-sdk/api/js-sandbox)
+- [Rerankers API](https://cognipeer.github.io/console-sdk/api/rerankers)
+- [MCP API](https://cognipeer.github.io/console-sdk/api/mcp)
 - [Guardrails API](https://cognipeer.github.io/console-sdk/api/guardrails)
 - [Memory API](https://cognipeer.github.io/console-sdk/api/memory)
 - [Vector API](https://cognipeer.github.io/console-sdk/api/vectors)
@@ -149,7 +163,8 @@ If you need the platform itself, deployment guidance, tenant architecture, provi
 ```typescript
 const client = new ConsoleClient({
   apiKey: string;          // Required: Your API token
-  baseURL?: string;        // Optional: API base URL (default: https://api.cognipeer.com/api/client/v1)
+  baseURL?: string;        // Optional: API host root (default: https://api.cognipeer.com).
+                            // Legacy URLs ending in /api/client/v1 are normalised automatically.
   timeout?: number;        // Optional: Request timeout in ms (default: 60000)
   maxRetries?: number;     // Optional: Max retry attempts (default: 3)
   fetch?: typeof fetch;    // Optional: Custom fetch implementation
@@ -179,8 +194,58 @@ const client = new ConsoleClient({
 #### Files
 - `client.files.buckets.list()` - List buckets
 - `client.files.buckets.get(bucketKey)` - Get bucket details
+- `client.files.providers.list(query?)` - List storage providers
+- `client.files.providers.create(data)` - Create a storage provider
 - `client.files.list(bucketKey, query?)` - List files
 - `client.files.upload(bucketKey, data)` - Upload file
+- `client.files.get(bucketKey, objectKey)` - Get file metadata
+- `client.files.delete(bucketKey, objectKey)` - Delete a file
+- `client.files.download(bucketKey, objectKey)` - Download file bytes (`Uint8Array`)
+
+#### Audio
+- `client.audio.transcriptions.create(params)` - Speech-to-text (OpenAI-compatible)
+- `client.audio.translations.create(params)` - Translate audio to English
+- `client.audio.speech.create(params)` - Synthesize speech (returns binary)
+
+#### OCR
+- `client.ocr.extract(params)` - Extract text/tables/layout from a document
+
+#### Crawler
+- `client.crawler.list(query?)` - List crawlers
+- `client.crawler.create(data)` - Create a crawler
+- `client.crawler.get(idOrKey)` - Get a crawler
+- `client.crawler.update(idOrKey, data)` - Update a crawler
+- `client.crawler.delete(idOrKey)` - Delete a crawler
+- `client.crawler.run(idOrKey, options?)` - Trigger a crawler run
+- `client.crawler.crawlWithCrawler(idOrKey, options)` - Crawl a fixed URL list using a crawler's config
+- `client.crawler.runAdhoc(options)` - Run a one-off crawl without a persistent crawler
+- `client.crawler.listUrls / addUrls / removeUrls(...)` - Manage container URLs
+- `client.crawler.jobs.list(query?)` - List crawl jobs
+- `client.crawler.jobs.get(jobId)` - Get crawl job
+- `client.crawler.jobs.listResults(jobId, query?)` - List crawled pages
+- `client.crawler.jobs.getResult(jobId, resultId)` - Fetch a single page
+- `client.crawler.jobs.cancel(jobId)` - Cancel a running job
+
+#### Automations
+- `client.automations.list()` - List automations
+- `client.automations.get(key)` - Get an automation
+- `client.automations.run(key)` - Trigger immediately
+- `client.automations.pause(key)` / `resume(key)` - Pause / resume
+
+#### JS Sandbox
+- `client.jsSandbox.runtimes.list(query?)` - List JS runtimes
+- `client.jsSandbox.runtimes.get(idOrKey)` - Get a JS runtime
+- `client.jsSandbox.execute(data)` - Execute a snippet
+
+#### Rerankers
+- `client.rerankers.list()` - List rerankers
+- `client.rerankers.get(key)` - Get a reranker
+- `client.rerankers.run(key, params)` - Run a reranker (Cohere-compatible response)
+
+#### MCP
+- `client.mcp.console.listTools / execute / initialize / callTool / callJsonRpc(...)` - Built-in Console MCP server
+- `client.mcp.console.getSseUrl() / getMessageUrl(sessionId) / getConnectionInfo(apiKey)`
+- `client.mcp.server(serverKey)` - Same interface for a tenant-configured MCP server
 
 #### Browsers
 - `client.browsers.create(data)` - Create a browser profile
@@ -222,7 +287,11 @@ Standalone `client.browserAgents` management has been removed. To give a Console
 - `client.prompts.compare(key, fromVersionId, toVersionId)` - Compare two versions
 
 #### Tracing
-- `client.tracing.ingest(data)` - Ingest tracing session
+- `client.tracing.ingest(data)` - Ingest a full tracing session
+- `client.tracing.startStream(sessionId, data?)` - Open a streaming session
+- `client.tracing.appendEvent(sessionId, event)` - Append a single event
+- `client.tracing.endStream(sessionId, data?)` - Close a streaming session
+- `client.tracing.ingestOtlp(payload)` - Submit OTLP/HTTP JSON spans directly
 
 #### Memory
 - `client.memory.stores.list(query?)` - List memory stores

@@ -15,7 +15,7 @@ Creates a new Cognipeer Console SDK client instance.
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `options.apiKey` | `string` | Yes | Your Cognipeer Console API key |
-| `options.baseURL` | `string` | No | Custom Console client API base URL (default: `https://api.cognipeer.com/api/client/v1`) |
+| `options.baseURL` | `string` | No | Console host root (default: `https://api.cognipeer.com`). Legacy URLs ending in `/api/client/v1` are stripped automatically. |
 | `options.timeout` | `number` | No | Request timeout in milliseconds (default: `60000`) |
 | `options.maxRetries` | `number` | No | Maximum retry attempts (default: `3`) |
 | `options.fetch` | `typeof fetch` | No | Custom fetch implementation |
@@ -27,7 +27,7 @@ Creates a new Cognipeer Console SDK client instance.
 ```typescript
 const client = new ConsoleClient({
   apiKey: 'your-api-key',
-  baseURL: 'https://your-console.example.com/api/client/v1',
+  baseURL: 'https://your-console.example.com',
   timeout: 30000,
   maxRetries: 5,
 });
@@ -147,6 +147,63 @@ Configuration management API resource — manage config groups, items, secrets, 
 
 See [Config API](/api/config) for details.
 
+### `client.audio`
+
+OpenAI-compatible STT, audio translation, and TTS.
+
+**Type:** `AudioResource`
+
+See [Audio API](/api/audio) for details.
+
+### `client.ocr`
+
+Document text extraction (PDFs, images).
+
+**Type:** `OcrResource`
+
+See [OCR API](/api/ocr) for details.
+
+### `client.automations`
+
+Inspect and trigger built-in scheduled jobs.
+
+**Type:** `AutomationsResource`
+
+See [Automations API](/api/automations) for details.
+
+### `client.crawler`
+
+Scheduled and ad-hoc web crawling.
+
+**Type:** `CrawlerResource`
+
+See [Crawler API](/api/crawler) for details.
+
+### `client.jsSandbox`
+
+Run JavaScript inside a managed isolate.
+
+**Type:** `JsSandboxResource`
+
+See [JS Sandbox API](/api/js-sandbox) for details.
+
+### `client.rerankers`
+
+Cohere-compatible reranking.
+
+**Type:** `RerankerResource`
+
+See [Rerankers API](/api/rerankers) for details.
+
+### `client.mcp`
+
+Talk to the built-in Console MCP server (`client.mcp.console`) or any
+tenant-configured MCP server (`client.mcp.server(serverKey)`).
+
+**Type:** `McpResource`
+
+See [MCP API](/api/mcp) for details.
+
 ## Methods
 
 ### `client.getBaseURL()`
@@ -159,7 +216,7 @@ Get the configured base URL.
 
 ```typescript
 const baseURL = client.getBaseURL();
-console.log(baseURL); // "https://api.cognipeer.com/api/client/v1"
+console.log(baseURL); // "https://api.cognipeer.com"
 ```
 
 ## Type Definitions
@@ -356,7 +413,7 @@ try {
 ### Default Values
 
 ```typescript
-const DEFAULT_BASE_URL = 'https://api.cognipeer.com/api/client/v1';
+const DEFAULT_BASE_URL = 'https://api.cognipeer.com';
 const DEFAULT_TIMEOUT = 60000; // 60 seconds
 const DEFAULT_MAX_RETRIES = 3;
 ```
@@ -420,6 +477,13 @@ const response = await safeRequest(() =>
 - [Embeddings API](/api/embeddings)
 - [Agents API](/api/agents)
 - [Tools API](/api/tools)
+- [Audio API](/api/audio)
+- [OCR API](/api/ocr)
+- [Crawler API](/api/crawler)
+- [Automations API](/api/automations)
+- [JS Sandbox API](/api/js-sandbox)
+- [Rerankers API](/api/rerankers)
+- [MCP API](/api/mcp)
 - [Config API](/api/config)
 - [LangGraph API](/api/langgraph)
 - [Vectors API](/api/vectors)

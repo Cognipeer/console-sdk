@@ -560,15 +560,38 @@ export interface TracingActor {
   role?: string;
 }
 
+export interface TracingToolDetails {
+  name?: string;
+  description?: string;
+  inputSchema?: unknown;
+  schema?: unknown;
+  parameters?: unknown;
+  approval?: Record<string, unknown>;
+  cache?: Record<string, unknown>;
+  retry?: Record<string, unknown>;
+  limits?: Record<string, unknown>;
+  source?: string;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export interface TracingSection {
-  kind?: 'message' | 'tool_call' | 'tool_result' | 'data';
+  kind?: 'message' | 'tool_call' | 'tool_result' | 'tool_response' | 'summary' | 'metadata' | 'data';
   label?: string;
   role?: string;
   content?: string;
   id?: string;
+  tool?: string;
   toolName?: string;
+  toolDetails?: TracingToolDetails;
+  details?: TracingToolDetails;
   args?: Record<string, unknown>;
+  arguments?: unknown;
   result?: unknown;
+  output?: unknown;
+  summary?: string;
+  items?: Array<Record<string, unknown>>;
+  execution?: Record<string, unknown>;
 }
 
 /**
@@ -626,6 +649,7 @@ export interface TracingEvent {
   sections?: TracingSection[];
   data?: {
     sections?: TracingSection[];
+    toolDetails?: TracingToolDetails;
   };
   error?: string;
   metadata?: Record<string, unknown>;
@@ -636,6 +660,8 @@ export interface TracingEvent {
   // Legacy fields for backwards compatibility
   modelName?: string;
   toolName?: string;
+  toolDetails?: TracingToolDetails;
+  toolExecutionId?: string;
   usage?: Record<string, unknown>;
 }
 
@@ -1511,4 +1537,509 @@ export interface BrowserMcpConnectionInfo {
   sseUrl: string;
   messageUrlTemplate: string;
   authHeader: string;
+}
+
+// ============================================================================
+// Audio + OCR Types
+// ============================================================================
+
+export type SttResponseFormat = 'json' | 'text' | 'srt' | 'verbose_json' | 'vtt';
+export type SttTimestampGranularity = 'word' | 'segment';
+
+/** Common audio file payload (JSON body form). */
+export interface AudioFileInput {
+  /** Base64-encoded audio data (raw bytes, no data: prefix needed). */
+  data: string;
+  fileName?: string;
+  contentType?: string;
+}
+
+/** Browser/runtime-agnostic representation of an audio file. */
+export type AudioFileSource =
+  | { kind: 'base64'; data: string; fileName?: string; contentType?: string }
+  | { kind: 'blob'; blob: Blob; fileName?: string }
+  | { kind: 'buffer'; data: Uint8Array | ArrayBuffer; fileName?: string; contentType?: string };
+
+export interface AudioTranscriptionRequest {
+  model: string;
+  /** Base64 (string) or a structured file source for multipart upload. */
+  audio: string | AudioFileInput | AudioFileSource;
+  language?: string;
+  prompt?: string;
+  response_format?: SttResponseFormat;
+  temperature?: number;
+  timestamp_granularities?: SttTimestampGranularity[];
+}
+
+export interface AudioTranscriptionResponse {
+  text: string;
+  language?: string;
+  duration?: number;
+  segments?: Array<Record<string, unknown>>;
+  words?: Array<Record<string, unknown>>;
+  request_id?: string;
+  [key: string]: unknown;
+}
+
+export type AudioTranslationRequest = AudioTranscriptionRequest;
+export type AudioTranslationResponse = AudioTranscriptionResponse;
+
+export type TtsOutputFormat = 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
+
+export interface AudioSpeechRequest {
+  model: string;
+  /** Text to synthesize (alias: text). */
+  input: string;
+  voice: string;
+  response_format?: TtsOutputFormat;
+  speed?: number;
+  instructions?: string;
+}
+
+export interface AudioSpeechResponse {
+  /** Raw audio bytes. */
+  audio: Uint8Array;
+  contentType: string;
+  requestId?: string;
+}
+
+export type OcrFeature =
+  | 'text'
+  | 'tables'
+  | 'kv_pairs'
+  | 'layout'
+  | 'reading_order'
+  | 'handwriting';
+
+export type OcrDocumentInput =
+  | { url: string; contentType?: string }
+  | AudioFileInput;
+
+export interface OcrExtractRequest {
+  model: string;
+  /** Either `{ url }` (remote document) or `{ data, fileName? }` (base64). */
+  document: OcrDocumentInput;
+  pages?: number[];
+  language?: string;
+  features?: OcrFeature[];
+  prompt?: string;
+}
+
+export interface OcrPage {
+  page: number;
+  text?: string;
+  blocks?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+export interface OcrExtractResponse {
+  text?: string;
+  pages?: OcrPage[];
+  language?: string;
+  features?: Record<string, unknown>;
+  request_id?: string;
+  [key: string]: unknown;
+}
+
+// ============================================================================
+// Automations Types (built-in scheduled jobs)
+// ============================================================================
+
+export type AutomationStatus = 'idle' | 'running' | 'paused' | 'errored';
+
+export interface Automation {
+  key: string;
+  name: string;
+  description?: string;
+  schedule?: string;
+  status: AutomationStatus;
+  lastRunAt?: string;
+  nextRunAt?: string;
+  lastError?: string;
+  metadata?: Record<string, unknown>;
+}
+
+// ============================================================================
+// Crawler Types
+// ============================================================================
+
+export type CrawlerStatus = 'active' | 'paused' | 'archived' | string;
+export type CrawlJobStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | string;
+
+export interface CrawlerUrlEntry {
+  url: string;
+  addedAt?: string;
+  addedBy?: string;
+  lastCrawledAt?: string;
+  status?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface Crawler {
+  _id: string;
+  key: string;
+  name: string;
+  description?: string;
+  status: CrawlerStatus;
+  schedule?: string;
+  seeds?: string[];
+  config?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  totalUrls?: number;
+  lastRunAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateCrawlerRequest {
+  key?: string;
+  name: string;
+  description?: string;
+  status?: CrawlerStatus;
+  schedule?: string;
+  seeds?: string[];
+  config?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateCrawlerRequest {
+  name?: string;
+  description?: string;
+  status?: CrawlerStatus;
+  schedule?: string;
+  seeds?: string[];
+  config?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RunCrawlerRequest {
+  urls?: string[];
+  seeds?: string[];
+  callbackUrl?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CrawlOnContainerRequest {
+  urls: string[];
+  callbackUrl?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AdhocCrawlRequest {
+  urls: string[];
+  config?: Record<string, unknown>;
+  callbackUrl?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CrawlJob {
+  _id: string;
+  crawlerKey?: string;
+  status: CrawlJobStatus;
+  startedAt?: string;
+  finishedAt?: string;
+  urlCount?: number;
+  resultCount?: number;
+  errorMessage?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CrawlResult {
+  _id: string;
+  jobId: string;
+  url: string;
+  status?: string;
+  contentType?: string;
+  markdown?: string;
+  html?: string;
+  text?: string;
+  metadata?: Record<string, unknown>;
+  fetchedAt?: string;
+}
+
+export interface CrawlRunAcceptedResponse {
+  jobId: string;
+  crawlerKey?: string;
+  status: CrawlJobStatus;
+  urlCount?: number;
+}
+
+export interface ListCrawlersQuery {
+  status?: string;
+  search?: string;
+}
+
+export interface ListCrawlJobsQuery {
+  crawlerKey?: string;
+  status?: CrawlJobStatus;
+  limit?: number;
+}
+
+export interface ListCrawlJobResultsQuery {
+  limit?: number;
+  skip?: number;
+  type?: string;
+}
+
+// ============================================================================
+// JS Sandbox Types
+// ============================================================================
+
+export type JsSandboxRuntimeStatus = 'active' | 'inactive' | 'errored' | string;
+
+export interface JsSandboxRuntime {
+  _id: string;
+  key: string;
+  name: string;
+  description?: string;
+  engine?: string;
+  version?: string;
+  status: JsSandboxRuntimeStatus;
+  defaultTimeoutMs?: number;
+  defaultMemoryMb?: number;
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface JsSandboxExecuteRequest {
+  /** Runtime key or id to use. If omitted, the default runtime is used. */
+  runtimeKey?: string;
+  /** Source code to execute. */
+  code: string;
+  /** Variables made available to the sandbox as globals. */
+  variables?: Record<string, unknown>;
+  /** Override the runtime's default timeout. */
+  timeoutMs?: number;
+  /** Optional metadata for tracing. */
+  metadata?: Record<string, unknown>;
+}
+
+export type JsSandboxExecutionStatus = 'success' | 'error' | 'timeout' | string;
+
+export interface JsSandboxLogEntry {
+  level: 'log' | 'info' | 'warn' | 'error' | 'debug' | string;
+  message: string;
+  timestamp?: string;
+  args?: unknown[];
+}
+
+export interface JsSandboxExecutionResult {
+  executionId: string;
+  runtimeKey: string;
+  status: JsSandboxExecutionStatus;
+  durationMs?: number;
+  result?: unknown;
+  logs?: JsSandboxLogEntry[];
+  errorMessage?: string;
+}
+
+// ============================================================================
+// Reranker Types
+// ============================================================================
+
+export interface RerankerDocumentInput {
+  id?: string;
+  content?: string;
+  text?: string;
+  score?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RerankerRunRequest {
+  query: string;
+  documents: Array<string | RerankerDocumentInput>;
+  /** Cohere-compatible alias. */
+  top_n?: number;
+  /** Camel-case alias accepted by the server. */
+  topN?: number;
+}
+
+export interface RerankerResultItem {
+  index: number;
+  relevance_score: number;
+  document: { text: string };
+}
+
+export interface RerankerRunResponse {
+  id: string;
+  results: RerankerResultItem[];
+  meta?: {
+    api_version?: { version?: string };
+    reranker?: string;
+    strategy?: string;
+    model?: string;
+    latency_ms?: number;
+  };
+}
+
+export interface Reranker {
+  _id?: string;
+  key: string;
+  name: string;
+  description?: string;
+  strategy?: string;
+  modelKey?: string;
+  status?: string;
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ============================================================================
+// MCP Types (generic + console)
+// ============================================================================
+
+export interface McpToolDescriptor {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+export interface McpServerInfo {
+  name: string;
+  version: string;
+}
+
+export interface McpInitializeResult {
+  protocolVersion: string;
+  serverInfo: McpServerInfo;
+  capabilities?: {
+    tools?: { listChanged?: boolean };
+    [key: string]: unknown;
+  };
+}
+
+export interface McpToolsListResult {
+  tools: McpToolDescriptor[];
+}
+
+export interface McpExecuteRequest {
+  tool: string;
+  arguments?: Record<string, unknown>;
+}
+
+export interface McpExecuteResponse {
+  result: unknown;
+  metadata?: {
+    latencyMs?: number;
+    server?: string;
+    tool?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface McpConsoleListToolsResponse {
+  server: {
+    key: string;
+    name: string;
+    version: string;
+    builtin?: boolean;
+  };
+  tools: McpToolDescriptor[];
+}
+
+export interface McpConnectionInfo {
+  serverKey: string;
+  sseUrl: string;
+  messageUrlTemplate: string;
+  authHeader: string;
+}
+
+// ============================================================================
+// Streaming Tracing Types
+// ============================================================================
+
+export interface TracingStreamStartRequest {
+  threadId?: string;
+  agent?: TracingAgent;
+  config?: Record<string, unknown>;
+  startedAt?: string;
+  traceId?: string;
+  rootSpanId?: string;
+}
+
+export interface TracingStreamStartResponse {
+  success: boolean;
+  sessionId: string;
+  status: string;
+}
+
+export interface TracingStreamEventResponse {
+  success: boolean;
+  sessionId: string;
+  eventId?: string;
+  totalEvents: number;
+}
+
+export interface TracingStreamEndRequest {
+  endedAt?: string;
+  durationMs?: number;
+  status?: TracingStatus;
+  summary?: TracingSummary;
+  errors?: TracingError[];
+}
+
+export interface TracingStreamEndResponse {
+  success: boolean;
+  sessionId: string;
+  status: TracingStatus;
+  durationMs?: number;
+  totalEvents: number;
+}
+
+/** OTLP/HTTP JSON payload accepted by /client/v1/traces. */
+export interface OtlpExportTraceServiceRequest {
+  resourceSpans: Array<Record<string, unknown>>;
+}
+
+export interface OtlpIngestResponse {
+  success: boolean;
+  spansProcessed: number;
+  sessionsIngested: number;
+  eventsStored: number;
+}
+
+// ============================================================================
+// File Providers (admin-level)
+// ============================================================================
+
+export type FileProviderStatus = 'active' | 'inactive' | 'error' | string;
+
+export interface FileProvider {
+  _id: string;
+  key: string;
+  driver: string;
+  label: string;
+  description?: string;
+  status: FileProviderStatus;
+  credentials?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  capabilities?: string[] | Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateFileProviderRequest {
+  key: string;
+  driver: string;
+  label: string;
+  description?: string;
+  status?: FileProviderStatus;
+  credentials: Record<string, unknown>;
+  settings?: Record<string, unknown>;
+  capabilitiesOverride?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ListFileProvidersQuery {
+  driver?: string;
+  status?: FileProviderStatus;
 }

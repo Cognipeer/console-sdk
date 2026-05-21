@@ -161,6 +161,90 @@ export class HttpClient {
   }
 
   /**
+   * Make a request that returns binary data (Uint8Array). Used by routes
+   * that respond with non-JSON bodies (e.g. audio/speech synthesis).
+   */
+  async requestBinary(
+    method: string,
+    path: string,
+    options: {
+      body?: unknown;
+      query?: Record<string, string | number | boolean | undefined>;
+      headers?: Record<string, string>;
+      signal?: AbortSignal;
+    } = {},
+  ): Promise<{ data: Uint8Array; contentType: string; requestId?: string }> {
+    const url = this.buildURL(path, options.query);
+    const headers = this.buildHeaders(options.headers);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await this.fetchImpl(url, {
+        method,
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: options.signal || controller.signal,
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const buffer = await response.arrayBuffer();
+      return {
+        data: new Uint8Array(buffer),
+        contentType: response.headers.get('content-type') || 'application/octet-stream',
+        requestId: response.headers.get('x-request-id') || undefined,
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
+   * Multipart/form-data request. Used by routes that accept file uploads
+   * (e.g. audio/transcriptions, audio/translations, OCR).
+   */
+  async requestMultipart<T>(
+    method: string,
+    path: string,
+    form: FormData,
+    options: {
+      query?: Record<string, string | number | boolean | undefined>;
+      headers?: Record<string, string>;
+      signal?: AbortSignal;
+    } = {},
+  ): Promise<T> {
+    const url = this.buildURL(path, options.query);
+    const headers = { ...this.buildHeaders(options.headers) };
+    // Let the runtime set the multipart boundary
+    delete headers['Content-Type'];
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await this.fetchImpl(url, {
+        method,
+        headers,
+        body: form as unknown as ArrayBuffer,
+        signal: options.signal || controller.signal,
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      return data as T;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
    * Build full URL with query parameters
    */
   private buildURL(path: string, query?: Record<string, string | number | boolean | undefined>): string {
@@ -184,7 +268,7 @@ export class HttpClient {
     return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.apiKey}`,
-      'User-Agent': '@cognipeer/console-sdk/1.0.0',
+      'User-Agent': '@cognipeer/console-sdk/1.1.0',
       ...customHeaders,
     };
   }

@@ -210,7 +210,11 @@ function spanToOtlp(span: ReadableSpan): OtlpSpan {
 export interface CognipeerOTelExporterOptions {
   /** API token (Bearer) */
   apiKey: string;
-  /** Console base URL (e.g. https://api.cognipeer.com/api/client/v1) */
+  /**
+   * Console base URL. Pass the host root (e.g. `https://api.cognipeer.com`).
+   * If a legacy URL ending in `/api/client/v1` is supplied, the suffix is
+   * stripped automatically.
+   */
   baseURL: string;
   /** Extra headers to attach to every request */
   headers?: Record<string, string>;
@@ -232,7 +236,9 @@ export class CognipeerOTelSpanExporter {
   private fetchImpl: typeof fetch;
 
   constructor(opts: CognipeerOTelExporterOptions) {
-    this.baseURL = opts.baseURL.replace(/\/$/, '');
+    this.baseURL = opts.baseURL
+      .replace(/\/+$/, '')
+      .replace(/\/api\/client\/v1$/, '');
     this.apiKey = opts.apiKey;
     this.extraHeaders = opts.headers ?? {};
     this.timeout = opts.timeout ?? 30_000;

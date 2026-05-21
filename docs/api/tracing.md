@@ -1,10 +1,14 @@
 # Tracing API
 
-The SDK supports tracing in three complementary ways:
+The SDK supports tracing in four complementary ways:
 
-1. **Direct ingestion** via `client.tracing.ingest(...)`
-2. **LangChain middleware/callback integrations** for automatic event capture
-3. **OpenTelemetry exporter** for OTLP-native pipelines
+1. **Bulk ingestion** via `client.tracing.ingest(...)` (one full session per call).
+2. **Streaming ingestion** via `startStream / appendEvent / endStream` for
+   long-running agents that emit events incrementally.
+3. **Direct OTLP ingest** via `client.tracing.ingestOtlp(payload)` when you
+   already have an `ExportTraceServiceRequest` payload.
+4. **LangChain middleware/callback integrations** + **OpenTelemetry exporter**
+   for automatic capture.
 
 ## Resource
 
@@ -80,7 +84,61 @@ await client.tracing.ingest({
 **Returns**
 
 ```typescript
-Promise<{ success: boolean; sessionId: string }>;
+Promise<{ success: boolean; sessionId: string; eventsStored: number }>;
+```
+
+### `client.tracing.startStream(sessionId, data?)`
+
+Open a streaming session. The server creates (or refreshes) the row in
+`agent_tracing_sessions` and returns `{ success, sessionId, status: 'in_progress' }`.
+
+```typescript
+await client.tracing.startStream('sess_stream_42', {
+  agent: { name: 'support-bot', model: 'gpt-4o-mini', version: '1.0.0' },
+  threadId: 'thread_xyz',
+});
+```
+
+### `client.tracing.appendEvent(sessionId, event)`
+
+Append a single event to a streaming session. The server merges token/byte
+totals and `modelsUsed` / `toolsUsed` into the parent session.
+
+```typescript
+await client.tracing.appendEvent('sess_stream_42', {
+  type: 'llm_end',
+  label: 'Final response',
+  inputTokens: 320,
+  outputTokens: 96,
+  model: 'gpt-4o-mini',
+  actor: { scope: 'agent', name: 'support-bot' },
+});
+```
+
+### `client.tracing.endStream(sessionId, data?)`
+
+Close a streaming session. Optional `status`, `summary`, and `errors` are
+merged with the live aggregates already on the row.
+
+```typescript
+await client.tracing.endStream('sess_stream_42', { status: 'success' });
+```
+
+### `client.tracing.ingestOtlp(payload)`
+
+POST an OTLP/HTTP JSON payload directly. Identical to what
+`CognipeerOTelSpanExporter` does internally — useful if you already have an
+`ExportTraceServiceRequest` from another exporter.
+
+```typescript
+await client.tracing.ingestOtlp({
+  resourceSpans: [
+    {
+      resource: { attributes: [{ key: 'service.name', value: { stringValue: 'my-agent' } }] },
+      scopeSpans: [{ scope: { name: 'cognipeer-sdk' }, spans: [/* ... */] }],
+    },
+  ],
+});
 ```
 
 ## LangChain Integration

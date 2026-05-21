@@ -26,7 +26,22 @@ Welcome to the Cognipeer Console SDK examples! Here you'll find practical exampl
 ### Agents & Tracing
 
 - **[Agent Tracing](/examples/tracing)** - Monitor agent execution
+- **[Streaming Tracing](/examples/tracing-stream)** - Stream a session start/append/end
 - **[Multi-Agent System](/examples/multi-agent)** - Coordinate multiple agents
+
+### Audio & OCR
+
+- **[Audio (TTS/STT)](/examples/audio)** - Synthesize speech and transcribe it back
+
+### Crawling, Reranking, Sandboxing
+
+- **[Crawler](/examples/crawler)** - Ad-hoc crawl + poll + read results
+- **[Rerankers](/examples/reranker)** - Cohere-compatible reranking
+- **[JS Sandbox](/examples/js-sandbox)** - Run JavaScript inside an isolate
+
+### MCP
+
+- **[MCP Console](/examples/mcp-console)** - Drive the built-in Console MCP server
 
 ## Quick Start Examples
 

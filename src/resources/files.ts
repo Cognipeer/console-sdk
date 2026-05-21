@@ -1,5 +1,13 @@
 import { HttpClient } from '../http';
-import { FileBucket, FileObject, UploadFileRequest, ListFilesQuery } from '../types';
+import {
+  CreateFileProviderRequest,
+  FileBucket,
+  FileObject,
+  FileProvider,
+  ListFileProvidersQuery,
+  ListFilesQuery,
+  UploadFileRequest,
+} from '../types';
 
 /**
  * Files API resource
@@ -7,10 +15,27 @@ import { FileBucket, FileObject, UploadFileRequest, ListFilesQuery } from '../ty
 export class FilesResource {
   private http: HttpClient;
   public buckets: FileBucketsResource;
+  public providers: FileProvidersResource;
 
   constructor(http: HttpClient) {
     this.http = http;
     this.buckets = new FileBucketsResource(http);
+    this.providers = new FileProvidersResource(http);
+  }
+
+  /**
+   * Download a file's bytes. The server streams the underlying object as-is,
+   * so the response is binary.
+   */
+  async download(
+    bucketKey: string,
+    objectKey: string,
+  ): Promise<{ data: Uint8Array; contentType: string }> {
+    const { data, contentType } = await this.http.requestBinary(
+      'GET',
+      `/api/client/v1/files/buckets/${encodeURIComponent(bucketKey)}/objects/${encodeURIComponent(objectKey)}/download`,
+    );
+    return { data, contentType };
   }
 
   /**
@@ -92,5 +117,36 @@ export class FileBucketsResource {
    */
   async get(bucketKey: string): Promise<{ bucket: FileBucket }> {
     return this.http.request('GET', `/api/client/v1/files/buckets/${bucketKey}`);
+  }
+}
+
+/**
+ * File providers resource (admin-level: storage backends behind buckets).
+ */
+export class FileProvidersResource {
+  private http: HttpClient;
+
+  constructor(http: HttpClient) {
+    this.http = http;
+  }
+
+  /** List configured file providers. */
+  async list(query?: ListFileProvidersQuery): Promise<FileProvider[]> {
+    const res = await this.http.request<{ providers: FileProvider[] }>(
+      'GET',
+      '/api/client/v1/files/providers',
+      { query: query as Record<string, string | number | boolean | undefined> },
+    );
+    return res.providers ?? [];
+  }
+
+  /** Create a new file provider. */
+  async create(data: CreateFileProviderRequest): Promise<FileProvider> {
+    const res = await this.http.request<{ provider: FileProvider }>(
+      'POST',
+      '/api/client/v1/files/providers',
+      { body: data },
+    );
+    return res.provider;
   }
 }

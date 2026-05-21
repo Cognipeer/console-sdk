@@ -13,43 +13,42 @@ import { RagResource } from './resources/rag';
 import { ConfigResource } from './resources/config';
 import { AgentsResource } from './resources/agents';
 import { BrowserMcpResource, BrowserSessionsResource, BrowsersResource } from './resources/browser';
+import { AudioResource, OcrResource } from './resources/audio';
+import { AutomationsResource } from './resources/automations';
+import { CrawlerResource } from './resources/crawler';
+import { JsSandboxResource } from './resources/jsSandbox';
+import { RerankerResource } from './resources/reranker';
+import { McpResource } from './resources/mcp';
 
 /**
  * Default configuration values
  */
-const DEFAULT_BASE_URL = 'https://api.cognipeer.com/api/client/v1';
+const DEFAULT_BASE_URL = 'https://api.cognipeer.com';
 const DEFAULT_TIMEOUT = 60000; // 60 seconds
 const DEFAULT_MAX_RETRIES = 3;
 
 /**
  * Cognipeer Console Client
- * 
- * Main entry point for interacting with the Console API
- * 
+ *
+ * Main entry point for interacting with the Console API.
+ *
  * @example
  * ```typescript
  * const client = new ConsoleClient({
  *   apiKey: 'your-api-key',
- *   baseURL: 'https://api.cognipeer.com/api/client/v1', // optional
+ *   baseURL: 'https://your-console.example.com', // optional; without /api/client/v1
  * });
- * 
- * // Chat completions
+ *
  * const response = await client.chat.completions.create({
  *   model: 'gpt-4',
  *   messages: [{ role: 'user', content: 'Hello!' }],
  * });
- * 
- * // Streaming chat
- * const stream = await client.chat.completions.create({
- *   model: 'gpt-4',
- *   messages: [{ role: 'user', content: 'Hello!' }],
- *   stream: true,
- * });
- * 
- * for await (const chunk of stream) {
- *   console.log(chunk.choices[0]?.delta?.content);
- * }
  * ```
+ *
+ * Note on `baseURL`: pass the host root (e.g. `https://api.cognipeer.com`).
+ * Older versions of this SDK accepted a base URL that already included
+ * `/api/client/v1`. To stay backwards-compatible the trailing
+ * `/api/client/v1` (with or without trailing slash) is stripped automatically.
  */
 export class ConsoleClient {
   private http: HttpClient;
@@ -99,8 +98,29 @@ export class ConsoleClient {
   /** Browser MCP helper API */
   public browserMcp: BrowserMcpResource;
 
+  /** Audio (STT / TTS / translation) API */
+  public audio: AudioResource;
+
+  /** OCR (document extraction) API */
+  public ocr: OcrResource;
+
+  /** Built-in automations API */
+  public automations: AutomationsResource;
+
+  /** Crawler API (scheduled + ad-hoc web crawls) */
+  public crawler: CrawlerResource;
+
+  /** JS Sandbox API (managed isolate execution) */
+  public jsSandbox: JsSandboxResource;
+
+  /** Reranker API (Cohere-compatible reranking) */
+  public rerankers: RerankerResource;
+
+  /** MCP API (tenant + built-in console MCP servers) */
+  public mcp: McpResource;
+
   /**
-  * Create a new Console client
+   * Create a new Console client
    * @param options - Client configuration
    */
   constructor(options: ConsoleClientOptions) {
@@ -108,7 +128,7 @@ export class ConsoleClient {
       throw new Error('API key is required');
     }
 
-    const baseURL = options.baseURL || DEFAULT_BASE_URL;
+    const baseURL = normalizeBaseUrl(options.baseURL || DEFAULT_BASE_URL);
     const timeout = options.timeout || DEFAULT_TIMEOUT;
     const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
 
@@ -130,6 +150,13 @@ export class ConsoleClient {
     this.browserSessions = new BrowserSessionsResource(this.http);
     this.browsers = new BrowsersResource(this.http);
     this.browserMcp = new BrowserMcpResource(this.http);
+    this.audio = new AudioResource(this.http);
+    this.ocr = new OcrResource(this.http);
+    this.automations = new AutomationsResource(this.http);
+    this.crawler = new CrawlerResource(this.http);
+    this.jsSandbox = new JsSandboxResource(this.http);
+    this.rerankers = new RerankerResource(this.http);
+    this.mcp = new McpResource(this.http);
   }
 
   /**
@@ -138,4 +165,15 @@ export class ConsoleClient {
   getBaseURL(): string {
     return this.http['baseURL'];
   }
+}
+
+/**
+ * Normalise the base URL. Resources include the full `/api/client/v1/...`
+ * path, so the base URL should be the host root only. If callers pass a
+ * legacy base URL that already ends in `/api/client/v1`, strip it so we
+ * don't end up with a duplicated `/api/client/v1/api/client/v1/...` path.
+ */
+function normalizeBaseUrl(input: string): string {
+  const trimmed = input.replace(/\/+$/, '');
+  return trimmed.replace(/\/api\/client\/v1$/, '');
 }

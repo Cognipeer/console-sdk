@@ -1,255 +1,162 @@
 # Files API
 
-The Files API allows you to upload and manage files, with automatic markdown conversion for document processing.
+The Files API is bucket-based. Files live in **buckets**, and buckets are
+backed by **providers** (S3-compatible storage, Azure Blob, etc).
 
-## Methods
-
-### `files.upload(params)`
-
-Upload a file to Cognipeer Console.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `params.file` | `File \| Buffer \| Blob` | Yes | The file to upload |
-| `params.filename` | `string` | Yes | Name of the file |
-| `params.purpose` | `'assistants' \| 'vision' \| 'batch'` | No | Purpose of the file |
-
-**Returns:** `Promise<FileObject>`
-
-**Example (Node.js):**
-
-```typescript
-import { readFileSync } from 'fs';
-
-const fileContent = readFileSync('./document.pdf');
-
-const file = await client.files.upload({
-  file: fileContent,
-  filename: 'document.pdf',
-  purpose: 'assistants',
-});
-
-console.log('File ID:', file.id);
-console.log('Markdown content:', file.markdown);
+```text
+files.providers   → manage the underlying storage providers (admin-level)
+files.buckets     → list / inspect available buckets
+files                → CRUD on objects inside a bucket
 ```
 
-**Example (Browser):**
+## Buckets
+
+### `client.files.buckets.list()`
 
 ```typescript
-// From file input
-const input = document.querySelector('input[type="file"]');
-const file = input.files[0];
-
-const uploadedFile = await client.files.upload({
-  file: file,
-  filename: file.name,
-  purpose: 'assistants',
-});
-
-console.log('Uploaded:', uploadedFile);
+const { buckets, count } = await client.files.buckets.list();
 ```
 
-### `files.list(params?)`
-
-List all uploaded files.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `params.purpose` | `string` | No | Filter by purpose |
-| `params.limit` | `number` | No | Maximum number of files to return |
-
-**Returns:** `Promise<FileListResponse>`
-
-**Example:**
+### `client.files.buckets.get(bucketKey)`
 
 ```typescript
-const files = await client.files.list({ limit: 10 });
+const { bucket } = await client.files.buckets.get('user-uploads');
+```
 
-files.data.forEach(file => {
-  console.log(`${file.filename}: ${file.bytes} bytes`);
+## Objects
+
+### `client.files.list(bucketKey, query?)`
+
+```typescript
+const { files, count, nextCursor } = await client.files.list('user-uploads', {
+  limit: 50,
+  search: 'invoice',
 });
 ```
 
-### `files.retrieve(fileId)`
+### `client.files.upload(bucketKey, data)`
 
-Retrieve information about a specific file.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `fileId` | `string` | Yes | The file ID |
-
-**Returns:** `Promise<FileObject>`
-
-**Example:**
+Upload a file using a base64 / data-URL payload. Set `convertToMarkdown: true`
+to ask the server to extract markdown text from PDFs and other documents.
 
 ```typescript
-const file = await client.files.retrieve('file_abc123');
-console.log(file);
-```
+import { readFileSync } from 'node:fs';
 
-### `files.delete(fileId)`
+const pdf = readFileSync('./report.pdf');
 
-Delete a file.
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `fileId` | `string` | Yes | The file ID |
-
-**Returns:** `Promise<DeleteFileResponse>`
-
-**Example:**
-
-```typescript
-const result = await client.files.delete('file_abc123');
-console.log('Deleted:', result.deleted);
-```
-
-## Response Types
-
-### `FileObject`
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `string` | Unique file identifier |
-| `object` | `'file'` | Object type |
-| `bytes` | `number` | File size in bytes |
-| `created_at` | `number` | Unix timestamp |
-| `filename` | `string` | Original filename |
-| `purpose` | `string` | File purpose |
-| `markdown` | `string` | Markdown conversion (if available) |
-| `status` | `'uploaded' \| 'processed' \| 'error'` | Processing status |
-
-### `FileListResponse`
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `object` | `'list'` | Object type |
-| `data` | `FileObject[]` | Array of files |
-
-### `DeleteFileResponse`
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `string` | File ID |
-| `object` | `'file'` | Object type |
-| `deleted` | `boolean` | Deletion status |
-
-## Automatic Markdown Conversion
-
-When you upload document files (PDF, DOCX, etc.), they are automatically converted to markdown format for easy text extraction and processing.
-
-**Supported formats:**
-- PDF (`.pdf`)
-- Microsoft Word (`.docx`, `.doc`)
-- Plain text (`.txt`)
-- Markdown (`.md`)
-
-**Example:**
-
-```typescript
-const file = await client.files.upload({
-  file: pdfBuffer,
-  filename: 'report.pdf',
-  purpose: 'assistants',
+const { file } = await client.files.upload('user-uploads', {
+  fileName: 'report.pdf',
+  contentType: 'application/pdf',
+  data: pdf.toString('base64'),
+  convertToMarkdown: true,
 });
 
-// Use the markdown content
-console.log(file.markdown);
-// Output: "# Report Title\n\n## Section 1\n\nContent here..."
+console.log(file.markdownContent?.slice(0, 200));
 ```
 
-## Use Cases
-
-### Document Q&A
+### `client.files.get(bucketKey, objectKey)`
 
 ```typescript
-// 1. Upload document
-const doc = await client.files.upload({
-  file: documentBuffer,
-  filename: 'manual.pdf',
-});
+const { file } = await client.files.get('user-uploads', 'report.pdf');
+```
 
-// 2. Extract text
-const content = doc.markdown;
+### `client.files.delete(bucketKey, objectKey)`
 
-// 3. Use with chat
-const response = await client.chat.completions.create({
-  model: 'gpt-4',
-  messages: [
-    {
-      role: 'system',
-      content: `Answer questions based on this document:\n\n${content}`,
-    },
-    {
-      role: 'user',
-      content: 'What is the warranty period?',
-    },
-  ],
+```typescript
+await client.files.delete('user-uploads', 'report.pdf');
+```
+
+### `client.files.download(bucketKey, objectKey)`
+
+Returns the raw bytes plus the response `Content-Type` header.
+
+```typescript
+import { writeFileSync } from 'node:fs';
+
+const { data, contentType } = await client.files.download('user-uploads', 'report.pdf');
+writeFileSync('./local-report.pdf', data);
+console.log(contentType); // application/pdf
+```
+
+## Providers
+
+### `client.files.providers.list(query?)`
+
+```typescript
+const providers = await client.files.providers.list({ status: 'active' });
+```
+
+### `client.files.providers.create(data)`
+
+```typescript
+const provider = await client.files.providers.create({
+  key: 'tenant-s3',
+  driver: 's3',
+  label: 'Tenant S3 bucket',
+  credentials: {
+    accessKeyId: '…',
+    secretAccessKey: '…',
+    region: 'eu-central-1',
+    bucket: 'tenant-files',
+  },
 });
 ```
 
-### RAG System
+## Types
 
 ```typescript
-// 1. Upload and convert documents
-const files = await Promise.all(
-  documents.map(doc => client.files.upload({
-    file: doc.buffer,
-    filename: doc.name,
-  }))
-);
+interface FileBucket {
+  _id: string;
+  key: string;
+  name: string;
+  description?: string;
+  provider: string;
+  status: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
 
-// 2. Create embeddings from markdown
-const embeddings = await client.embeddings.create({
-  model: 'text-embedding-3-small',
-  input: files.map(f => f.markdown),
-});
+interface FileObject {
+  _id: string;
+  key: string;
+  bucketKey: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+  metadata?: Record<string, unknown>;
+  markdownContent?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
-// 3. Store in vector database
-await client.vectors.upsert({
-  // ... vector storage
-});
-```
+interface UploadFileRequest {
+  fileName: string;
+  contentType?: string;
+  data: string;             // base64 or data URL
+  metadata?: Record<string, unknown>;
+  convertToMarkdown?: boolean;
+  keyHint?: string;
+}
 
-## Error Handling
-
-```typescript
-import { CognipeerError } from '@cognipeer/console-sdk';
-
-try {
-  const file = await client.files.upload({
-    file: fileBuffer,
-    filename: 'document.pdf',
-  });
-} catch (error) {
-  if (error instanceof CognipeerError) {
-    if (error.status === 413) {
-      console.error('File too large');
-    } else if (error.status === 415) {
-      console.error('Unsupported file type');
-    }
-  }
+interface FileProvider {
+  _id: string;
+  key: string;
+  driver: string;
+  label: string;
+  description?: string;
+  status: string;
+  credentials?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  capabilities?: string[] | Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
 }
 ```
 
-## Best Practices
-
-1. **File Size**: Keep files under 10MB for optimal processing
-2. **Naming**: Use descriptive filenames for easy identification
-3. **Cleanup**: Delete files when no longer needed to save storage
-4. **Error Handling**: Always handle upload errors gracefully
-5. **Validation**: Validate file types before uploading
-
 ## Related
 
-- [Chat API](/api/chat) - Use file content in conversations
-- [Embeddings API](/api/embeddings) - Create embeddings from file content
-- [File Upload Example](/examples/files) - Complete upload example
+- [RAG API](/api/rag) — indexed knowledge bases on top of buckets.
+- [OCR API](/api/ocr) — extract text from files without persisting them.
+- [Chat API](/api/chat) — feed file contents into conversations.
