@@ -2043,3 +2043,368 @@ export interface ListFileProvidersQuery {
   driver?: string;
   status?: FileProviderStatus;
 }
+
+// ============================================================================
+// Batch API (OpenAI-compatible async bulk inference)
+// ============================================================================
+
+export type BatchEndpoint = '/v1/chat/completions' | '/v1/embeddings';
+
+export type BatchStatus =
+  | 'validating'
+  | 'in_progress'
+  | 'completed'
+  | 'failed'
+  | 'cancelling'
+  | 'cancelled';
+
+export type BatchItemStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+/** One request line of a batch submission. */
+export interface BatchRequestEntry {
+  /** Caller correlation id, echoed back on the matching output line. */
+  custom_id?: string;
+  /** Chat-completion or embedding request payload (must include `model`). */
+  body: Record<string, unknown>;
+}
+
+/** Reference to a JSONL object in a Document Store bucket. */
+export interface BatchFileRef {
+  bucket_key: string;
+  object_key: string;
+}
+
+export interface CreateBatchRequest {
+  endpoint: BatchEndpoint;
+  /** Inline submission: request lines directly in the create call. */
+  requests?: BatchRequestEntry[];
+  /** File submission: a JSONL object uploaded via the Files API. */
+  input_file?: BatchFileRef;
+  /** When set, the output JSONL is written to this bucket on completion. */
+  output_bucket_key?: string;
+  /** Informational (OpenAI compat); defaults to "24h". */
+  completion_window?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BatchRequestCounts {
+  total: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+}
+
+export interface BatchUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+export interface Batch {
+  id: string;
+  object: 'batch';
+  endpoint: BatchEndpoint;
+  status: BatchStatus;
+  completion_window: string | null;
+  input_file: BatchFileRef | null;
+  output_file: { bucket_key: string; object_key: string | null } | null;
+  error_message: string | null;
+  request_counts: BatchRequestCounts;
+  usage: BatchUsage;
+  metadata: Record<string, unknown>;
+  created_at: number | null;
+  started_at: number | null;
+  completed_at: number | null;
+  cancelled_at: number | null;
+}
+
+export interface BatchItem {
+  id: string;
+  object: 'batch.item';
+  index: number;
+  custom_id: string | null;
+  status: BatchItemStatus;
+  response_status_code: number | null;
+  response_body: Record<string, unknown> | null;
+  error_message: string | null;
+  usage: BatchUsage | null;
+  started_at: number | null;
+  ended_at: number | null;
+}
+
+/** One line of the OpenAI-format batch output JSONL. */
+export interface BatchOutputLine {
+  id: string;
+  custom_id: string | null;
+  response: { status_code: number; body: Record<string, unknown> | null } | null;
+  error: { code: string; message: string | null } | null;
+}
+
+export interface ListBatchesQuery {
+  status?: BatchStatus;
+  limit?: number;
+}
+
+export interface ListBatchItemsQuery {
+  status?: BatchItemStatus;
+  limit?: number;
+  skip?: number;
+}
+
+// ============================================================================
+// Moderations API (OpenAI-compatible, backed by guardrails)
+// ============================================================================
+
+export interface CreateModerationRequest {
+  /** Text (or array of texts / `{type:'text', text}` parts) to classify. */
+  input: string | Array<string | { type: 'text'; text: string }>;
+  /**
+   * Guardrail key to evaluate with. Omit to use the tenant's first enabled
+   * guardrail that has an active moderation policy.
+   */
+  model?: string;
+}
+
+export interface ModerationFinding {
+  type: 'pii' | 'moderation' | 'prompt_shield' | 'custom';
+  category: string;
+  severity: 'low' | 'medium' | 'high';
+  message: string;
+  action: string;
+  block: boolean;
+  value?: string;
+}
+
+export interface ModerationResult {
+  flagged: boolean;
+  categories: Record<string, boolean>;
+  category_scores: Record<string, number>;
+  /** Console extension: raw guardrail findings behind the category map. */
+  findings: ModerationFinding[];
+}
+
+export interface ModerationResponse {
+  id: string;
+  /** Guardrail key the inputs were evaluated against. */
+  model: string;
+  results: ModerationResult[];
+}
+
+// ============================================================================
+// Spend & Budgets
+// ============================================================================
+
+export interface SpendModelEntry {
+  model_key: string;
+  model_name: string | null;
+  category: string | null;
+  provider_key: string | null;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost: number;
+  currency: string;
+}
+
+export interface SpendTimeseriesPoint {
+  period: string;
+  calls: number;
+  total_tokens: number;
+  cost: number;
+}
+
+export interface SpendReport {
+  object: 'spend.report';
+  from: string | null;
+  to: string | null;
+  group_by: 'hour' | 'day' | 'month';
+  currency: string;
+  total_cost: number;
+  total_calls: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  by_model: SpendModelEntry[];
+  timeseries: SpendTimeseriesPoint[];
+}
+
+export interface ListSpendReportQuery {
+  /** ISO date — start of the reporting window. */
+  from?: string;
+  /** ISO date — end of the reporting window. */
+  to?: string;
+  group_by?: 'hour' | 'day' | 'month';
+  /** Restrict to a single model key. */
+  model?: string;
+}
+
+export type BudgetDomain =
+  | 'global'
+  | 'llm'
+  | 'embedding'
+  | 'vector'
+  | 'file'
+  | 'tracing'
+  | 'stt'
+  | 'tts'
+  | 'ocr';
+
+export interface Budget {
+  id: string | null;
+  object: 'budget';
+  label: string | null;
+  description: string | null;
+  domain: BudgetDomain;
+  scope: 'tenant' | 'user' | 'token' | 'resource' | 'provider';
+  scope_id: string | null;
+  project_id: string | null;
+  daily_limit_usd: number | null;
+  monthly_limit_usd: number | null;
+  alert_thresholds: number[] | null;
+  enabled: boolean;
+  priority: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CreateBudgetRequest {
+  /** Defaults to 'llm'. */
+  domain?: BudgetDomain;
+  /** Defaults to 'tenant'. */
+  scope?: 'tenant' | 'user' | 'token' | 'resource' | 'provider';
+  scope_id?: string;
+  daily_limit_usd?: number;
+  monthly_limit_usd?: number;
+  /** e.g. [0.5, 0.8, 1.0] — fractions of the limit to alert at. */
+  alert_thresholds?: number[];
+  label?: string;
+  description?: string;
+  enabled?: boolean;
+  priority?: number;
+}
+
+export interface UpdateBudgetRequest {
+  daily_limit_usd?: number;
+  monthly_limit_usd?: number;
+  alert_thresholds?: number[];
+  label?: string;
+  description?: string;
+  enabled?: boolean;
+}
+
+export interface BudgetWindowStatus {
+  limit_usd: number | null;
+  used_usd: number;
+  remaining_usd: number | null;
+}
+
+export interface BudgetStatus {
+  object: 'budget.status';
+  domain: BudgetDomain;
+  configured: boolean;
+  per_day: BudgetWindowStatus;
+  per_month: BudgetWindowStatus;
+  alert_thresholds: number[] | null;
+}
+
+// ============================================================================
+// Realtime API (WebSocket)
+// ============================================================================
+
+/** Session config patch sent with `session.update`. */
+export interface RealtimeSessionUpdate {
+  /** Chat model key responses are generated with. */
+  model?: string;
+  /** System prompt prepended to the conversation. */
+  instructions?: string;
+  temperature?: number;
+  max_output_tokens?: number;
+  /** STT model key used by `input_audio_buffer.commit`. */
+  transcription_model?: string;
+  /** MIME type of appended audio chunks (default audio/webm). */
+  input_audio_format?: string;
+  /** TTS model key; when set, responses are also synthesized to audio. */
+  tts_model?: string;
+  /** TTS voice id. */
+  voice?: string;
+  tts_format?: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
+}
+
+/** Any event emitted by the realtime server. */
+export interface RealtimeServerEvent {
+  type:
+    | 'session.created'
+    | 'session.updated'
+    | 'conversation.item.created'
+    | 'input_audio_buffer.cleared'
+    | 'input_audio_buffer.committed'
+    | 'response.created'
+    | 'response.output_text.delta'
+    | 'response.output_text.done'
+    | 'response.audio.delta'
+    | 'response.audio.done'
+    | 'response.done'
+    | 'error'
+    | string;
+  event_id?: string;
+  [key: string]: unknown;
+}
+
+// ============================================================================
+// Realtime models (named session presets)
+// ============================================================================
+
+export interface RealtimeModel {
+  id: string | null;
+  object: 'realtime.model';
+  /** Stable identifier clients connect with (`?model=<key>`). */
+  key: string;
+  name: string;
+  description: string | null;
+  status: 'active' | 'disabled';
+  chat_model_key: string;
+  instructions: string | null;
+  temperature: number | null;
+  max_output_tokens: number | null;
+  stt_model_key: string | null;
+  input_audio_format: string | null;
+  tts_model_key: string | null;
+  voice: string | null;
+  tts_format: string | null;
+  turn_silence_ms: number | null;
+  turn_silence_threshold: number | null;
+  greeting: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CreateRealtimeModelRequest {
+  /** Auto-slugged from `name` when omitted. */
+  key?: string;
+  name: string;
+  description?: string;
+  chat_model_key: string;
+  instructions?: string;
+  temperature?: number;
+  max_output_tokens?: number;
+  /** STT model key — required for voice input / telephony. */
+  stt_model_key?: string;
+  input_audio_format?: string;
+  /** TTS model key — required for spoken responses / telephony. */
+  tts_model_key?: string;
+  voice?: string;
+  tts_format?: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
+  /** Telephony turn detection: silence that ends a caller turn (ms). */
+  turn_silence_ms?: number;
+  /** Telephony turn detection: RMS silence threshold (0..1). */
+  turn_silence_threshold?: number;
+  /** Spoken when a telephony call connects. */
+  greeting?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type UpdateRealtimeModelRequest = Partial<Omit<CreateRealtimeModelRequest, 'key'>> & {
+  status?: 'active' | 'disabled';
+};
