@@ -1,6 +1,10 @@
 import { HttpClient } from './http';
 import { ConsoleClientOptions } from './types';
 import { ChatResource } from './resources/chat';
+import { BatchesResource } from './resources/batches';
+import { ModerationsResource } from './resources/moderations';
+import { BudgetsResource, SpendResource } from './resources/spend';
+import { RealtimeResource } from './resources/realtime';
 import { EmbeddingsResource } from './resources/embeddings';
 import { VectorsResource } from './resources/vectors';
 import { FilesResource } from './resources/files';
@@ -55,6 +59,21 @@ export class ConsoleClient {
 
   /** Chat completions API */
   public chat: ChatResource;
+
+  /** Batch API (OpenAI-compatible async bulk inference) */
+  public batches: BatchesResource;
+
+  /** Moderations API (OpenAI-compatible, backed by guardrails) */
+  public moderations: ModerationsResource;
+
+  /** Spend reporting API */
+  public spend: SpendResource;
+
+  /** Budget (spend cap) management API */
+  public budgets: BudgetsResource;
+
+  /** Realtime API (WebSocket streaming chat with optional voice) */
+  public realtime: RealtimeResource;
 
   /** Embeddings API */
   public embeddings: EmbeddingsResource;
@@ -136,6 +155,11 @@ export class ConsoleClient {
 
     // Initialize resources
     this.chat = new ChatResource(this.http);
+    this.batches = new BatchesResource(this.http);
+    this.moderations = new ModerationsResource(this.http);
+    this.spend = new SpendResource(this.http);
+    this.budgets = new BudgetsResource(this.http);
+    this.realtime = new RealtimeResource(baseURL, options.apiKey, this.http);
     this.embeddings = new EmbeddingsResource(this.http);
     this.vectors = new VectorsResource(this.http);
     this.files = new FilesResource(this.http);

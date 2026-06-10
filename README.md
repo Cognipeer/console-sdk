@@ -9,6 +9,10 @@ Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com
 ## Features
 
 - 🤖 **Chat Completions** - OpenAI-compatible chat API with streaming support
+- 📦 **Batch API** - OpenAI-compatible asynchronous bulk inference (chat + embeddings)
+- 🚦 **Moderations** - OpenAI-compatible content moderation backed by guardrails
+- 💰 **Spend & Budgets** - Cost reporting and enforced spend caps per tenant/token/model
+- 🎧 **Realtime** - WebSocket streaming chat with optional voice round-trip (STT/TTS)
 - 🧑‍✈️ **Agents** - Invoke Console-managed agents via the OpenAI Responses API
 - 📊 **Embeddings** - Text vectorization for semantic search
 - 🗄️ **Vector Operations** - Manage vector databases (Pinecone, Chroma, Qdrant, etc.)
@@ -178,6 +182,36 @@ const client = new ConsoleClient({
 
 #### Embeddings
 - `client.embeddings.create(params)` - Create embeddings
+
+#### Batches
+- `client.batches.create(data)` - Create a batch (inline `requests` or `input_file` JSONL in a bucket)
+- `client.batches.list(query?)` - List batches
+- `client.batches.retrieve(batchId)` - Batch status, request counts, and usage
+- `client.batches.cancel(batchId)` - Cancel a batch (pending lines are skipped)
+- `client.batches.items(batchId, query?)` - Per-request line status
+- `client.batches.results(batchId)` - Finished lines as parsed OpenAI output objects
+- `client.batches.resultsRaw(batchId)` - Raw output JSONL document
+
+#### Moderations
+- `client.moderations.create({ input, model? })` - Classify text against a moderation guardrail (OpenAI-compatible)
+
+#### Spend & Budgets
+- `client.spend.report(query?)` - Spend totals, per-model breakdown, timeseries
+- `client.budgets.list()` - List budget policies
+- `client.budgets.create(data)` - Create a spend cap (owner/admin token)
+- `client.budgets.update(budgetId, data)` - Update limits/thresholds
+- `client.budgets.delete(budgetId)` - Remove a budget policy
+- `client.budgets.status(query?)` - Current usage vs limits per window
+
+#### Realtime
+- `client.realtime.models.list()` / `.create(data)` / `.retrieve(id)` / `.update(id, data)` / `.delete(id)` - Named realtime model presets (chat + STT + TTS + voice)
+- `client.realtime.connect({ model })` - Open a WebSocket session; `model` is a realtime model key or raw chat model key
+- `client.realtime.twilioStreamUrl(modelKey)` - Twilio `<Stream>` URL for connecting phone calls
+- `connection.updateSession(session)` - Set model, instructions, STT/TTS models, voice
+- `connection.respond(text)` - Send a message and await the full response (text + optional audio)
+- `connection.on('response.output_text.delta', cb)` - Stream deltas; use `'*'` for all events
+- `connection.appendAudio(bytes)` / `commitAudio()` - Voice input via STT
+- `connection.createResponse()` / `cancelResponse()` / `close()`
 
 #### Vectors
 - `client.vectors.providers.list(query?)` - List vector providers

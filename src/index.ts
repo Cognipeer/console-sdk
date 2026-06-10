@@ -8,6 +8,8 @@
 
 // Main client
 export { ConsoleClient } from './client';
+export { RealtimeConnection, RealtimeResource, RealtimeModelsResource } from './resources/realtime';
+export type { RealtimeConnectOptions, WebSocketLike, WebSocketConstructorLike } from './resources/realtime';
 
 /** @deprecated Use `ConsoleClient` instead. */
 export { ConsoleClient as CognipeerClient } from './client';
@@ -268,6 +270,46 @@ export type {
   FileProviderStatus,
   CreateFileProviderRequest,
   ListFileProvidersQuery,
+
+  // Batch API
+  Batch,
+  BatchEndpoint,
+  BatchStatus,
+  BatchItem,
+  BatchItemStatus,
+  BatchRequestEntry,
+  BatchFileRef,
+  BatchRequestCounts,
+  BatchUsage,
+  BatchOutputLine,
+  CreateBatchRequest,
+  ListBatchesQuery,
+  ListBatchItemsQuery,
+
+  // Moderations
+  CreateModerationRequest,
+  ModerationResponse,
+  ModerationResult,
+  ModerationFinding,
+
+  // Spend & Budgets
+  SpendReport,
+  SpendModelEntry,
+  SpendTimeseriesPoint,
+  ListSpendReportQuery,
+  Budget,
+  BudgetDomain,
+  BudgetStatus,
+  BudgetWindowStatus,
+  CreateBudgetRequest,
+  UpdateBudgetRequest,
+
+  // Realtime
+  RealtimeSessionUpdate,
+  RealtimeServerEvent,
+  RealtimeModel,
+  CreateRealtimeModelRequest,
+  UpdateRealtimeModelRequest,
 } from './types';
 
 // LangGraph types
