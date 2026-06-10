@@ -204,10 +204,10 @@ const client = new ConsoleClient({
 - `client.budgets.status(query?)` - Current usage vs limits per window
 
 #### Realtime
-- `client.realtime.models.list()` / `.create(data)` / `.retrieve(id)` / `.update(id, data)` / `.delete(id)` - Named realtime model presets (chat + STT + TTS + voice)
-- `client.realtime.connect({ model })` - Open a WebSocket session; `model` is a realtime model key or raw chat model key
+- `client.realtime.models.list()` / `.create(data)` / `.retrieve(id)` / `.update(id, data)` / `.delete(id)` - Named realtime model presets (chat model or agent + STT + TTS; voice is optional and defaults to the provider voice)
+- `client.realtime.connect({ model })` - Open a WebSocket session; `model` is a realtime model key or raw chat model key. Pass `{ agent }` instead to have a Console agent generate the responses. The generator is fixed once the conversation starts
 - `client.realtime.twilioStreamUrl(modelKey)` - Twilio `<Stream>` URL for connecting phone calls
-- `connection.updateSession(session)` - Set model, instructions, STT/TTS models, voice
+- `connection.updateSession(session)` - Set instructions, STT/TTS models, voice; `model`/`agent_key` only before the first response (`generator_locked` afterwards)
 - `connection.respond(text)` - Send a message and await the full response (text + optional audio)
 - `connection.on('response.output_text.delta', cb)` - Stream deltas; use `'*'` for all events
 - `connection.appendAudio(bytes)` / `commitAudio()` - Voice input via STT

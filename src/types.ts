@@ -1590,7 +1590,8 @@ export interface AudioSpeechRequest {
   model: string;
   /** Text to synthesize (alias: text). */
   input: string;
-  voice: string;
+  /** Optional — the TTS provider falls back to its default voice (e.g. alloy). */
+  voice?: string;
   response_format?: TtsOutputFormat;
   speed?: number;
   instructions?: string;
@@ -2312,10 +2313,18 @@ export interface BudgetStatus {
 // Realtime API (WebSocket)
 // ============================================================================
 
-/** Session config patch sent with `session.update`. */
+/**
+ * Session config patch sent with `session.update`.
+ *
+ * The response generator (`model` / `agent_key`) is a session-start choice:
+ * it can be set before the first response is created and locks afterwards —
+ * the server rejects later changes with a `generator_locked` error.
+ */
 export interface RealtimeSessionUpdate {
-  /** Chat model key responses are generated with. */
+  /** Chat model key responses are generated with. Locked after the first response. */
   model?: string;
+  /** Agent key responses are generated with (takes precedence over `model`). Locked after the first response. */
+  agent_key?: string;
   /** System prompt prepended to the conversation. */
   instructions?: string;
   temperature?: number;
@@ -2326,7 +2335,7 @@ export interface RealtimeSessionUpdate {
   input_audio_format?: string;
   /** TTS model key; when set, responses are also synthesized to audio. */
   tts_model?: string;
-  /** TTS voice id. */
+  /** TTS voice id. Optional — the provider falls back to its default voice. */
   voice?: string;
   tts_format?: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
 }
@@ -2363,7 +2372,10 @@ export interface RealtimeModel {
   name: string;
   description: string | null;
   status: 'active' | 'disabled';
-  chat_model_key: string;
+  /** Chat model responses are generated with (null when an agent is set). */
+  chat_model_key: string | null;
+  /** Agent responses are generated with (takes precedence over the chat model). */
+  agent_key: string | null;
   instructions: string | null;
   temperature: number | null;
   max_output_tokens: number | null;
@@ -2385,7 +2397,10 @@ export interface CreateRealtimeModelRequest {
   key?: string;
   name: string;
   description?: string;
-  chat_model_key: string;
+  /** Chat model responses are generated with. Either this or `agent_key` is required. */
+  chat_model_key?: string;
+  /** Agent responses are generated with (takes precedence over `chat_model_key`). */
+  agent_key?: string;
   instructions?: string;
   temperature?: number;
   max_output_tokens?: number;
@@ -2394,6 +2409,7 @@ export interface CreateRealtimeModelRequest {
   input_audio_format?: string;
   /** TTS model key — required for spoken responses / telephony. */
   tts_model_key?: string;
+  /** Optional — the TTS provider falls back to its default voice. */
   voice?: string;
   tts_format?: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
   /** Telephony turn detection: silence that ends a caller turn (ms). */
