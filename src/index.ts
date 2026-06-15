@@ -239,6 +239,22 @@ export type {
   JsSandboxExecutionStatus,
   JsSandboxLogEntry,
 
+  // Agent Sandbox (remote runtime sandboxes)
+  SandboxStatus,
+  SandboxCreateRequest,
+  SandboxSummary,
+  SandboxExecRequest,
+  SandboxExecResult,
+  SandboxCodeRunRequest,
+  SandboxFileEntry,
+  SandboxFileInfo,
+  SandboxReadFileResult,
+  SandboxFindMatch,
+  SandboxReplaceResult,
+  SandboxGitStatus,
+  SandboxGitLogEntry,
+  SandboxSessionCommandLogs,
+
   // Reranker
   Reranker,
   RerankerDocumentInput,

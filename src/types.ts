@@ -2424,3 +2424,113 @@ export interface CreateRealtimeModelRequest {
 export type UpdateRealtimeModelRequest = Partial<Omit<CreateRealtimeModelRequest, 'key'>> & {
   status?: 'active' | 'disabled';
 };
+
+// ============================================================================
+// Agent Sandbox Types (remote runtime sandboxes)
+// ============================================================================
+
+export type SandboxStatus =
+  | 'pending'
+  | 'creating'
+  | 'starting'
+  | 'running'
+  | 'stopping'
+  | 'stopped'
+  | 'failed'
+  | 'deleted'
+  | string;
+
+export interface SandboxCreateRequest {
+  /** Template id or key. If omitted, the first available template is used. */
+  template?: string;
+  name?: string;
+  /** Per-sandbox environment variables (override template env). */
+  env?: Record<string, string>;
+  runnerId?: string;
+  volumeId?: string;
+}
+
+export interface SandboxSummary {
+  id: string;
+  name?: string;
+  status: SandboxStatus;
+}
+
+export interface SandboxExecRequest {
+  command: string;
+  cwd?: string;
+  /** Extra environment variables for this command. */
+  env?: Record<string, string>;
+  timeoutSec?: number;
+}
+
+export interface SandboxExecResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  timedOut?: boolean;
+}
+
+export interface SandboxCodeRunRequest {
+  code: string;
+  language?: 'python' | 'javascript' | 'typescript' | 'bash';
+  cwd?: string;
+  timeoutSec?: number;
+}
+
+export interface SandboxFileEntry {
+  name: string;
+  isDir: boolean;
+  size: number;
+  modTime: string;
+}
+
+export interface SandboxFileInfo {
+  name: string;
+  path: string;
+  size: number;
+  isDir: boolean;
+  mode: string;
+  permissions: string;
+  modTime: string;
+}
+
+export interface SandboxReadFileResult {
+  content: string;
+  encoding: 'utf8' | 'base64';
+  size: number;
+}
+
+export interface SandboxFindMatch {
+  file: string;
+  line: number;
+  content: string;
+}
+
+export interface SandboxReplaceResult {
+  file: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface SandboxGitStatus {
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  files: Array<{ path: string; status: string }>;
+}
+
+export interface SandboxGitLogEntry {
+  hash: string;
+  author: string;
+  email: string;
+  date: string;
+  message: string;
+}
+
+export interface SandboxSessionCommandLogs {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  running: boolean;
+}
