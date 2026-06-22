@@ -61,6 +61,14 @@ export interface ChatMessage {
   name?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  /**
+   * Chain-of-thought emitted by reasoning ("thinking") models, separate from
+   * the final `content`. Present on assistant messages and streamed deltas when
+   * the underlying model exposes it (OpenAI-compatible `reasoning_content`).
+   */
+  reasoning_content?: string;
+  /** Structured reasoning payload (Responses / o-series style), when provided. */
+  reasoning?: unknown;
 }
 
 export interface ToolCall {
