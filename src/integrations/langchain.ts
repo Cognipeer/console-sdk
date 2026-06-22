@@ -99,7 +99,13 @@ export class CognipeerLangChainChatModel extends BaseChatModel<CognipeerChatCall
 
     const aiMessage = new AIMessage({
       content: message?.content ?? '',
-      additional_kwargs: message?.tool_calls ? { tool_calls: message.tool_calls } : undefined,
+      additional_kwargs: {
+        ...(message?.tool_calls ? { tool_calls: message.tool_calls } : {}),
+        ...(message?.reasoning_content !== undefined
+          ? { reasoning_content: message.reasoning_content }
+          : {}),
+        ...(message?.reasoning !== undefined ? { reasoning: message.reasoning } : {}),
+      },
     });
 
     const generation: ChatGeneration = {
@@ -144,6 +150,7 @@ export class CognipeerLangChainChatModel extends BaseChatModel<CognipeerChatCall
       const delta = chunk.choices[0]?.delta;
       const content = delta?.content ?? '';
       const toolCalls = delta?.tool_calls;
+      const reasoningContent = delta?.reasoning_content;
 
       if (runManager && content) {
         await runManager.handleLLMNewToken?.(content);
@@ -151,7 +158,13 @@ export class CognipeerLangChainChatModel extends BaseChatModel<CognipeerChatCall
 
       const messageChunk = new AIMessageChunk({
         content,
-        additional_kwargs: toolCalls ? { tool_calls: toolCalls } : undefined,
+        additional_kwargs: {
+          ...(toolCalls ? { tool_calls: toolCalls } : {}),
+          ...(reasoningContent !== undefined
+            ? { reasoning_content: reasoningContent }
+            : {}),
+          ...(delta?.reasoning !== undefined ? { reasoning: delta.reasoning } : {}),
+        },
       });
 
       const generationChunk = new ChatGenerationChunk({
