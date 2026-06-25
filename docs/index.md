@@ -34,7 +34,7 @@ features:
     details: Create browser profiles, drive live sessions, and expose each browser as its own MCP endpoint for Browser Use clients.
   - icon: '05'
     title: Embeddings & vectors
-    details: A single API across Pinecone, Qdrant, Weaviate, and S3 Vectors. Build retrieval without committing to a backend on day one.
+    details: A single API across Chroma, Postgres, Elasticsearch, Azure AI Search, and S3 Vectors. Build retrieval without committing to a backend on day one.
   - icon: '06'
     title: Files & memory
     details: Upload documents with markdown conversion, then thread them into long-lived memory the platform manages for you.
@@ -45,6 +45,15 @@ features:
     title: Tracing built in
     details: Every agent run produces a structured trace — spans, tool calls, latencies — viewable in Console or piped via OpenTelemetry.
   - icon: '09'
+    title: Realtime & voice
+    details: WebSocket sessions with streaming responses and an optional STT/TTS voice round-trip — drive them from the browser, Node, or Twilio Media Streams.
+  - icon: '10'
+    title: Agent Sandbox
+    details: Remote runtime containers for agents — exec commands, run code, manage files and git, and snapshot or fork the whole environment over the API.
+  - icon: '11'
+    title: Batch, moderations & spend
+    details: OpenAI-compatible async batch inference, content moderation backed by guardrails, and spend reports with enforceable budget caps.
+  - icon: '12'
     title: Strict types
     details: Full TypeScript, no any escape hatches. Generics carry through streams, tool definitions, and structured outputs.
 ---

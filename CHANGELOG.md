@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-06-10
+
+### Added
+
+- **Agent Sandbox API** (`client.sandbox`) — remote runtime containers with
+  `exec`/`code`, lifecycle (`start`/`stop`/`delete`), filesystem (`fs.*`) and
+  volume file IO (`uploadFiles`/`listFiles`/`downloadFile`), `git.*`, detached
+  `sessions.*`, and `snapshot`/`fork`/`restoreSnapshot`/`waitUntilRunning`.
+- **Realtime API** (`client.realtime`) — WebSocket sessions (`connect`/`url`/
+  `twilioStreamUrl`), the `RealtimeConnection` event API and `respond()` helper,
+  optional STT/TTS voice round-trip, and realtime model presets
+  (`client.realtime.models`).
+
+### Changed
+
+- Documented the full client surface on the VitePress site (previously
+  README-only): Batches, Moderations, Spend & Budgets, Realtime, Agent Sandbox,
+  plus LangChain and OpenTelemetry integration pages.
+
+## [1.2.0] - 2026-06-03
+
+### Added
+
+- **Batch API** (`client.batches`) — OpenAI-compatible async bulk inference:
+  `create`/`list`/`retrieve`/`cancel`/`items`/`results`/`resultsRaw`.
+- **Moderations API** (`client.moderations.create`) — OpenAI-compatible content
+  classification backed by console guardrails.
+- **Spend API** (`client.spend.report`) and **Budgets API** (`client.budgets` —
+  `list`/`create`/`update`/`delete`/`status`) for cost reporting and caps.
+
+### Removed
+
+- `client.browserAgents` — superseded by the `browsers` / browser sessions /
+  per-browser MCP split.
+
 ## [1.1.0] - 2026-05-21
 
 ### Added
