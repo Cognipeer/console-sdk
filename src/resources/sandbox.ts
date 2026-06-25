@@ -12,6 +12,7 @@ import {
   SandboxReadFileResult,
   SandboxReplaceResult,
   SandboxSessionCommandLogs,
+  SandboxSnapshotSummary,
   SandboxSummary,
 } from '../types';
 
@@ -78,6 +79,90 @@ export class SandboxResource {
     return this.http.request<SandboxExecResult>(
       'POST',
       `${BASE}/${encodeURIComponent(id)}/code`,
+      { body: data },
+    );
+  }
+
+  /** Start a stopped (persistent) sandbox. */
+  async start(id: string): Promise<SandboxSummary> {
+    return this.http.request<SandboxSummary>('POST', `${BASE}/${encodeURIComponent(id)}/start`);
+  }
+
+  /** Stop a running sandbox (keeps it around if persistent). */
+  async stop(id: string): Promise<SandboxSummary> {
+    return this.http.request<SandboxSummary>('POST', `${BASE}/${encodeURIComponent(id)}/stop`);
+  }
+
+  /**
+   * Bulk-upload files to the sandbox's attached volume (object storage). Each
+   * file's `data` is base64 (or a data-URL). Works whether or not the container
+   * is running. The sandbox must have a volume attached.
+   */
+  async uploadFiles(
+    id: string,
+    files: Array<{ path: string; data: string; contentType?: string }>,
+  ): Promise<{ uploaded: Array<{ path: string; name: string; size: number }> }> {
+    return this.http.request('POST', `${BASE}/${encodeURIComponent(id)}/files`, { body: { files } });
+  }
+
+  /** List files in the sandbox's attached volume (paths are volume-relative). */
+  async listFiles(
+    id: string,
+    options: { cursor?: string; limit?: number } = {},
+  ): Promise<{ items: Array<{ path: string; name: string; size: number; contentType?: string }>; nextCursor?: string }> {
+    return this.http.request('GET', `${BASE}/${encodeURIComponent(id)}/files`, {
+      query: { cursor: options.cursor, limit: options.limit },
+    });
+  }
+
+  /** Download a file from the sandbox's attached volume by its volume-relative path. */
+  async downloadFile(id: string, path: string): Promise<{ data: Uint8Array; contentType: string }> {
+    return this.http.requestBinary('GET', `${BASE}/${encodeURIComponent(id)}/files/download`, {
+      query: { path },
+    });
+  }
+
+  /** Capture a snapshot of the sandbox's state (optionally export it). */
+  async snapshot(
+    id: string,
+    data: { name?: string; export?: boolean } = {},
+  ): Promise<SandboxSnapshotSummary> {
+    return this.http.request<SandboxSnapshotSummary>(
+      'POST',
+      `${BASE}/${encodeURIComponent(id)}/snapshot`,
+      { body: data },
+    );
+  }
+
+  /** Fork a sandbox into a new independent copy. */
+  async fork(
+    id: string,
+    data: { name?: string; persist?: boolean } = {},
+  ): Promise<SandboxSummary> {
+    return this.http.request<SandboxSummary>(
+      'POST',
+      `${BASE}/${encodeURIComponent(id)}/fork`,
+      { body: data },
+    );
+  }
+
+  /** List snapshots visible to the API token. */
+  async listSnapshots(): Promise<SandboxSnapshotSummary[]> {
+    const res = await this.http.request<{ snapshots: SandboxSnapshotSummary[] }>(
+      'GET',
+      '/api/client/v1/sandbox/snapshots',
+    );
+    return res.snapshots ?? [];
+  }
+
+  /** Resume a new sandbox from a snapshot. */
+  async restoreSnapshot(
+    snapshotId: string,
+    data: { name?: string; persist?: boolean; blockNetwork?: boolean } = {},
+  ): Promise<SandboxSummary> {
+    return this.http.request<SandboxSummary>(
+      'POST',
+      `/api/client/v1/sandbox/snapshots/${encodeURIComponent(snapshotId)}/restore`,
       { body: data },
     );
   }

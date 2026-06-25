@@ -2456,12 +2456,42 @@ export interface SandboxCreateRequest {
   env?: Record<string, string>;
   runnerId?: string;
   volumeId?: string;
+  /** Persist the sandbox so it survives stop/restart instead of being ephemeral. */
+  persist?: boolean;
+  /** Block all outbound network access from the sandbox container. */
+  blockNetwork?: boolean;
+  /** Override the template's resource limits. */
+  resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number };
 }
 
 export interface SandboxSummary {
   id: string;
   name?: string;
   status: SandboxStatus;
+}
+
+export interface SandboxSnapshotSummary {
+  id: string;
+  name?: string;
+  status: string;
+  kind: 'snapshot' | 'backup';
+}
+
+export interface SandboxSnapshotRequest {
+  name?: string;
+  export?: boolean;
+}
+
+export interface SandboxForkRequest {
+  name?: string;
+  persist?: boolean;
+}
+
+export interface SandboxRestoreRequest {
+  name?: string;
+  persist?: boolean;
+  /** Override the snapshot's captured network policy. */
+  blockNetwork?: boolean;
 }
 
 export interface SandboxExecRequest {
