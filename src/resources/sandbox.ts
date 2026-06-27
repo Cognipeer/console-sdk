@@ -158,7 +158,12 @@ export class SandboxResource {
   /** Resume a new sandbox from a snapshot. */
   async restoreSnapshot(
     snapshotId: string,
-    data: { name?: string; persist?: boolean; blockNetwork?: boolean } = {},
+    data: {
+      name?: string;
+      persist?: boolean;
+      blockNetwork?: boolean;
+      resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number };
+    } = {},
   ): Promise<SandboxSummary> {
     return this.http.request<SandboxSummary>(
       'POST',

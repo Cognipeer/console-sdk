@@ -2492,6 +2492,8 @@ export interface SandboxRestoreRequest {
   persist?: boolean;
   /** Override the snapshot's captured network policy. */
   blockNetwork?: boolean;
+  /** Override the snapshot's captured CPU/RAM/Disk limits. */
+  resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number };
 }
 
 export interface SandboxExecRequest {
