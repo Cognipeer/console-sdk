@@ -2460,14 +2460,50 @@ export interface SandboxCreateRequest {
   persist?: boolean;
   /** Block all outbound network access from the sandbox container. */
   blockNetwork?: boolean;
+  /** Port preview enabled for this sandbox (default true). */
+  previewEnabled?: boolean;
+  /** Allow public (session-less share-link) preview; default false = private. */
+  previewPublic?: boolean;
   /** Override the template's resource limits. */
   resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number };
+}
+
+export interface SandboxPreviewPort {
+  port: number;
+  label?: string;
+  /** Authenticated proxy URL (path on the console origin). */
+  url: string;
+}
+
+export interface SandboxPreviewInfo {
+  /** Per-sandbox: preview turned on at all. */
+  enabled: boolean;
+  /** Per-sandbox: public (share-link) access allowed vs private (login only). */
+  public: boolean;
+  /** Ports reachable through the preview proxy, with their proxy URLs. */
+  ports: SandboxPreviewPort[];
+  /** Public share links possible (per-sandbox public AND SANDBOX_PREVIEW_SECRET). */
+  sharingEnabled: boolean;
+  /** True when the sandbox has network blocked (preview unavailable). */
+  blocked: boolean;
+}
+
+export interface SandboxPreviewShareLink {
+  token: string;
+  port: number;
+  expiresAt: string;
+  /** Public, session-less share URL (path on the console origin). */
+  url: string;
 }
 
 export interface SandboxSummary {
   id: string;
   name?: string;
   status: SandboxStatus;
+  /** Effective resource limits (present on `get`). */
+  resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number } | null;
+  /** Port-preview metadata (present on `get`). */
+  preview?: SandboxPreviewInfo;
 }
 
 export interface SandboxSnapshotSummary {
@@ -2492,6 +2528,8 @@ export interface SandboxRestoreRequest {
   persist?: boolean;
   /** Override the snapshot's captured network policy. */
   blockNetwork?: boolean;
+  /** Override the snapshot's captured CPU/RAM/Disk limits. */
+  resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number };
 }
 
 export interface SandboxExecRequest {

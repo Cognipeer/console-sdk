@@ -14,6 +14,8 @@ import {
   SandboxSessionCommandLogs,
   SandboxSnapshotSummary,
   SandboxSummary,
+  SandboxPreviewInfo,
+  SandboxPreviewShareLink,
 } from '../types';
 
 const BASE = '/api/client/v1/sandbox/sandboxes';
@@ -81,6 +83,58 @@ export class SandboxResource {
       `${BASE}/${encodeURIComponent(id)}/code`,
       { body: data },
     );
+  }
+
+  /**
+   * Get the sandbox's previewable ports and their proxy URLs. A web service you
+   * start inside the sandbox (a dev server, a built app) on one of these ports
+   * is reachable at the returned `url` — proxied through the console origin, no
+   * ingress/DNS change. Network must not be blocked and the sandbox running.
+   */
+  async preview(id: string): Promise<SandboxPreviewInfo> {
+    const sbx = await this.get(id);
+    return (
+      sbx.preview ?? { enabled: true, public: false, ports: [], sharingEnabled: false, blocked: false }
+    );
+  }
+
+  /**
+   * Toggle this sandbox's preview settings: `enabled` (preview on/off) and
+   * `public` (allow session-less share links vs private/login-only). Applied
+   * live — no container restart.
+   */
+  async setPreview(
+    id: string,
+    settings: { enabled?: boolean; public?: boolean },
+  ): Promise<{ enabled: boolean; public: boolean }> {
+    return this.http.request<{ enabled: boolean; public: boolean }>(
+      'PATCH',
+      `${BASE}/${encodeURIComponent(id)}/preview`,
+      { body: settings },
+    );
+  }
+
+  /**
+   * Mint a short-lived, session-less **share link** for a sandbox port so a
+   * running app can be opened without an API token. Requires the platform to be
+   * configured with a preview secret; throws otherwise.
+   */
+  async createPreviewLink(
+    id: string,
+    port: number,
+    options: { ttlSeconds?: number } = {},
+  ): Promise<SandboxPreviewShareLink> {
+    return this.http.request<SandboxPreviewShareLink>(
+      'POST',
+      `${BASE}/${encodeURIComponent(id)}/preview-tokens`,
+      { body: { port, ttlSeconds: options.ttlSeconds } },
+    );
+  }
+
+  /** Build the authenticated preview proxy path for a port (+ optional inner path). */
+  previewUrl(id: string, port: number, path = '/'): string {
+    const inner = path.startsWith('/') ? path : `/${path}`;
+    return `${BASE}/${encodeURIComponent(id)}/preview/${port}${inner}`;
   }
 
   /** Start a stopped (persistent) sandbox. */
@@ -158,7 +212,12 @@ export class SandboxResource {
   /** Resume a new sandbox from a snapshot. */
   async restoreSnapshot(
     snapshotId: string,
-    data: { name?: string; persist?: boolean; blockNetwork?: boolean } = {},
+    data: {
+      name?: string;
+      persist?: boolean;
+      blockNetwork?: boolean;
+      resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number };
+    } = {},
   ): Promise<SandboxSummary> {
     return this.http.request<SandboxSummary>(
       'POST',
