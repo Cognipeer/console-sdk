@@ -101,6 +101,29 @@ const logs = await client.sandbox.sessions.logs(sbx.id, sessionId, commandId);
 console.log(logs.stdout, logs.exitCode, logs.running);
 ```
 
+## Port preview
+
+Reach a web service the agent starts inside the sandbox (a dev server, a built app) — the typical dev-agent loop: build → preview → push. The proxy rides the console origin under a path, so no ingress/DNS change is needed.
+
+```typescript
+// agent builds and starts a dev server in the background
+const { sessionId } = await client.sandbox.sessions.create(sbx.id);
+await client.sandbox.sessions.exec(sbx.id, sessionId, 'cd /workspace/app && npm run dev');
+
+// discover the previewable ports + their proxy URLs
+const preview = await client.sandbox.preview(sbx.id);
+//  preview.ports => [{ port: 3000, label: 'dev server', url: '/api/client/v1/.../preview/3000/' }, ...]
+
+// hand a running app to a teammate with a session-less, expiring link
+const link = await client.sandbox.createPreviewLink(sbx.id, 3000, { ttlSeconds: 3600 });
+console.log(link.url); // /api/sandbox/preview/<token>/  → prefix with your console origin
+
+// ...then commit + push the work
+await client.sandbox.git.push(sbx.id, { path: '/workspace/app', username: 'x', password: token });
+```
+
+`previewUrl(id, port, path?)` builds the authenticated proxy path locally without a round-trip. Preview needs the sandbox **running** and network **not** blocked; share links require `SANDBOX_PREVIEW_SECRET` on the server. WebSocket upgrades (e.g. Vite HMR) are not proxied.
+
 ## Snapshots, fork, restore
 
 ```typescript
@@ -125,6 +148,9 @@ const resumed = await client.sandbox.restoreSnapshot(snap.id, { name: 'from-base
 | `uploadFiles(id, files)` / `listFiles(id, opts?)` / `downloadFile(id, path)` | Volume file IO |
 | `snapshot(id, data?)` / `fork(id, data?)` | Capture / clone |
 | `listSnapshots()` / `restoreSnapshot(id, data?)` | List / resume snapshots |
+| `preview(id)` | List previewable ports + proxy URLs |
+| `createPreviewLink(id, port, opts?)` | Mint a session-less, expiring share link |
+| `previewUrl(id, port, path?)` | Build the authenticated proxy path locally |
 | `waitUntilRunning(id, opts?)` | Poll until `running` (throws on terminal state/timeout) |
 
 ### `client.sandbox.fs`

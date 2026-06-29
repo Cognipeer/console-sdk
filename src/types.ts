@@ -2464,10 +2464,38 @@ export interface SandboxCreateRequest {
   resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number };
 }
 
+export interface SandboxPreviewPort {
+  port: number;
+  label?: string;
+  /** Authenticated proxy URL (path on the console origin). */
+  url: string;
+}
+
+export interface SandboxPreviewInfo {
+  /** Ports reachable through the preview proxy, with their proxy URLs. */
+  ports: SandboxPreviewPort[];
+  /** Whether session-less share links can be minted (SANDBOX_PREVIEW_SECRET set). */
+  sharingEnabled: boolean;
+  /** True when the sandbox has network blocked (preview unavailable). */
+  blocked: boolean;
+}
+
+export interface SandboxPreviewShareLink {
+  token: string;
+  port: number;
+  expiresAt: string;
+  /** Public, session-less share URL (path on the console origin). */
+  url: string;
+}
+
 export interface SandboxSummary {
   id: string;
   name?: string;
   status: SandboxStatus;
+  /** Effective resource limits (present on `get`). */
+  resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number } | null;
+  /** Port-preview metadata (present on `get`). */
+  preview?: SandboxPreviewInfo;
 }
 
 export interface SandboxSnapshotSummary {
