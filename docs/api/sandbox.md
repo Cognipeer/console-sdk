@@ -124,6 +124,17 @@ await client.sandbox.git.push(sbx.id, { path: '/workspace/app', username: 'x', p
 
 `previewUrl(id, port, path?)` builds the authenticated proxy path locally without a round-trip. Preview needs the sandbox **running** and network **not** blocked; share links require `SANDBOX_PREVIEW_SECRET` on the server. WebSocket upgrades (e.g. Vite HMR) are not proxied.
 
+**Per-sandbox preview controls** — turn preview on/off and choose public vs private (login-only). Settable on `create({ previewEnabled, previewPublic })` or live:
+
+```typescript
+await client.sandbox.setPreview(sbx.id, { enabled: true, public: false }); // private (default)
+await client.sandbox.setPreview(sbx.id, { public: true });                 // allow share links
+const p = await client.sandbox.preview(sbx.id);
+//  p.enabled / p.public / p.sharingEnabled
+```
+
+When `public` is off, `createPreviewLink` is refused and existing links are revoked; only the authenticated proxy (`previewUrl` / `Open`) works.
+
 ## Snapshots, fork, restore
 
 ```typescript
@@ -148,8 +159,9 @@ const resumed = await client.sandbox.restoreSnapshot(snap.id, { name: 'from-base
 | `uploadFiles(id, files)` / `listFiles(id, opts?)` / `downloadFile(id, path)` | Volume file IO |
 | `snapshot(id, data?)` / `fork(id, data?)` | Capture / clone |
 | `listSnapshots()` / `restoreSnapshot(id, data?)` | List / resume snapshots |
-| `preview(id)` | List previewable ports + proxy URLs |
-| `createPreviewLink(id, port, opts?)` | Mint a session-less, expiring share link |
+| `preview(id)` | Preview state: enabled/public + previewable ports |
+| `setPreview(id, {enabled?, public?})` | Toggle preview on/off and public/private |
+| `createPreviewLink(id, port, opts?)` | Mint a session-less, expiring share link (public only) |
 | `previewUrl(id, port, path?)` | Build the authenticated proxy path locally |
 | `waitUntilRunning(id, opts?)` | Poll until `running` (throws on terminal state/timeout) |
 

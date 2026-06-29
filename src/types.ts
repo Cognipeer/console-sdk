@@ -2460,6 +2460,10 @@ export interface SandboxCreateRequest {
   persist?: boolean;
   /** Block all outbound network access from the sandbox container. */
   blockNetwork?: boolean;
+  /** Port preview enabled for this sandbox (default true). */
+  previewEnabled?: boolean;
+  /** Allow public (session-less share-link) preview; default false = private. */
+  previewPublic?: boolean;
   /** Override the template's resource limits. */
   resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number };
 }
@@ -2472,9 +2476,13 @@ export interface SandboxPreviewPort {
 }
 
 export interface SandboxPreviewInfo {
+  /** Per-sandbox: preview turned on at all. */
+  enabled: boolean;
+  /** Per-sandbox: public (share-link) access allowed vs private (login only). */
+  public: boolean;
   /** Ports reachable through the preview proxy, with their proxy URLs. */
   ports: SandboxPreviewPort[];
-  /** Whether session-less share links can be minted (SANDBOX_PREVIEW_SECRET set). */
+  /** Public share links possible (per-sandbox public AND SANDBOX_PREVIEW_SECRET). */
   sharingEnabled: boolean;
   /** True when the sandbox has network blocked (preview unavailable). */
   blocked: boolean;

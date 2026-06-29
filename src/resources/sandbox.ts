@@ -94,7 +94,23 @@ export class SandboxResource {
   async preview(id: string): Promise<SandboxPreviewInfo> {
     const sbx = await this.get(id);
     return (
-      sbx.preview ?? { ports: [], sharingEnabled: false, blocked: false }
+      sbx.preview ?? { enabled: true, public: false, ports: [], sharingEnabled: false, blocked: false }
+    );
+  }
+
+  /**
+   * Toggle this sandbox's preview settings: `enabled` (preview on/off) and
+   * `public` (allow session-less share links vs private/login-only). Applied
+   * live — no container restart.
+   */
+  async setPreview(
+    id: string,
+    settings: { enabled?: boolean; public?: boolean },
+  ): Promise<{ enabled: boolean; public: boolean }> {
+    return this.http.request<{ enabled: boolean; public: boolean }>(
+      'PATCH',
+      `${BASE}/${encodeURIComponent(id)}/preview`,
+      { body: settings },
     );
   }
 
