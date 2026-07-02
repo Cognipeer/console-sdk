@@ -37,7 +37,6 @@ Welcome to the Cognipeer Console SDK examples! Here you'll find practical exampl
 
 - **[Crawler](/examples/crawler)** - Ad-hoc crawl + poll + read results
 - **[Rerankers](/examples/reranker)** - Cohere-compatible reranking
-- **[JS Sandbox](/examples/js-sandbox)** - Run JavaScript inside an isolate
 
 ### MCP
 

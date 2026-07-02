@@ -21,7 +21,6 @@ Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com
 - 📄 **OCR** - Document text extraction with layout/table/KV features
 - 🕸️ **Crawler** - Scheduled and ad-hoc web crawling jobs
 - ⚙️ **Automations** - Trigger and pause built-in scheduled jobs
-- 🧪 **JS Sandbox** - Execute JavaScript inside a managed isolate
 - 🔀 **Rerankers** - Cohere-compatible reranking
 - 🛰️ **MCP** - Talk to the built-in Console MCP server and tenant-configured MCP servers
 - 🌐 **Browser Automation** - Manage browser profiles, drive live sessions, and expose per-browser MCP endpoints
@@ -150,7 +149,6 @@ If you need the platform itself, deployment guidance, tenant architecture, provi
 - [OCR API](https://cognipeer.github.io/console-sdk/api/ocr)
 - [Crawler API](https://cognipeer.github.io/console-sdk/api/crawler)
 - [Automations API](https://cognipeer.github.io/console-sdk/api/automations)
-- [JS Sandbox API](https://cognipeer.github.io/console-sdk/api/js-sandbox)
 - [Rerankers API](https://cognipeer.github.io/console-sdk/api/rerankers)
 - [MCP API](https://cognipeer.github.io/console-sdk/api/mcp)
 - [Guardrails API](https://cognipeer.github.io/console-sdk/api/guardrails)
@@ -265,11 +263,6 @@ const client = new ConsoleClient({
 - `client.automations.get(key)` - Get an automation
 - `client.automations.run(key)` - Trigger immediately
 - `client.automations.pause(key)` / `resume(key)` - Pause / resume
-
-#### JS Sandbox
-- `client.jsSandbox.runtimes.list(query?)` - List JS runtimes
-- `client.jsSandbox.runtimes.get(idOrKey)` - Get a JS runtime
-- `client.jsSandbox.execute(data)` - Execute a snippet
 
 #### Rerankers
 - `client.rerankers.list()` - List rerankers

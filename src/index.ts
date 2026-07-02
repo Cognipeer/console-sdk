@@ -232,12 +232,6 @@ export type {
   ListCrawlJobResultsQuery,
 
   // JS Sandbox
-  JsSandboxRuntime,
-  JsSandboxRuntimeStatus,
-  JsSandboxExecuteRequest,
-  JsSandboxExecutionResult,
-  JsSandboxExecutionStatus,
-  JsSandboxLogEntry,
 
   // Agent Sandbox (remote runtime sandboxes)
   SandboxStatus,

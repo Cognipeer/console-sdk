@@ -20,7 +20,6 @@ import { BrowserMcpResource, BrowserSessionsResource, BrowsersResource } from '.
 import { AudioResource, OcrResource } from './resources/audio';
 import { AutomationsResource } from './resources/automations';
 import { CrawlerResource } from './resources/crawler';
-import { JsSandboxResource } from './resources/jsSandbox';
 import { SandboxResource } from './resources/sandbox';
 import { RerankerResource } from './resources/reranker';
 import { McpResource } from './resources/mcp';
@@ -131,7 +130,6 @@ export class ConsoleClient {
   public crawler: CrawlerResource;
 
   /** JS Sandbox API (managed isolate execution) */
-  public jsSandbox: JsSandboxResource;
 
   /** Agent Sandbox API (remote runtime sandboxes: exec, code, fs, git, sessions) */
   public sandbox: SandboxResource;
@@ -182,7 +180,6 @@ export class ConsoleClient {
     this.ocr = new OcrResource(this.http);
     this.automations = new AutomationsResource(this.http);
     this.crawler = new CrawlerResource(this.http);
-    this.jsSandbox = new JsSandboxResource(this.http);
     this.sandbox = new SandboxResource(this.http);
     this.rerankers = new RerankerResource(this.http);
     this.mcp = new McpResource(this.http);

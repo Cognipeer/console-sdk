@@ -1797,59 +1797,6 @@ export interface ListCrawlJobResultsQuery {
 }
 
 // ============================================================================
-// JS Sandbox Types
-// ============================================================================
-
-export type JsSandboxRuntimeStatus = 'active' | 'inactive' | 'errored' | string;
-
-export interface JsSandboxRuntime {
-  _id: string;
-  key: string;
-  name: string;
-  description?: string;
-  engine?: string;
-  version?: string;
-  status: JsSandboxRuntimeStatus;
-  defaultTimeoutMs?: number;
-  defaultMemoryMb?: number;
-  metadata?: Record<string, unknown>;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface JsSandboxExecuteRequest {
-  /** Runtime key or id to use. If omitted, the default runtime is used. */
-  runtimeKey?: string;
-  /** Source code to execute. */
-  code: string;
-  /** Variables made available to the sandbox as globals. */
-  variables?: Record<string, unknown>;
-  /** Override the runtime's default timeout. */
-  timeoutMs?: number;
-  /** Optional metadata for tracing. */
-  metadata?: Record<string, unknown>;
-}
-
-export type JsSandboxExecutionStatus = 'success' | 'error' | 'timeout' | string;
-
-export interface JsSandboxLogEntry {
-  level: 'log' | 'info' | 'warn' | 'error' | 'debug' | string;
-  message: string;
-  timestamp?: string;
-  args?: unknown[];
-}
-
-export interface JsSandboxExecutionResult {
-  executionId: string;
-  runtimeKey: string;
-  status: JsSandboxExecutionStatus;
-  durationMs?: number;
-  result?: unknown;
-  logs?: JsSandboxLogEntry[];
-  errorMessage?: string;
-}
-
-// ============================================================================
 // Reranker Types
 // ============================================================================
 

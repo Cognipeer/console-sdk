@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- **BREAKING: JS Sandbox API** (`client.jsSandbox`) and its types
+  (`JsSandboxRuntime`, `JsSandboxExecuteRequest`, `JsSandboxExecutionResult`,
+  …). The JS Sandbox module has been removed from the Console platform; use
+  the Agent Sandbox (`client.sandbox`) `code`/`exec` APIs for code execution.
+
 ## [1.3.1] - 2026-06-10
 
 ### Added
