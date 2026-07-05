@@ -1,6 +1,6 @@
 {
   "name": "@cognipeer/console-sdk",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "description": "TypeScript SDK for Cognipeer Console - Multi-tenant AI services platform",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",

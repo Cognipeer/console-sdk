@@ -227,17 +227,13 @@ export type {
   CrawlJobStatus,
   CrawlResult,
   CrawlRunAcceptedResponse,
+  CrawlRunSyncResponse,
+  CrawlRunMode,
   ListCrawlersQuery,
   ListCrawlJobsQuery,
   ListCrawlJobResultsQuery,
 
   // JS Sandbox
-  JsSandboxRuntime,
-  JsSandboxRuntimeStatus,
-  JsSandboxExecuteRequest,
-  JsSandboxExecutionResult,
-  JsSandboxExecutionStatus,
-  JsSandboxLogEntry,
 
   // Agent Sandbox (remote runtime sandboxes)
   SandboxStatus,
@@ -265,6 +261,13 @@ export type {
   RerankerRunRequest,
   RerankerRunResponse,
   RerankerResultItem,
+
+  // Web Search
+  WebSearchRequest,
+  WebSearchResponse,
+  WebSearchResultItem,
+  WebSearchProvider,
+  WebSearchSafeSearch,
 
   // MCP
   McpServerInfo,

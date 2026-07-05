@@ -5,6 +5,7 @@ import {
   CrawlOnContainerRequest,
   CrawlResult,
   CrawlRunAcceptedResponse,
+  CrawlRunSyncResponse,
   Crawler,
   CrawlerUrlEntry,
   CreateCrawlerRequest,
@@ -88,12 +89,23 @@ export class CrawlerResource {
     );
   }
 
-  /** Manually trigger a crawler run. */
+  /**
+   * Manually trigger a crawler run. With `mode: 'sync'` the call blocks until
+   * the job finishes and the response inlines the results (markdown included).
+   */
+  async run(
+    idOrKey: string,
+    options: RunCrawlerRequest & { mode: 'sync' },
+  ): Promise<CrawlRunSyncResponse>;
+  async run(
+    idOrKey: string,
+    options?: RunCrawlerRequest,
+  ): Promise<CrawlRunAcceptedResponse>;
   async run(
     idOrKey: string,
     options: RunCrawlerRequest = {},
-  ): Promise<CrawlRunAcceptedResponse> {
-    return this.http.request<CrawlRunAcceptedResponse>(
+  ): Promise<CrawlRunAcceptedResponse | CrawlRunSyncResponse> {
+    return this.http.request<CrawlRunAcceptedResponse | CrawlRunSyncResponse>(
       'POST',
       `/api/client/v1/crawler/crawlers/${encodeURIComponent(idOrKey)}/run`,
       { body: options },
@@ -102,17 +114,35 @@ export class CrawlerResource {
 
   /**
    * "Give me the markdown for these URLs using this crawler's config."
-   * Same as `run`, but always against a fixed URL list.
+   * Same as `run`, but always against a fixed URL list. With `mode: 'sync'`
+   * the response inlines the results.
    */
   async crawlWithCrawler(
     idOrKey: string,
+    options: CrawlOnContainerRequest & { mode: 'sync' },
+  ): Promise<CrawlRunSyncResponse>;
+  async crawlWithCrawler(
+    idOrKey: string,
     options: CrawlOnContainerRequest,
-  ): Promise<CrawlRunAcceptedResponse> {
-    return this.http.request<CrawlRunAcceptedResponse>(
+  ): Promise<CrawlRunAcceptedResponse>;
+  async crawlWithCrawler(
+    idOrKey: string,
+    options: CrawlOnContainerRequest,
+  ): Promise<CrawlRunAcceptedResponse | CrawlRunSyncResponse> {
+    return this.http.request<CrawlRunAcceptedResponse | CrawlRunSyncResponse>(
       'POST',
       `/api/client/v1/crawler/crawlers/${encodeURIComponent(idOrKey)}/crawl`,
       { body: options },
     );
+  }
+
+  /**
+   * Crawl a single URL on a persistent crawler and return its result
+   * synchronously. Convenience wrapper over `crawlWithCrawler`.
+   */
+  async crawlUrl(idOrKey: string, url: string): Promise<CrawlResult | null> {
+    const res = await this.crawlWithCrawler(idOrKey, { urls: [url], mode: 'sync' });
+    return res.results?.[0] ?? null;
   }
 
   /** Run an ad-hoc crawl without provisioning a persistent crawler. */

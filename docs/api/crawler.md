@@ -7,7 +7,7 @@ hold the crawled pages as results.
 ## Resource shape
 
 ```typescript
-client.crawler.list / create / get / update / delete / run / crawlWithCrawler / runAdhoc
+client.crawler.list / create / get / update / delete / run / crawlWithCrawler / crawlUrl / runAdhoc
 client.crawler.listUrls / addUrls / removeUrls
 client.crawler.jobs.list / get / listResults / getResult / cancel
 ```
@@ -16,7 +16,7 @@ client.crawler.jobs.list / get / listResults / getResult / cancel
 
 ```typescript
 const job = await client.crawler.runAdhoc({
-  urls: ['https://docs.example.com'],
+  seeds: ['https://docs.example.com'],
   metadata: { source: 'demo' },
 });
 
@@ -57,10 +57,22 @@ console.log(run.jobId);
 ## Crawl using an existing crawler's config
 
 ```typescript
+// Async (default): enqueue and get notified via callbackUrl
 await client.crawler.crawlWithCrawler('docs', {
   urls: ['https://docs.example.com/v2/intro'],
   callbackUrl: 'https://your-app.example.com/crawler/webhook',
 });
+
+// Sync: block until done, results (markdown) inlined in the response
+const done = await client.crawler.crawlWithCrawler('docs', {
+  urls: ['https://docs.example.com/v2/intro'],
+  mode: 'sync',
+});
+console.log(done.status, done.results[0]?.bodyMarkdown);
+
+// Single URL convenience — request in, markdown out
+const page = await client.crawler.crawlUrl('docs', 'https://docs.example.com/v2/intro');
+console.log(page?.bodyMarkdown);
 ```
 
 ## Cancel a job
@@ -85,15 +97,26 @@ interface CrawlJob {
 }
 
 interface CrawlResult {
-  _id: string;
+  id?: string;
   jobId: string;
   url: string;
-  status?: string;
+  type?: string;
+  httpStatus?: number;
   contentType?: string;
-  markdown?: string;
-  html?: string;
-  text?: string;
+  title?: string;
+  bodyMarkdown?: string;   // page content as markdown
+  errorMessage?: string;
   metadata?: Record<string, unknown>;
   fetchedAt?: string;
+}
+
+// mode: 'sync' container runs return:
+interface CrawlRunSyncResponse {
+  jobId: string;
+  status: CrawlJobStatus;
+  pagesProcessed?: number;
+  filesProcessed?: number;
+  errorsCount?: number;
+  results: CrawlResult[];
 }
 ```

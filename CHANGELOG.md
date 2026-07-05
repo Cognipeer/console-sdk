@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Crawler sync runs** — `client.crawler.run(...)` / `crawlWithCrawler(...)`
+  accept `mode: 'sync'` and then resolve with the finished job plus inline
+  results (`CrawlRunSyncResponse`, markdown included). New single-URL
+  convenience `client.crawler.crawlUrl(idOrKey, url)`.
+- **Web Search API** (`client.webSearch`) — run web searches through
+  Console-configured Web Search instances (Bing, Brave Search, Serper, Tavily,
+  SearxNG, DuckDuckGo): `search(...)` with provider/count/language/country/
+  safe-search options, `searchWith(key, ...)` for a named instance,
+  `include_answer: true` for AI-interpreted answers (requires the instance's
+  AI Answer setting), and `providers.list()`. New types: `WebSearchRequest`,
+  `WebSearchResponse`, `WebSearchResultItem`, `WebSearchProvider`,
+  `WebSearchSafeSearch`.
+
+### Fixed
+
+- `client.crawler.runAdhoc(...)` now sends `seeds` (the field the server's
+  ad-hoc schema requires) instead of `urls`, and exposes `engine`/`maxDepth`/
+  `maxPages`/`mode` options.
+
+### Removed
+
+- **BREAKING: JS Sandbox API** (`client.jsSandbox`) and its types
+  (`JsSandboxRuntime`, `JsSandboxExecuteRequest`, `JsSandboxExecutionResult`,
+  …). The JS Sandbox module has been removed from the Console platform; use
+  the Agent Sandbox (`client.sandbox`) `code`/`exec` APIs for code execution.
+
 ## [1.3.1] - 2026-06-10
 
 ### Added

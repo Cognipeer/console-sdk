@@ -179,14 +179,6 @@ Scheduled and ad-hoc web crawling.
 
 See [Crawler API](/api/crawler) for details.
 
-### `client.jsSandbox`
-
-Run JavaScript inside a managed isolate.
-
-**Type:** `JsSandboxResource`
-
-See [JS Sandbox API](/api/js-sandbox) for details.
-
 ### `client.rerankers`
 
 Cohere-compatible reranking.
@@ -481,7 +473,6 @@ const response = await safeRequest(() =>
 - [OCR API](/api/ocr)
 - [Crawler API](/api/crawler)
 - [Automations API](/api/automations)
-- [JS Sandbox API](/api/js-sandbox)
 - [Rerankers API](/api/rerankers)
 - [MCP API](/api/mcp)
 - [Config API](/api/config)

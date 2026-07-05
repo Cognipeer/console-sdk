@@ -3,7 +3,7 @@
 Remote, API-driven runtime sandboxes — spin up an isolated container, run commands and code, manage files and git, and stream long-running output. Designed for AI-agent callers. The surface lives on `client.sandbox`.
 
 ::: info JS Sandbox vs Agent Sandbox
-This is **not** the [JS Sandbox](/api/js-sandbox) (which runs short JavaScript snippets in-process). The Agent Sandbox boots a full Linux container you drive over its whole lifecycle.
+The Agent Sandbox boots a full Linux container you drive over its whole lifecycle.
 :::
 
 ## Overview
