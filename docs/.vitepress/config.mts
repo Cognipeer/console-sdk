@@ -60,6 +60,7 @@ export default defineConfig({
             { text: 'Automations', link: '/api/automations' },
             { text: 'Agent Sandbox', link: '/api/sandbox' },
             { text: 'Rerankers', link: '/api/rerankers' },
+            { text: 'Web Search', link: '/api/web-search' },
             { text: 'MCP', link: '/api/mcp' },
             { text: 'Tools', link: '/api/tools' },
             { text: 'Config', link: '/api/config' },

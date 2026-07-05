@@ -1727,23 +1727,34 @@ export interface UpdateCrawlerRequest {
   metadata?: Record<string, unknown>;
 }
 
+export type CrawlRunMode = 'sync' | 'async';
+
 export interface RunCrawlerRequest {
   urls?: string[];
   seeds?: string[];
   callbackUrl?: string;
+  /** 'async' (default) returns 202 + jobId; 'sync' blocks and inlines results. */
+  mode?: CrawlRunMode;
   metadata?: Record<string, unknown>;
 }
 
 export interface CrawlOnContainerRequest {
   urls: string[];
   callbackUrl?: string;
+  /** 'async' (default) returns 202 + jobId; 'sync' blocks and inlines results. */
+  mode?: CrawlRunMode;
   metadata?: Record<string, unknown>;
 }
 
 export interface AdhocCrawlRequest {
-  urls: string[];
-  config?: Record<string, unknown>;
+  /** Seed URLs to crawl (maxDepth defaults to 0 → only these URLs). */
+  seeds: string[];
+  engine?: string;
+  maxDepth?: number;
+  maxPages?: number;
   callbackUrl?: string;
+  /** 'async' (default) returns 202 + jobId; 'sync' blocks and inlines results. */
+  mode?: CrawlRunMode;
   metadata?: Record<string, unknown>;
 }
 
@@ -1760,14 +1771,22 @@ export interface CrawlJob {
 }
 
 export interface CrawlResult {
-  _id: string;
+  id?: string;
+  _id?: string;
   jobId: string;
   url: string;
+  type?: string;
+  httpStatus?: number;
   status?: string;
   contentType?: string;
+  title?: string;
+  description?: string;
+  /** Page content converted to markdown. */
+  bodyMarkdown?: string;
   markdown?: string;
   html?: string;
   text?: string;
+  errorMessage?: string;
   metadata?: Record<string, unknown>;
   fetchedAt?: string;
 }
@@ -1777,6 +1796,16 @@ export interface CrawlRunAcceptedResponse {
   crawlerKey?: string;
   status: CrawlJobStatus;
   urlCount?: number;
+}
+
+/** Returned by container runs with `mode: 'sync'` — job finished, results inline. */
+export interface CrawlRunSyncResponse {
+  jobId: string;
+  status: CrawlJobStatus;
+  pagesProcessed?: number;
+  filesProcessed?: number;
+  errorsCount?: number;
+  results: CrawlResult[];
 }
 
 export interface ListCrawlersQuery {
@@ -2556,4 +2585,74 @@ export interface SandboxSessionCommandLogs {
   stderr: string;
   exitCode: number | null;
   running: boolean;
+}
+
+// ============================================================================
+// Web Search Types
+// ============================================================================
+
+export type WebSearchSafeSearch = 'off' | 'moderate' | 'strict';
+
+export interface WebSearchRequest {
+  /** Search query text. */
+  query: string;
+  /**
+   * Instance key configured in the Console. Omit only when the project has a
+   * single active instance; with multiple instances the request fails.
+   */
+  provider?: string;
+  /** Max results to return (default 10, max 50). */
+  count?: number;
+  /** Result offset / paging hint where the provider supports it. */
+  offset?: number;
+  /** ISO language override (falls back to provider settings). */
+  language?: string;
+  /** Country/market override (falls back to provider settings). */
+  country?: string;
+  /** Safe-search override (falls back to provider settings). */
+  safe_search?: WebSearchSafeSearch;
+  /**
+   * Interpret the results with the instance's configured AI model and return
+   * a synthesized `answer`. Fails if AI answers are not enabled on the
+   * instance (Configuration → AI Answer in the Console).
+   */
+  include_answer?: boolean;
+}
+
+export interface WebSearchResultItem {
+  title: string;
+  url: string;
+  snippet: string;
+  /** 1-based rank within this response. */
+  position: number;
+  /** ISO date string when the provider exposes one. */
+  published_at?: string;
+  /** Origin engine when the provider is a metasearch (SearxNG). */
+  source?: string;
+  /** Provider-native relevance score when available. */
+  score?: number;
+}
+
+export interface WebSearchResponse {
+  id: string;
+  /** Provider key that served the request. */
+  provider: string;
+  /** Driver behind the provider (bing, brave-search, serper, tavily, searxng, duckduckgo). */
+  driver: string;
+  query: string;
+  /** Synthesized answer — AI interpretation or provider-native (Tavily, Serper answer box). */
+  answer?: string;
+  /** Model key when the answer was produced by the instance's AI model. */
+  answer_model?: string;
+  results: WebSearchResultItem[];
+  latency_ms: number;
+}
+
+export interface WebSearchProvider {
+  key: string;
+  driver: string;
+  label: string;
+  status: 'active' | 'disabled' | 'errored';
+  /** True when AI answers are enabled on this instance. */
+  aiAnswer: boolean;
 }

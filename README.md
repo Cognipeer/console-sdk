@@ -150,6 +150,7 @@ If you need the platform itself, deployment guidance, tenant architecture, provi
 - [Crawler API](https://cognipeer.github.io/console-sdk/api/crawler)
 - [Automations API](https://cognipeer.github.io/console-sdk/api/automations)
 - [Rerankers API](https://cognipeer.github.io/console-sdk/api/rerankers)
+- [Web Search API](https://cognipeer.github.io/console-sdk/api/web-search)
 - [MCP API](https://cognipeer.github.io/console-sdk/api/mcp)
 - [Guardrails API](https://cognipeer.github.io/console-sdk/api/guardrails)
 - [Memory API](https://cognipeer.github.io/console-sdk/api/memory)
@@ -268,6 +269,11 @@ const client = new ConsoleClient({
 - `client.rerankers.list()` - List rerankers
 - `client.rerankers.get(key)` - Get a reranker
 - `client.rerankers.run(key, params)` - Run a reranker (Cohere-compatible response)
+
+### Web Search
+
+- `client.webSearch.search(params)` - Run a web search (default or named provider)
+- `client.webSearch.providers.list()` - List configured web search providers
 
 #### MCP
 - `client.mcp.console.listTools / execute / initialize / callTool / callJsonRpc(...)` - Built-in Console MCP server

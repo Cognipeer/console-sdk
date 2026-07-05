@@ -227,6 +227,8 @@ export type {
   CrawlJobStatus,
   CrawlResult,
   CrawlRunAcceptedResponse,
+  CrawlRunSyncResponse,
+  CrawlRunMode,
   ListCrawlersQuery,
   ListCrawlJobsQuery,
   ListCrawlJobResultsQuery,
@@ -259,6 +261,13 @@ export type {
   RerankerRunRequest,
   RerankerRunResponse,
   RerankerResultItem,
+
+  // Web Search
+  WebSearchRequest,
+  WebSearchResponse,
+  WebSearchResultItem,
+  WebSearchProvider,
+  WebSearchSafeSearch,
 
   // MCP
   McpServerInfo,

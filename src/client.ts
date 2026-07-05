@@ -22,6 +22,7 @@ import { AutomationsResource } from './resources/automations';
 import { CrawlerResource } from './resources/crawler';
 import { SandboxResource } from './resources/sandbox';
 import { RerankerResource } from './resources/reranker';
+import { WebSearchResource } from './resources/webSearch';
 import { McpResource } from './resources/mcp';
 
 /**
@@ -137,6 +138,9 @@ export class ConsoleClient {
   /** Reranker API (Cohere-compatible reranking) */
   public rerankers: RerankerResource;
 
+  /** Web Search API (Bing, Brave, Serper, Tavily, SearxNG, DuckDuckGo providers) */
+  public webSearch: WebSearchResource;
+
   /** MCP API (tenant + built-in console MCP servers) */
   public mcp: McpResource;
 
@@ -182,6 +186,7 @@ export class ConsoleClient {
     this.crawler = new CrawlerResource(this.http);
     this.sandbox = new SandboxResource(this.http);
     this.rerankers = new RerankerResource(this.http);
+    this.webSearch = new WebSearchResource(this.http);
     this.mcp = new McpResource(this.http);
   }
 
