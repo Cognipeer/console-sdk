@@ -458,8 +458,8 @@ export interface PromptVersionsResponse {
 // ============================================================================
 
 export type GuardrailTarget = 'input' | 'output' | 'both';
-export type GuardrailAction = 'block' | 'warn' | 'flag';
-export type GuardrailFindingType = 'pii' | 'moderation' | 'prompt_shield' | 'custom';
+export type GuardrailAction = 'block' | 'warn' | 'flag' | 'redact';
+export type GuardrailFindingType = 'pii' | 'word_filter' | 'moderation' | 'prompt_shield' | 'custom';
 export type GuardrailSeverity = 'low' | 'medium' | 'high';
 
 export interface GuardrailEvaluateRequest {
@@ -485,6 +485,10 @@ export interface GuardrailEvaluateResponse {
   action: GuardrailAction;
   findings: GuardrailFinding[];
   message: string | null;
+  /** True when the guardrail is disabled — no checks ran and `passed` is vacuous. */
+  disabled?: boolean;
+  /** Text with redact-action findings masked; present when redaction applied. */
+  redacted_text?: string | null;
 }
 
 // ============================================================================
@@ -2456,12 +2460,27 @@ export interface SandboxPreviewInfo {
   enabled: boolean;
   /** Per-sandbox: public (share-link) access allowed vs private (login only). */
   public: boolean;
-  /** Ports reachable through the preview proxy, with their proxy URLs. */
+  /** Suggested/labelled ports with their proxy URLs. */
   ports: SandboxPreviewPort[];
+  /**
+   * ANY port can be previewed, not just `ports` — the platform provisions an
+   * on-demand forwarder for ports outside the published set. Build the URL for
+   * an arbitrary port with `sandbox.previewUrl(id, port)`.
+   */
+  allPorts?: boolean;
   /** Public share links possible (per-sandbox public AND SANDBOX_PREVIEW_SECRET). */
   sharingEnabled: boolean;
   /** True when the sandbox has network blocked (preview unavailable). */
   blocked: boolean;
+}
+
+export interface SandboxListeningPort {
+  port: number;
+  /** Bound only to 127.0.0.1/::1 — restart the service on 0.0.0.0 to preview it. */
+  loopbackOnly: boolean;
+  label?: string;
+  /** Authenticated proxy URL (path on the console origin). */
+  url: string;
 }
 
 export interface SandboxPreviewShareLink {
@@ -2655,4 +2674,130 @@ export interface WebSearchProvider {
   status: 'active' | 'disabled' | 'errored';
   /** True when AI answers are enabled on this instance. */
   aiAnswer: boolean;
+}
+
+// ── Aegis (enforcement plane, Enterprise module) ─────────────────────────────
+
+export type AegisStage =
+  | 'input.pre'
+  | 'retrieval.pre'
+  | 'retrieval.post'
+  | 'tool.pre'
+  | 'tool.post'
+  | 'output.pre';
+
+export type AegisDecision = 'allow' | 'redact' | 'require_approval' | 'sandbox' | 'block';
+
+/** Shield lifecycle: enforce = binding, simulate = observe-only, disabled = pass-through. */
+export type AegisShieldMode = 'enforce' | 'simulate' | 'disabled';
+
+export type AegisSideEffect = 'none' | 'read' | 'write' | 'destructive' | 'external';
+
+export interface AegisToolLimits {
+  perActorPerMinute?: number;
+  perToolPerMinute?: number;
+  maxArgBytes?: number;
+  maxResultBytes?: number;
+}
+
+export interface AegisToolRule {
+  allow?: string[];
+  deny?: string[];
+  sideEffects?: Record<string, AegisSideEffect>;
+  allowedRoles?: Record<string, string[]>;
+  allowedDomains?: string[];
+  /** Deny wins over allow and also matches subdomains. */
+  deniedDomains?: string[];
+  allowedPathPrefixes?: string[];
+  deniedPathPrefixes?: string[];
+  argumentSchemas?: Record<string, unknown>;
+  limits?: AegisToolLimits;
+}
+
+/** An enforcement instance: one protected surface with its own policy and DLP settings. */
+export interface AegisJudgeConfig {
+  enabled: boolean;
+  stages: AegisStage[];
+  threshold: number;
+  failMode: 'open' | 'closed';
+  onlyHighRisk: boolean;
+}
+
+export interface AegisShield {
+  id: string;
+  name: string;
+  description?: string;
+  mode: AegisShieldMode;
+  rules: AegisToolRule;
+  dlp: { redactSecrets: boolean; redactPii: boolean; semantic?: boolean };
+  llm?: { modelKey?: string; judge?: AegisJudgeConfig };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AegisEvaluateRequest {
+  /** Pipeline stage being evaluated. */
+  stage: AegisStage;
+  /** Who is making the call. */
+  actor: { id: string; roles?: string[] };
+  /** The tool call / content under evaluation. */
+  resource: {
+    type: string;
+    name: string;
+    arguments?: Record<string, unknown>;
+    content?: unknown;
+    result?: unknown;
+  };
+  /** Target shield; defaults to the built-in `default` shield. */
+  shieldId?: string;
+  /** Optional trace correlation id (one is generated when omitted). */
+  traceId?: string;
+  context?: {
+    projectId?: string;
+    model?: string;
+    agent?: string;
+    /** Token minted by an approved `require_approval` decision. */
+    approvalToken?: string;
+    /** When true, side-effectful calls decide `sandbox` instead of `require_approval`. */
+    sandboxAvailable?: boolean;
+    [key: string]: unknown;
+  };
+}
+
+export interface AegisFinding {
+  code: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  reason: string;
+  path?: string;
+}
+
+export interface AegisEvaluation {
+  traceId: string;
+  shieldId: string;
+  shieldMode: AegisShieldMode;
+  decision: AegisDecision;
+  /** False when the shield is simulating/disabled — the decision is advisory. */
+  enforced: boolean;
+  riskScore: number;
+  reasons: string[];
+  policyVersion: string;
+  findings: AegisFinding[];
+  mutations: Array<{ path: string; action: 'redact' | 'remove'; replacement?: string }>;
+  /** The resource with sensitive values redacted — execute with THIS, not the original. */
+  sanitizedResource?: AegisEvaluateRequest['resource'];
+  /** Present on `require_approval`: approve in the Console, then re-run with `context.approvalToken`. */
+  approval?: { approvalId: string; expiresAt: string; scope: 'call_bound' };
+}
+
+export interface AegisAuditEvent {
+  traceId: string;
+  shieldId: string;
+  actorId: string;
+  stage: AegisStage;
+  resourceName: string;
+  decision: AegisDecision;
+  riskScore: number;
+  reasons: string[];
+  policyVersion: string;
+  at: string;
 }

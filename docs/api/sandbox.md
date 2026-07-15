@@ -110,19 +110,25 @@ Reach a web service the agent starts inside the sandbox (a dev server, a built a
 const { sessionId } = await client.sandbox.sessions.create(sbx.id);
 await client.sandbox.sessions.exec(sbx.id, sessionId, 'cd /workspace/app && npm run dev');
 
-// discover the previewable ports + their proxy URLs
-const preview = await client.sandbox.preview(sbx.id);
-//  preview.ports => [{ port: 3000, label: 'dev server', url: '/api/client/v1/.../preview/3000/' }, ...]
+// discover what's actually listening right now (any port — you're not limited
+// to a fixed list; pick whatever port your server uses)
+const listening = await client.sandbox.listeningPorts(sbx.id);
+//  => [{ port: 4321, loopbackOnly: false, url: '/api/client/v1/.../preview/4321/' }, ...]
+//  loopbackOnly: true means the service only binds 127.0.0.1 — restart it on 0.0.0.0
 
-// hand a running app to a teammate with a session-less, expiring link
-const link = await client.sandbox.createPreviewLink(sbx.id, 3000, { ttlSeconds: 3600 });
+// suggested/labelled ports + preview flags
+const preview = await client.sandbox.preview(sbx.id);
+//  preview.allPorts => true: ANY port is previewable via previewUrl(id, port)
+
+// hand a running app to a teammate with a session-less, expiring link (any port)
+const link = await client.sandbox.createPreviewLink(sbx.id, 4321, { ttlSeconds: 3600 });
 console.log(link.url); // /api/sandbox/preview/<token>/  → prefix with your console origin
 
 // ...then commit + push the work
 await client.sandbox.git.push(sbx.id, { path: '/workspace/app', username: 'x', password: token });
 ```
 
-`previewUrl(id, port, path?)` builds the authenticated proxy path locally without a round-trip. Preview needs the sandbox **running** and network **not** blocked; share links require `SANDBOX_PREVIEW_SECRET` on the server. WebSocket upgrades (e.g. Vite HMR) are not proxied.
+**Any port works.** When `preview.allPorts` is true (the default), the proxy reaches any TCP port inside the sandbox — ports outside the pre-published set get an on-demand forwarder, transparently. The only requirement: the service must listen on `0.0.0.0`, not just localhost. `previewUrl(id, port, path?)` builds the authenticated proxy path locally without a round-trip. Preview needs the sandbox **running** and network **not** blocked; share links require `SANDBOX_PREVIEW_SECRET` on the server. WebSocket upgrades (e.g. Vite HMR) are not proxied.
 
 **Per-sandbox preview controls** — turn preview on/off and choose public vs private (login-only). Settable on `create({ previewEnabled, previewPublic })` or live:
 
@@ -159,7 +165,8 @@ const resumed = await client.sandbox.restoreSnapshot(snap.id, { name: 'from-base
 | `uploadFiles(id, files)` / `listFiles(id, opts?)` / `downloadFile(id, path)` | Volume file IO |
 | `snapshot(id, data?)` / `fork(id, data?)` | Capture / clone |
 | `listSnapshots()` / `restoreSnapshot(id, data?)` | List / resume snapshots |
-| `preview(id)` | Preview state: enabled/public + previewable ports |
+| `preview(id)` | Preview state: enabled/public/allPorts + suggested ports |
+| `listeningPorts(id)` | TCP ports LISTENing inside the sandbox right now |
 | `setPreview(id, {enabled?, public?})` | Toggle preview on/off and public/private |
 | `createPreviewLink(id, port, opts?)` | Mint a session-less, expiring share link (public only) |
 | `previewUrl(id, port, path?)` | Build the authenticated proxy path locally |

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-14
+
+### Added
+- Aegis API (`client.aegis`, Enterprise) — enforcement-plane policy evaluation: `evaluate()` returns an `allow`/`redact`/`require_approval`/`sandbox`/`block` decision with findings, risk score and a sanitized resource; `shields.list()` and `shields.audit(shieldId)` read the enforcement instances and their decision trails. Shields are configured in the Console dashboard (`/dashboard/aegis`).
+
+## [1.4.1] - 2026-07-07
+
+### Added
+- `client.sandbox.listeningPorts(id)` — TCP ports currently LISTENing inside a sandbox, with a `loopbackOnly` flag (a service bound only to 127.0.0.1 must be restarted on 0.0.0.0 to be previewable).
+- `SandboxPreviewInfo.allPorts` — when true (platform default), **any** port is previewable through `previewUrl(id, port)` / share links, not just the suggested list; the platform provisions an on-demand forwarder for unpublished ports.
+
 ## [1.3.1] - 2026-06-10
 
 ### Added
