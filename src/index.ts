@@ -269,6 +269,20 @@ export type {
   WebSearchProvider,
   WebSearchSafeSearch,
 
+  // Aegis (enforcement plane, Enterprise)
+  AegisStage,
+  AegisDecision,
+  AegisShieldMode,
+  AegisSideEffect,
+  AegisToolRule,
+  AegisShield,
+  AegisEvaluateRequest,
+  AegisFinding,
+  AegisEvaluation,
+  AegisAuditEvent,
+  AegisToolLimits,
+  AegisJudgeConfig,
+
   // MCP
   McpServerInfo,
   McpInitializeResult,

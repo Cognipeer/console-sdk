@@ -14,6 +14,7 @@ import {
   SandboxSessionCommandLogs,
   SandboxSnapshotSummary,
   SandboxSummary,
+  SandboxListeningPort,
   SandboxPreviewInfo,
   SandboxPreviewShareLink,
 } from '../types';
@@ -129,6 +130,21 @@ export class SandboxResource {
       `${BASE}/${encodeURIComponent(id)}/preview-tokens`,
       { body: { port, ttlSeconds: options.ttlSeconds } },
     );
+  }
+
+  /**
+   * TCP ports currently LISTENing inside the sandbox — discover what you (or
+   * your agent) started and whether it is reachable: `loopbackOnly` services
+   * must be restarted bound to 0.0.0.0 to be previewable. Any non-loopback
+   * listener can be opened via `previewUrl(id, port)` (any port works — not
+   * just the suggested list).
+   */
+  async listeningPorts(id: string): Promise<SandboxListeningPort[]> {
+    const res = await this.http.request<{ ports: SandboxListeningPort[] }>(
+      'GET',
+      `${BASE}/${encodeURIComponent(id)}/preview-listening`,
+    );
+    return res.ports ?? [];
   }
 
   /** Build the authenticated preview proxy path for a port (+ optional inner path). */

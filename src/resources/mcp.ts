@@ -4,6 +4,11 @@ import {
   McpConsoleListToolsResponse,
   McpExecuteRequest,
   McpExecuteResponse,
+  McpHubCatalogEntry,
+  McpHubCatalogPage,
+  McpHubCatalogQuery,
+  McpHubListResponse,
+  McpHubSummary,
   McpInitializeResult,
   McpToolDescriptor,
   McpToolsListResult,
@@ -52,10 +57,13 @@ interface JsonRpcResponse<T = unknown> {
 export class McpResource {
   private http: HttpClient;
   public readonly console: McpServerHandle;
+  /** MCP Hub catalogs (enterprise module) — list/search/detail discovery. */
+  public readonly hubs: McpHubsResource;
 
   constructor(http: HttpClient) {
     this.http = http;
     this.console = new McpServerHandle(http, 'console', '/api/client/v1/mcp/console');
+    this.hubs = new McpHubsResource(http);
   }
 
   /** Get a handle to a tenant-configured MCP server identified by `serverKey`. */
@@ -66,6 +74,73 @@ export class McpResource {
       `/api/client/v1/mcp/${encodeURIComponent(serverKey)}`,
     );
   }
+}
+
+/**
+ * MCP Hubs — curated catalogs of MCP servers (enterprise module).
+ *
+ * Hubs are read-only discovery surfaces: `servers()` lists/searches the
+ * catalog (MCP Registry envelope with cursor pagination) and `server()`
+ * returns one entry with full tool schemas. Each entry's `remotes` carry the
+ * connection URLs — pass a server's key to `client.mcp.server(key)` to talk
+ * to it.
+ *
+ * @example
+ * ```typescript
+ * const { hubs } = await client.mcp.hubs.list();
+ * const page = await client.mcp.hubs.servers(hubs[0].key, { search: 'weather' });
+ * const detail = await client.mcp.hubs.server(hubs[0].key, page.servers[0].name);
+ * ```
+ */
+export class McpHubsResource {
+  private http: HttpClient;
+  private basePath = '/api/client/v1/mcp/hubs';
+
+  constructor(http: HttpClient) {
+    this.http = http;
+  }
+
+  /** List the hubs visible to this API token. */
+  async list(): Promise<McpHubListResponse> {
+    return this.http.request<McpHubListResponse>('GET', this.basePath);
+  }
+
+  /** Hub info + first catalog page. */
+  async get(
+    hubKey: string,
+    query?: McpHubCatalogQuery,
+  ): Promise<{ hub: McpHubSummary } & McpHubCatalogPage> {
+    return this.http.request('GET', `${this.basePath}/${encodeURIComponent(hubKey)}`, {
+      query: buildCatalogQuery(query),
+    });
+  }
+
+  /** List/search a hub's catalog (cursor-paginated). */
+  async servers(hubKey: string, query?: McpHubCatalogQuery): Promise<McpHubCatalogPage> {
+    return this.http.request<McpHubCatalogPage>(
+      'GET',
+      `${this.basePath}/${encodeURIComponent(hubKey)}/servers`,
+      { query: buildCatalogQuery(query) },
+    );
+  }
+
+  /** Detail for one member server (includes tool input schemas). */
+  async server(hubKey: string, serverKey: string): Promise<McpHubCatalogEntry> {
+    const res = await this.http.request<{ server: McpHubCatalogEntry }>(
+      'GET',
+      `${this.basePath}/${encodeURIComponent(hubKey)}/servers/${encodeURIComponent(serverKey)}`,
+    );
+    return res.server;
+  }
+}
+
+function buildCatalogQuery(query?: McpHubCatalogQuery): Record<string, string> | undefined {
+  if (!query) return undefined;
+  const out: Record<string, string> = {};
+  if (query.search) out.search = query.search;
+  if (query.cursor) out.cursor = query.cursor;
+  if (query.limit !== undefined) out.limit = String(query.limit);
+  return Object.keys(out).length ? out : undefined;
 }
 
 export class McpServerHandle {
