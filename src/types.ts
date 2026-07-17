@@ -1203,6 +1203,25 @@ export interface ResponseInputContent {
 }
 
 /** Request body for the Responses API */
+/**
+ * Caller-supplied runtime context forwarded into the agent's downstream
+ * tool / MCP / connected-agent HTTP calls. Each target must opt in to header
+ * passthrough on the Console side ("Runtime Headers" policy); headers offered
+ * to targets without the opt-in are silently dropped. Header values are never
+ * logged or persisted by the Console.
+ */
+export interface RuntimeContext {
+  /** Headers offered to every outbound target (subject to per-target policy). */
+  headers?: Record<string, string>;
+  /**
+   * Per-target overrides. Keys are a bare record key or a kind-prefixed key:
+   * `tool:<key>`, `mcp:<key>`, `agent:<key>`. Scoped headers win over `headers`.
+   */
+  connections?: Record<string, { headers?: Record<string, string> }>;
+  /** Free-form metadata surfaced to logs/traces. */
+  metadata?: Record<string, unknown>;
+}
+
 export interface AgentResponseCreateRequest {
   /** Agent name or key — identifies which agent to invoke */
   model: string;
@@ -1220,6 +1239,8 @@ export interface AgentResponseCreateRequest {
   top_p?: number;
   /** Maximum output tokens */
   max_output_tokens?: number;
+  /** Runtime context (downstream headers/metadata) for this invocation */
+  runtime_context?: RuntimeContext;
 }
 
 /** Text content within a response output message */
@@ -1942,6 +1963,57 @@ export interface McpConnectionInfo {
 }
 
 // ============================================================================
+// MCP Hub Types (curated server catalogs — enterprise module)
+// ============================================================================
+
+export interface McpHubSummary {
+  key: string;
+  name: string;
+  description?: string;
+  accessMode: 'token' | 'public';
+  serverCount: number;
+  updatedAt?: string;
+}
+
+export interface McpHubRemoteEndpoint {
+  type: 'streamable-http' | 'sse';
+  url: string;
+  authentication: { type: 'none' } | { type: 'bearer'; description: string };
+}
+
+/** MCP-Registry-style catalog entry for one hub member server. */
+export interface McpHubCatalogEntry {
+  /** Server key — the stable identifier used in connection URLs. */
+  name: string;
+  title: string;
+  description?: string;
+  version: string;
+  tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>;
+  remotes: McpHubRemoteEndpoint[];
+  _meta?: Record<string, unknown>;
+}
+
+export interface McpHubCatalogMetadata {
+  count: number;
+  nextCursor?: string;
+}
+
+export interface McpHubCatalogPage {
+  servers: McpHubCatalogEntry[];
+  metadata: McpHubCatalogMetadata;
+}
+
+export interface McpHubListResponse {
+  hubs: McpHubSummary[];
+}
+
+export interface McpHubCatalogQuery {
+  search?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+// ============================================================================
 // Streaming Tracing Types
 // ============================================================================
 
@@ -2326,6 +2398,17 @@ export interface RealtimeSessionUpdate {
   /** TTS voice id. Optional — the provider falls back to its default voice. */
   voice?: string;
   tts_format?: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
+  /**
+   * Agent sessions: filler line sent on `response.tool_call.started` (and
+   * spoken, when TTS is configured) the first time the agent starts calling
+   * tools within a response.
+   */
+  tool_status_message?: string;
+  /**
+   * Downstream auth/data for agent tool calls (see {@link RuntimeContext}).
+   * Re-send to refresh short-lived tokens mid-session; `null` clears it.
+   */
+  runtime_context?: RuntimeContext | null;
 }
 
 /** Any event emitted by the realtime server. */
@@ -2339,6 +2422,8 @@ export interface RealtimeServerEvent {
     | 'response.created'
     | 'response.output_text.delta'
     | 'response.output_text.done'
+    | 'response.tool_call.started'
+    | 'response.tool_call.completed'
     | 'response.audio.delta'
     | 'response.audio.done'
     | 'response.done'
@@ -2375,6 +2460,8 @@ export interface RealtimeModel {
   turn_silence_ms: number | null;
   turn_silence_threshold: number | null;
   greeting: string | null;
+  /** Agent presets: filler line announced/spoken while the agent calls tools. */
+  tool_status_message: string | null;
   metadata: Record<string, unknown>;
   created_at: string | null;
   updated_at: string | null;
@@ -2406,6 +2493,8 @@ export interface CreateRealtimeModelRequest {
   turn_silence_threshold?: number;
   /** Spoken when a telephony call connects. */
   greeting?: string;
+  /** Agent presets: filler line announced/spoken while the agent calls tools. */
+  tool_status_message?: string;
   metadata?: Record<string, unknown>;
 }
 
