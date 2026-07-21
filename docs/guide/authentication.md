@@ -141,7 +141,7 @@ export const client = new ConsoleClient({
 // config/staging.ts
 export const client = new ConsoleClient({
   apiKey: process.env.STAGING_COGNIPEER_API_KEY!,
-  baseURL: 'https://staging-api.cognipeer.com/api/client/v1',
+  baseURL: 'https://staging-console.cognipeer.com/api/client/v1',
 });
 ```
 
@@ -168,7 +168,7 @@ const configs = {
   },
   staging: {
     apiKey: process.env.STAGING_COGNIPEER_API_KEY!,
-    baseURL: 'https://staging-api.cognipeer.com/api/client/v1',
+    baseURL: 'https://staging-console.cognipeer.com/api/client/v1',
   },
   production: {
     apiKey: process.env.PROD_COGNIPEER_API_KEY!,

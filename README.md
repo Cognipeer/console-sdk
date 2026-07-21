@@ -52,7 +52,7 @@ import { ConsoleClient } from '@cognipeer/console-sdk';
 // Initialize the client
 const client = new ConsoleClient({
   apiKey: 'your-api-key',
-  baseURL: 'https://your-console.example.com', // Optional, defaults to https://api.cognipeer.com
+  baseURL: 'https://your-console.example.com', // Optional, defaults to https://console.cognipeer.com
 });
 
 // Chat completion
@@ -166,7 +166,7 @@ If you need the platform itself, deployment guidance, tenant architecture, provi
 ```typescript
 const client = new ConsoleClient({
   apiKey: string;          // Required: Your API token
-  baseURL?: string;        // Optional: API host root (default: https://api.cognipeer.com).
+  baseURL?: string;        // Optional: API host root (default: https://console.cognipeer.com).
                             // Legacy URLs ending in /api/client/v1 are normalised automatically.
   timeout?: number;        // Optional: Request timeout in ms (default: 60000)
   maxRetries?: number;     // Optional: Max retry attempts (default: 3)
@@ -351,7 +351,7 @@ import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 
 const exporter = new CognipeerOTelSpanExporter({
   apiKey: process.env.COGNIPEER_API_KEY!,
-  baseURL: process.env.COGNIPEER_BASE_URL || 'https://api.cognipeer.com',
+  baseURL: process.env.COGNIPEER_BASE_URL || 'https://console.cognipeer.com',
 });
 
 const provider = new NodeTracerProvider();

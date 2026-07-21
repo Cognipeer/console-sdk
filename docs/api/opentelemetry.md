@@ -17,7 +17,7 @@ import { CognipeerOTelSpanExporter } from '@cognipeer/console-sdk';
 
 const exporter = new CognipeerOTelSpanExporter({
   apiKey: process.env.COGNIPEER_API_KEY!,
-  baseURL: 'https://api.cognipeer.com',
+  baseURL: 'https://console.cognipeer.com',
 });
 
 const sdk = new NodeSDK({
@@ -27,7 +27,7 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-The exporter posts spans to `/api/client/v1/traces`. Pass the **host root** as `baseURL` (e.g. `https://api.cognipeer.com`); a legacy URL ending in `/api/client/v1` is stripped automatically.
+The exporter posts spans to `/api/client/v1/traces`. Pass the **host root** as `baseURL` (e.g. `https://console.cognipeer.com`); a legacy URL ending in `/api/client/v1` is stripped automatically.
 
 ## Options
 

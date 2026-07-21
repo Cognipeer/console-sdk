@@ -29,7 +29,7 @@ import { McpResource } from './resources/mcp';
 /**
  * Default configuration values
  */
-const DEFAULT_BASE_URL = 'https://api.cognipeer.com';
+const DEFAULT_BASE_URL = 'https://console.cognipeer.com';
 const DEFAULT_TIMEOUT = 60000; // 60 seconds
 const DEFAULT_MAX_RETRIES = 3;
 
@@ -51,7 +51,7 @@ const DEFAULT_MAX_RETRIES = 3;
  * });
  * ```
  *
- * Note on `baseURL`: pass the host root (e.g. `https://api.cognipeer.com`).
+ * Note on `baseURL`: pass the host root (e.g. `https://console.cognipeer.com`).
  * Older versions of this SDK accepted a base URL that already included
  * `/api/client/v1`. To stay backwards-compatible the trailing
  * `/api/client/v1` (with or without trailing slash) is stripped automatically.

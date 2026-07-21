@@ -15,7 +15,7 @@ Creates a new Cognipeer Console SDK client instance.
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `options.apiKey` | `string` | Yes | Your Cognipeer Console API key |
-| `options.baseURL` | `string` | No | Console host root (default: `https://api.cognipeer.com`). Legacy URLs ending in `/api/client/v1` are stripped automatically. |
+| `options.baseURL` | `string` | No | Console host root (default: `https://console.cognipeer.com`). Legacy URLs ending in `/api/client/v1` are stripped automatically. |
 | `options.timeout` | `number` | No | Request timeout in milliseconds (default: `60000`) |
 | `options.maxRetries` | `number` | No | Maximum retry attempts (default: `3`) |
 | `options.fetch` | `typeof fetch` | No | Custom fetch implementation |
@@ -208,7 +208,7 @@ Get the configured base URL.
 
 ```typescript
 const baseURL = client.getBaseURL();
-console.log(baseURL); // "https://api.cognipeer.com"
+console.log(baseURL); // "https://console.cognipeer.com"
 ```
 
 ## Type Definitions
@@ -405,7 +405,7 @@ try {
 ### Default Values
 
 ```typescript
-const DEFAULT_BASE_URL = 'https://api.cognipeer.com';
+const DEFAULT_BASE_URL = 'https://console.cognipeer.com';
 const DEFAULT_TIMEOUT = 60000; // 60 seconds
 const DEFAULT_MAX_RETRIES = 3;
 ```

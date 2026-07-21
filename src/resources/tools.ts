@@ -21,7 +21,7 @@ export class ToolsResource {
     if (options?.status) params.set('status', options.status);
     if (options?.type) params.set('type', options.type);
     const qs = params.toString();
-    const url = `/tools${qs ? `?${qs}` : ''}`;
+    const url = `/api/client/v1/tools${qs ? `?${qs}` : ''}`;
     const response = await this.http.request<{ tools: ToolDefinition[] }>('GET', url);
     return response.tools || [];
   }
@@ -30,7 +30,7 @@ export class ToolsResource {
    * Get a single tool by its key.
    */
   async get(toolKey: string): Promise<ToolDefinition> {
-    const response = await this.http.request<{ tool: ToolDefinition }>('GET', `/tools/${toolKey}`);
+    const response = await this.http.request<{ tool: ToolDefinition }>('GET', `/api/client/v1/tools/${toolKey}`);
     return response.tool;
   }
 
@@ -55,7 +55,7 @@ export class ToolsResource {
   ): Promise<ToolExecutionResult> {
     return this.http.request<ToolExecutionResult>(
       'POST',
-      `/tools/${toolKey}/actions/${actionKey}/execute`,
+      `/api/client/v1/tools/${toolKey}/actions/${actionKey}/execute`,
       { body: { arguments: args ?? {} } },
     );
   }
@@ -84,7 +84,7 @@ export class ToolsResource {
    * @deprecated Use `list()` and `toAgentTools()` instead
    */
   async listAgentTools(agentKey: string): Promise<AgentToolDefinition[]> {
-    const response = await this.http.request<{ tools: AgentToolDefinition[] }>('GET', `/agents/${agentKey}/tools`);
+    const response = await this.http.request<{ tools: AgentToolDefinition[] }>('GET', `/api/client/v1/agents/${agentKey}/tools`);
     return response.tools || [];
   }
 
@@ -94,7 +94,7 @@ export class ToolsResource {
   async executeAgentTool(agentKey: string, toolKey: string, args?: Record<string, unknown>) {
     const response = await this.http.request<{ result: unknown }>(
       'POST',
-      `/agents/${agentKey}/tools/${toolKey}/execute`,
+      `/api/client/v1/agents/${agentKey}/tools/${toolKey}/execute`,
       { body: { arguments: args ?? {} } },
     );
     return response.result;

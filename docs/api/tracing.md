@@ -200,7 +200,7 @@ import { CognipeerOTelSpanExporter } from '@cognipeer/console-sdk';
 
 const exporter = new CognipeerOTelSpanExporter({
   apiKey: process.env.COGNIPEER_API_KEY!,
-  baseURL: process.env.COGNIPEER_BASE_URL || 'https://api.cognipeer.com',
+  baseURL: process.env.COGNIPEER_BASE_URL || 'https://console.cognipeer.com',
 });
 
 const provider = new NodeTracerProvider();
