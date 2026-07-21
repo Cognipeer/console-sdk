@@ -2890,3 +2890,820 @@ export interface AegisAuditEvent {
   policyVersion: string;
   at: string;
 }
+
+// ============================================================================
+// Analytics API (read-only usage time-series / dashboard rollup)
+// ============================================================================
+
+export type AnalyticsUsageGroupBy = 'model' | 'user' | 'token' | 'service';
+export type AnalyticsUsageInterval = 'hour' | 'day' | 'month';
+
+export interface AnalyticsUsageQuery {
+  /** ISO date — start of the reporting window. */
+  from?: string;
+  /** ISO date — end of the reporting window. */
+  to?: string;
+  /** Dimension to break usage down by. Defaults to 'model'. */
+  group_by?: AnalyticsUsageGroupBy;
+  /** Time-series bucket granularity (only used when group_by='model'). Defaults to 'day'. */
+  interval?: AnalyticsUsageInterval;
+  /** Restrict to a single model key. */
+  model?: string;
+}
+
+export interface AnalyticsUsageModelEntry {
+  model_key: string;
+  model_name: string | null;
+  category: string | null;
+  provider_key: string | null;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost: number;
+}
+
+export interface AnalyticsUsageTimeseriesPoint {
+  period: string;
+  calls: number;
+  total_tokens: number;
+  cost: number;
+}
+
+export interface AnalyticsUsageModelTotals {
+  cost: number;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+export interface AnalyticsUsageModelResponse {
+  object: 'analytics.usage';
+  group_by: 'model';
+  interval: AnalyticsUsageInterval;
+  from: string | null;
+  to: string | null;
+  currency: string;
+  totals: AnalyticsUsageModelTotals;
+  by_model: AnalyticsUsageModelEntry[];
+  timeseries: AnalyticsUsageTimeseriesPoint[];
+}
+
+export interface AnalyticsUsageBreakdownTotals {
+  requests: number;
+  errors: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost: number;
+}
+
+export interface AnalyticsUsageServiceEntry {
+  service: string;
+  requests: number;
+  errors: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost: number;
+}
+
+export interface AnalyticsUsageServiceResponse {
+  object: 'analytics.usage';
+  group_by: 'service';
+  from: string | null;
+  to: string | null;
+  currency: string;
+  totals: AnalyticsUsageBreakdownTotals;
+  breakdown: AnalyticsUsageServiceEntry[];
+}
+
+export interface AnalyticsUsageEntityEntry {
+  /** Present when group_by='user'. */
+  user_id?: string;
+  /** Present when group_by='token'. */
+  api_token_id?: string;
+  name: string | null;
+  label: string | null;
+  requests: number;
+  errors: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost: number;
+}
+
+export interface AnalyticsUsageEntityResponse {
+  object: 'analytics.usage';
+  group_by: 'user' | 'token';
+  from: string | null;
+  to: string | null;
+  currency: string;
+  totals: AnalyticsUsageBreakdownTotals;
+  breakdown: AnalyticsUsageEntityEntry[];
+}
+
+/** Response of `client.analytics.usage()` — shape depends on `group_by`. */
+export type AnalyticsUsageResponse =
+  | AnalyticsUsageModelResponse
+  | AnalyticsUsageServiceResponse
+  | AnalyticsUsageEntityResponse;
+
+export interface AnalyticsOverviewQuery {
+  /** ISO date — start of the reporting window. */
+  from?: string;
+  /** ISO date — end of the reporting window. */
+  to?: string;
+}
+
+export interface AnalyticsOverviewStats {
+  models: {
+    total: number;
+    llm: number;
+    embedding: number;
+  };
+  vectors: {
+    providers: number;
+    indexes: number;
+  };
+  tracing: {
+    totalSessions: number;
+    totalTokens: number;
+    activeSessions: number;
+  };
+  apiCalls: {
+    total: number;
+    /** Percentage change week-over-week. */
+    trend: number;
+  };
+}
+
+export interface AnalyticsOverviewSession {
+  sessionId: string;
+  agentName?: string;
+  status?: string;
+  /** ISO timestamp. */
+  startedAt?: string;
+  durationMs?: number;
+  totalEvents?: number;
+  totalTokens: number;
+}
+
+export interface AnalyticsOverviewDailyPoint {
+  date: string;
+  sessionsCount: number;
+  totalTokens: number;
+}
+
+export interface AnalyticsOverviewResponse {
+  object: 'analytics.overview';
+  stats: AnalyticsOverviewStats;
+  recent_sessions: AnalyticsOverviewSession[];
+  daily: AnalyticsOverviewDailyPoint[];
+}
+
+// ============================================================================
+// Tracing threads (read-only — sessions grouped by threadId)
+// ============================================================================
+
+export interface ListTracingThreadsQuery {
+  /** Filter by agent name (case-insensitive substring). */
+  agent?: string;
+  /** Filter by the thread's latest status. */
+  status?: string;
+  /** Filter by thread id (case-insensitive substring). */
+  threadId?: string;
+  /** ISO date — start of the window (matched against thread start). */
+  from?: string;
+  /** ISO date — end of the window. */
+  to?: string;
+  /** Max threads to return. Defaults to 50 server-side. */
+  limit?: number;
+  /** Number of threads to skip (pagination). */
+  skip?: number;
+}
+
+export interface TracingThreadSummary {
+  threadId: string;
+  sessionsCount: number;
+  agents: string[];
+  statuses: string[];
+  latestStatus: string;
+  /** ISO timestamp. */
+  startedAt?: string;
+  /** ISO timestamp. */
+  endedAt?: string;
+  totalEvents: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalDurationMs: number;
+  modelsUsed: string[];
+}
+
+export interface TracingThreadListResponse {
+  threads: TracingThreadSummary[];
+  total: number;
+}
+
+export interface TracingThreadSession {
+  sessionId: string;
+  agentName?: string;
+  agentVersion?: string;
+  status?: string;
+  /** ISO timestamp. */
+  startedAt?: string;
+  /** ISO timestamp. */
+  endedAt?: string;
+  durationMs?: number;
+  totalEvents?: number;
+  totalTokens: number;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  modelsUsed?: string[];
+  toolsUsed?: string[];
+}
+
+export interface TracingThreadDetail {
+  threadId: string;
+  status: string;
+  agents: string[];
+  sessionsCount: number;
+  /** ISO timestamp. */
+  startedAt?: string;
+  /** ISO timestamp. */
+  endedAt?: string;
+  totalDurationMs: number;
+  totalEvents: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCachedInputTokens: number;
+  modelsUsed: string[];
+  toolsUsed: string[];
+  sessions: TracingThreadSession[];
+}
+
+// ============================================================================
+// Audit API (read-only security / administrative trail)
+// ============================================================================
+
+export type AuditOutcome = 'success' | 'failure' | 'denied';
+export type AuditActorType = 'user' | 'api_token' | 'system';
+
+export interface ListAuditLogsQuery {
+  /** Filter by action level (e.g. read / write / security). */
+  action?: string;
+  /** Filter by acting user id. */
+  actorUserId?: string;
+  /** ISO date — start of the window. */
+  from?: string;
+  /** ISO date — end of the window. */
+  to?: string;
+  /** Filter by HTTP method (case-insensitive). */
+  method?: string;
+  /** Filter by outcome. */
+  outcome?: AuditOutcome;
+  /** Free-text match against event, path, and actor email. */
+  q?: string;
+  /** Filter by service. */
+  service?: string;
+  /** Max logs to return (server caps at 1000). Defaults to 100. */
+  limit?: number;
+  /** Number of logs to skip (pagination). */
+  skip?: number;
+}
+
+export interface AuditLog {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  requestId?: string;
+  actorType: AuditActorType;
+  actorUserId?: string;
+  actorEmail?: string;
+  actorRole?: string;
+  apiTokenId?: string;
+  service: string;
+  action: string;
+  event: string;
+  method?: string;
+  path?: string;
+  statusCode?: number;
+  outcome: AuditOutcome;
+  ipAddress?: string;
+  userAgent?: string;
+  resourceType?: string;
+  resourceId?: string;
+  metadata?: Record<string, unknown>;
+  /** ISO timestamp. */
+  createdAt?: string;
+}
+
+export interface AuditLogListResponse {
+  object: 'list';
+  data: AuditLog[];
+}
+
+// ============================================================================
+// Monitoring API (read-only inference-server metrics summary)
+// ============================================================================
+
+export type InferenceServerStatus = 'active' | 'disabled' | 'errored';
+export type InferenceServerType = 'vllm' | 'llamacpp';
+
+export interface MonitoringInferenceQuery {
+  /** ISO date — start of the window. */
+  from?: string;
+  /** ISO date — end of the window. */
+  to?: string;
+}
+
+export interface MonitoringInferenceOverview {
+  active_servers: number;
+  avg_gpu_cache_usage: number | null;
+  disabled_servers: number;
+  errored_servers: number;
+  running_models_count: number;
+  total_running_requests: number;
+  total_servers: number;
+  total_waiting_requests: number;
+}
+
+export interface MonitoringInferenceServerMetrics {
+  generation_tokens_throughput?: number;
+  gpu_cache_usage_percent?: number;
+  num_requests_running?: number;
+  num_requests_waiting?: number;
+  prompt_tokens_throughput?: number;
+  requests_per_second?: number;
+  running_models: string[];
+  time_to_first_token_seconds?: number;
+  /** ISO timestamp. */
+  timestamp: string;
+}
+
+export interface MonitoringInferenceServer {
+  key: string;
+  name: string;
+  type: InferenceServerType;
+  status: InferenceServerStatus;
+  last_error: string | null;
+  /** ISO timestamp. */
+  last_polled_at: string | null;
+  latest_metrics: MonitoringInferenceServerMetrics | null;
+}
+
+export interface MonitoringInferenceTypeBreakdown {
+  count: number;
+  type: string;
+}
+
+export interface MonitoringInferenceResponse {
+  object: 'monitoring.inference';
+  overview: MonitoringInferenceOverview;
+  servers: MonitoringInferenceServer[];
+  type_breakdown: MonitoringInferenceTypeBreakdown[];
+}
+
+// ============================================================================
+// Authoring Types (create / update definitions via client v1)
+// ============================================================================
+
+// ── Agents ──────────────────────────────────────────────────────────────
+
+/** Connected ("external") agent config — proxies to another provider. */
+export interface AgentConnectionConfig {
+  kind: 'external';
+  connection: Record<string, unknown>;
+}
+
+/** Agent definition config accepted when creating / updating an agent. */
+export type AgentDefinitionConfig = AgentConfig | AgentConnectionConfig;
+
+export interface AgentCreateRequest {
+  name: string;
+  description?: string;
+  config: AgentDefinitionConfig;
+  status?: AgentStatus;
+}
+
+export interface AgentUpdateRequest {
+  name?: string;
+  description?: string;
+  config?: AgentDefinitionConfig;
+  status?: AgentStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentPublishRequest {
+  changelog?: string;
+}
+
+/** A published agent version returned by `agents.publish()`. */
+export interface AgentVersion {
+  version: number;
+  changelog?: string;
+  createdBy?: string;
+  createdAt?: string;
+  [key: string]: unknown;
+}
+
+// ── Tools ───────────────────────────────────────────────────────────────
+
+export type ToolType = 'openapi' | 'mcp';
+
+export interface ToolCreateRequest {
+  name: string;
+  type: ToolType;
+  description?: string;
+  /** OpenAPI JSON/YAML or a Postman collection (type 'openapi'). */
+  openApiSpec?: string;
+  /** How to interpret `openApiSpec` (default: auto-detect). */
+  specFormat?: string;
+  upstreamBaseUrl?: string;
+  upstreamAuth?: Record<string, unknown>;
+  /** MCP endpoint URL (type 'mcp'). */
+  mcpEndpoint?: string;
+  mcpTransport?: 'sse' | 'streamable-http';
+}
+
+export interface ToolUpdateRequest {
+  name?: string;
+  description?: string;
+  status?: string;
+  openApiSpec?: string;
+  specFormat?: string;
+  upstreamBaseUrl?: string;
+  upstreamAuth?: Record<string, unknown>;
+  mcpEndpoint?: string;
+  mcpTransport?: 'sse' | 'streamable-http';
+}
+
+// ── MCP servers ─────────────────────────────────────────────────────────
+
+export type McpSourceType = 'openapi' | 'remote' | 'stdio';
+export type McpServerAuthType = 'none' | 'token' | 'header' | 'basic';
+
+export interface McpServerAuthConfig {
+  type: McpServerAuthType;
+  [key: string]: unknown;
+}
+
+export interface McpRemoteConfig {
+  url: string;
+  transport?: 'sse' | 'streamable-http';
+}
+
+export interface McpStdioConfig {
+  runtime?: 'npx' | 'uvx';
+  packageName: string;
+  args?: string[];
+  env?: Record<string, string>;
+  executionMode?: 'subprocess' | 'sandbox';
+  sandbox?: {
+    templateKey?: string;
+    resources?: { cpuCores?: number; memoryMb?: number };
+  };
+}
+
+export interface McpExposureConfig {
+  protocols: Array<'streamable-http' | 'sse'>;
+  accessMode: 'token' | 'public';
+}
+
+export interface McpAegisConfig {
+  shieldId?: string;
+  mode: 'off' | 'monitor' | 'enforce';
+}
+
+/** A tenant-configured MCP server definition (secrets masked). */
+export interface McpServer {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  key: string;
+  name: string;
+  description?: string;
+  sourceType: McpSourceType;
+  tools: McpToolDescriptor[];
+  /** Tool names hidden from callers. */
+  disabledTools: string[];
+  upstreamBaseUrl?: string;
+  upstreamAuth: McpServerAuthConfig;
+  remoteConfig?: McpRemoteConfig;
+  stdioConfig?: McpStdioConfig;
+  exposure: McpExposureConfig;
+  aegis?: McpAegisConfig;
+  status: string;
+  endpointSlug: string;
+  totalRequests?: number;
+  metadata?: Record<string, unknown>;
+  createdBy: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface McpServerCreateRequest {
+  name: string;
+  description?: string;
+  /** Tool source (default 'openapi'). */
+  sourceType?: McpSourceType;
+  /** OpenAPI JSON/YAML or a Postman collection (sourceType 'openapi'). */
+  openApiSpec?: string;
+  specFormat?: string;
+  upstreamAuth: McpServerAuthConfig;
+  upstreamBaseUrl?: string;
+  remoteConfig?: McpRemoteConfig;
+  stdioConfig?: McpStdioConfig;
+  exposure?: McpExposureConfig;
+  aegis?: McpAegisConfig;
+}
+
+export interface McpServerUpdateRequest {
+  name?: string;
+  description?: string;
+  status?: 'active' | 'disabled';
+  openApiSpec?: string;
+  specFormat?: string;
+  upstreamAuth?: McpServerAuthConfig;
+  upstreamBaseUrl?: string;
+  remoteConfig?: McpRemoteConfig;
+  stdioConfig?: McpStdioConfig;
+  exposure?: McpExposureConfig;
+  aegis?: McpAegisConfig;
+  /** Runtime-header passthrough policy (`null` clears it). */
+  runtimeHeaders?: { allow?: boolean; allowedNames?: string[] } | null;
+  disabledTools?: string[];
+}
+
+// ── Prompts ─────────────────────────────────────────────────────────────
+
+export interface PromptCreateRequest {
+  name: string;
+  template: string;
+  key?: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+  /** Comment attached to the first version. */
+  versionComment?: string;
+  /** Alias for `versionComment`. */
+  comment?: string;
+}
+
+export interface PromptUpdateRequest {
+  name?: string;
+  template?: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+  /** Comment attached to the newly-created version. */
+  versionComment?: string;
+  /** Alias for `versionComment`. */
+  comment?: string;
+}
+
+export interface SetPromptVersionRequest {
+  /** Id of the existing version to make latest. */
+  versionId: string;
+}
+
+// ── Guardrails ──────────────────────────────────────────────────────────
+
+export type GuardrailType = 'preset' | 'custom';
+
+/** A guardrail definition. */
+export interface Guardrail {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  key: string;
+  name: string;
+  description?: string;
+  type: GuardrailType;
+  target: GuardrailTarget;
+  action: GuardrailAction;
+  enabled: boolean;
+  failMode?: 'open' | 'closed';
+  modelKey?: string;
+  policy?: Record<string, unknown>;
+  customPrompt?: string;
+  createdBy: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GuardrailCreateRequest {
+  name: string;
+  type: GuardrailType;
+  action?: GuardrailAction;
+  description?: string;
+  enabled?: boolean;
+  failMode?: 'open' | 'closed';
+  modelKey?: string;
+  policy?: Record<string, unknown>;
+  /** Required for `type: 'custom'` — the LLM-evaluated rule. */
+  customPrompt?: string;
+}
+
+export interface GuardrailUpdateRequest {
+  name?: string;
+  action?: GuardrailAction;
+  description?: string;
+  enabled?: boolean;
+  failMode?: 'open' | 'closed';
+  modelKey?: string;
+  policy?: Record<string, unknown>;
+  customPrompt?: string;
+}
+
+// ── RAG modules ─────────────────────────────────────────────────────────
+
+export interface RagModuleCreateRequest {
+  name: string;
+  embeddingModelKey: string;
+  vectorProviderKey: string;
+  vectorIndexKey: string;
+  chunkConfig: RagChunkConfig;
+  key?: string;
+  description?: string;
+  fileBucketKey?: string;
+  fileProviderKey?: string;
+  metadata?: Record<string, unknown>;
+  rerankerKey?: string;
+  rerankerOversample?: number;
+}
+
+export interface RagModuleUpdateRequest {
+  name?: string;
+  description?: string;
+  embeddingModelKey?: string;
+  vectorProviderKey?: string;
+  vectorIndexKey?: string;
+  chunkConfig?: RagChunkConfig;
+  fileBucketKey?: string;
+  fileProviderKey?: string;
+  metadata?: Record<string, unknown>;
+  rerankerKey?: string;
+  rerankerOversample?: number;
+  status?: string;
+}
+
+// ── Rerankers ───────────────────────────────────────────────────────────
+
+export type RerankerStrategy =
+  | 'dedicated-model'
+  | 'llm-judge'
+  | 'llm-listwise'
+  | 'heuristic';
+
+export interface RerankerConfig {
+  modelKey?: string;
+  topN?: number;
+  scoreThreshold?: number;
+  batchSize?: number;
+  temperature?: number;
+  promptTemplate?: string;
+  scoreNormalization?: 'none' | 'minmax';
+  heuristicWeights?: {
+    keyword?: number;
+    recency?: number;
+    originalScore?: number;
+  };
+}
+
+export interface RerankerCreateRequest {
+  name: string;
+  strategy: RerankerStrategy;
+  config: RerankerConfig;
+  key?: string;
+  description?: string;
+  status?: 'active' | 'disabled';
+  metadata?: Record<string, unknown>;
+}
+
+export interface RerankerUpdateRequest {
+  name?: string;
+  description?: string;
+  strategy?: RerankerStrategy;
+  config?: RerankerConfig;
+  status?: 'active' | 'disabled';
+  metadata?: Record<string, unknown>;
+}
+
+// ============================================================================
+// PII Types
+// ============================================================================
+
+export type PiiAction = 'detect' | 'redact' | 'mask' | 'block' | 'tokenize';
+export type PiiLanguage =
+  | 'global' | 'en' | 'tr' | 'de' | 'fr' | 'es'
+  | 'it' | 'pt' | 'ar' | 'ja' | 'zh';
+export type PiiSeverity = 'low' | 'medium' | 'high';
+
+/** A tenant-defined custom regex pattern within a PII policy. */
+export interface PiiCustomPattern {
+  id: string;
+  categoryId: string;
+  label: string;
+  labels?: Partial<Record<PiiLanguage, string>>;
+  pattern: string;
+  flags?: string;
+  languages?: PiiLanguage[];
+  severity?: PiiSeverity;
+  enabled: boolean;
+}
+
+/** A reusable PII policy definition. */
+export interface PiiPolicy {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  key: string;
+  name: string;
+  description?: string;
+  defaultAction: PiiAction;
+  categories: Record<string, boolean>;
+  customPatterns?: PiiCustomPattern[];
+  languages?: PiiLanguage[];
+  enabled: boolean;
+  metadata?: Record<string, unknown>;
+  createdBy: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PiiPolicyCreateRequest {
+  name: string;
+  description?: string;
+  defaultAction?: PiiAction;
+  categories?: Record<string, boolean>;
+  customPatterns?: PiiCustomPattern[];
+  languages?: PiiLanguage[];
+  enabled?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PiiPolicyUpdateRequest {
+  name?: string;
+  description?: string;
+  defaultAction?: PiiAction;
+  categories?: Record<string, boolean>;
+  customPatterns?: PiiCustomPattern[];
+  languages?: PiiLanguage[];
+  enabled?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PiiFinding {
+  category: string;
+  source: 'builtin' | 'custom';
+  severity: PiiSeverity;
+  value: string;
+  start: number;
+  end: number;
+  label: string;
+  message: string;
+  action: PiiAction;
+  block: boolean;
+  replacement: string;
+}
+
+export interface PiiVaultEntry {
+  value: string;
+  category: string;
+}
+
+/** Token -> original-value mapping returned by tokenize; pass back to detokenize. */
+export type PiiVault = Record<string, PiiVaultEntry>;
+
+export interface PiiScanRequest {
+  policy_key: string;
+  text: string;
+  locale?: PiiLanguage;
+  /** Only honored by `scan()` — overrides the policy's default action. */
+  action?: PiiAction;
+}
+
+export interface PiiScanResponse {
+  policy_key: string;
+  policy_name: string;
+  action: PiiAction;
+  findings: PiiFinding[];
+  output_text: string;
+  input_length: number;
+  has_blocking: boolean;
+  languages: PiiLanguage[];
+  /** Present only for `tokenize` (or scan with action 'tokenize'). */
+  vault?: PiiVault;
+}
+
+export interface PiiDetokenizeRequest {
+  text: string;
+  vault: PiiVault;
+}
+
+export interface PiiDetokenizeResponse {
+  output_text: string;
+}

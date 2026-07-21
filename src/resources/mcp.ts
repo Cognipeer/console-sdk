@@ -10,6 +10,9 @@ import {
   McpHubListResponse,
   McpHubSummary,
   McpInitializeResult,
+  McpServer,
+  McpServerCreateRequest,
+  McpServerUpdateRequest,
   McpToolDescriptor,
   McpToolsListResult,
 } from '../types';
@@ -73,6 +76,57 @@ export class McpResource {
       serverKey,
       `/api/client/v1/mcp/${encodeURIComponent(serverKey)}`,
     );
+  }
+
+  /**
+   * Create a tenant MCP server definition. Tools are discovered from the
+   * configured source (OpenAPI spec, remote URL, or stdio package).
+   * @param params Server creation parameters (name + upstreamAuth required)
+   */
+  async createServer(params: McpServerCreateRequest): Promise<McpServer> {
+    const response = await this.http.request<{ server: McpServer }>(
+      'POST',
+      '/api/client/v1/mcp',
+      { body: params },
+    );
+    return response.server;
+  }
+
+  /**
+   * Update a tenant MCP server definition.
+   * @param serverKey The server key
+   * @param params Fields to update
+   */
+  async updateServer(serverKey: string, params: McpServerUpdateRequest): Promise<McpServer> {
+    const response = await this.http.request<{ server: McpServer }>(
+      'PATCH',
+      `/api/client/v1/mcp/${encodeURIComponent(serverKey)}`,
+      { body: params },
+    );
+    return response.server;
+  }
+
+  /**
+   * Delete a tenant MCP server definition.
+   * @param serverKey The server key
+   */
+  async deleteServer(serverKey: string): Promise<{ success: boolean }> {
+    return this.http.request<{ success: boolean }>(
+      'DELETE',
+      `/api/client/v1/mcp/${encodeURIComponent(serverKey)}`,
+    );
+  }
+
+  /**
+   * Re-run tool discovery for a tenant MCP server against its source.
+   * @param serverKey The server key
+   */
+  async refreshTools(serverKey: string): Promise<McpServer> {
+    const response = await this.http.request<{ server: McpServer }>(
+      'POST',
+      `/api/client/v1/mcp/${encodeURIComponent(serverKey)}/refresh-tools`,
+    );
+    return response.server;
   }
 }
 

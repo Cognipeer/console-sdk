@@ -1,14 +1,17 @@
 import { HttpClient } from '../http';
-import type { 
+import type {
   DeployPromptOptions,
-  ListPromptsQuery, 
+  ListPromptsQuery,
   PromptCompareResponse,
+  PromptCreateRequest,
   PromptDeploymentsResponse,
-  Prompt, 
+  Prompt,
   PromptRenderResponse,
+  PromptUpdateRequest,
   GetPromptOptions,
   RenderPromptOptions,
   PromptVersionsResponse,
+  SetPromptVersionRequest,
 } from '../types';
 
 /**
@@ -29,6 +32,49 @@ export class PromptsResource {
     return this.http.request('GET', '/api/client/v1/prompts', {
       query: query as Record<string, string | number | boolean | undefined>,
     });
+  }
+
+  /**
+   * Create a prompt. The initial template becomes version 1.
+   * @param params - Prompt creation parameters (name + template required)
+   */
+  async create(params: PromptCreateRequest): Promise<{ prompt: Prompt }> {
+    return this.http.request('POST', '/api/client/v1/prompts', {
+      body: params,
+    });
+  }
+
+  /**
+   * Update a prompt. Editing the template implicitly creates a new version.
+   * @param key - Prompt key
+   * @param params - Fields to update
+   */
+  async update(key: string, params: PromptUpdateRequest): Promise<{ prompt: Prompt }> {
+    return this.http.request('PATCH', `/api/client/v1/prompts/${key}`, {
+      body: params,
+    });
+  }
+
+  /**
+   * Re-point the prompt's "latest" pointer to an existing version.
+   * @param key - Prompt key
+   * @param params - The target version id
+   */
+  async setLatestVersion(
+    key: string,
+    params: SetPromptVersionRequest,
+  ): Promise<{ prompt: Prompt }> {
+    return this.http.request('POST', `/api/client/v1/prompts/${key}/versions`, {
+      body: params,
+    });
+  }
+
+  /**
+   * Delete a prompt and all its versions.
+   * @param key - Prompt key
+   */
+  async delete(key: string): Promise<{ success: boolean }> {
+    return this.http.request('DELETE', `/api/client/v1/prompts/${key}`);
   }
 
   /**

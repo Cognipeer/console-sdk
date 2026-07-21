@@ -1,10 +1,12 @@
 import { HttpClient } from '../http';
 import type {
   AgentToolDefinition,
+  ToolCreateRequest,
   ToolDefinition,
   ToolAction,
   ToolExecutionResult,
   ToolActionAdapter,
+  ToolUpdateRequest,
 } from '../types';
 
 export class ToolsResource {
@@ -32,6 +34,57 @@ export class ToolsResource {
   async get(toolKey: string): Promise<ToolDefinition> {
     const response = await this.http.request<{ tool: ToolDefinition }>('GET', `/api/client/v1/tools/${toolKey}`);
     return response.tool;
+  }
+
+  /**
+   * Create a tool definition. Actions are discovered from the source
+   * (OpenAPI spec or MCP endpoint) on creation.
+   * @param params Tool creation parameters (name + type required)
+   */
+  async create(params: ToolCreateRequest): Promise<ToolDefinition> {
+    const response = await this.http.request<{ tool: ToolDefinition }>(
+      'POST',
+      '/api/client/v1/tools',
+      { body: params },
+    );
+    return response.tool;
+  }
+
+  /**
+   * Update a tool definition.
+   * @param toolKey The tool key
+   * @param params Fields to update
+   */
+  async update(toolKey: string, params: ToolUpdateRequest): Promise<ToolDefinition> {
+    const response = await this.http.request<{ tool: ToolDefinition }>(
+      'PATCH',
+      `/api/client/v1/tools/${encodeURIComponent(toolKey)}`,
+      { body: params },
+    );
+    return response.tool;
+  }
+
+  /**
+   * Re-discover the tool's actions from its source (OpenAPI spec / MCP endpoint).
+   * @param toolKey The tool key
+   */
+  async syncActions(toolKey: string): Promise<ToolDefinition> {
+    const response = await this.http.request<{ tool: ToolDefinition }>(
+      'POST',
+      `/api/client/v1/tools/${encodeURIComponent(toolKey)}/sync`,
+    );
+    return response.tool;
+  }
+
+  /**
+   * Delete a tool definition.
+   * @param toolKey The tool key
+   */
+  async delete(toolKey: string): Promise<{ success: boolean }> {
+    return this.http.request<{ success: boolean }>(
+      'DELETE',
+      `/api/client/v1/tools/${encodeURIComponent(toolKey)}`,
+    );
   }
 
   /**
