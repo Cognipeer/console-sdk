@@ -22,10 +22,13 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Env files
-.env
-.env.local
-.env.*.local
+# Env files — glob every variant. A bare ".env" list lets ".env production"
+# and ".env copy" through, which is how a live API token nearly got committed.
+.env*
+!.env.example
+
+# Agent scratch
+.claude/
 
 # Docs build
 docs/.vitepress/dist
