@@ -5,6 +5,12 @@ export default defineConfig({
   description: 'Official TypeScript SDK for Cognipeer Console',
   base: '/console-sdk/',
   ignoreDeadLinks: true,
+  markdown: {
+    // Code blocks stay dark in both themes, so a single dark Shiki theme is
+    // used — the default light theme would render dark tokens on dark bg.
+    // `-default` over `github-dark`: its comment gray clears AA on near-black.
+    theme: 'github-dark-default',
+  },
   themeConfig: {
     logo: '/logo.svg',
     nav: [
