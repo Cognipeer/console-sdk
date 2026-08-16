@@ -37,7 +37,9 @@
   --text-faint: #98a1ad;
 
   --accent:        var(--teal-500);
-  --accent-strong: var(--teal-600);
+  /* teal-600 lands at ~3.5:1 on the light page background — every accent-colored
+     text token (links, tip titles, active sidebar) needs teal-700 to clear AA. */
+  --accent-strong: var(--teal-700);
   --accent-soft:   var(--teal-50);
   --link:          var(--accent-strong);
   --grid-line:     rgba(15, 186, 148, 0.06);
@@ -89,8 +91,11 @@
   --vp-c-important-1: #6957ff;
   --vp-c-important-soft: rgba(105, 87, 255, 0.08);
 
-  --vp-c-warning-1: #c87b15;
+  --vp-c-warning-1: #9a5f10;
   --vp-c-warning-soft: rgba(240, 184, 108, 0.18);
+
+  --vp-c-danger-1: #b32020;
+  --vp-c-danger-soft: rgba(232, 90, 90, 0.14);
 
   --vp-font-family-base: var(--font-sans);
   --vp-font-family-mono: var(--font-mono);
@@ -117,8 +122,25 @@
   --vp-code-bg: var(--bg-soft);
   --vp-code-color: var(--text);
 
+  /* The code surface is dark in BOTH themes, so every code-scoped VitePress
+     variable must use dark-surface values. Declared on :root (not .dark) on
+     purpose — this file loads after VitePress vars, so equal-specificity
+     :root wins in dark mode too and both themes stay in sync. */
+  --vp-code-block-divider-color: rgba(255, 255, 255, 0.08);
+  --vp-code-line-highlight-color: rgba(255, 255, 255, 0.07);
+  --vp-code-line-number-color: rgba(255, 255, 255, 0.28);
+  --vp-code-copy-code-border-color: rgba(255, 255, 255, 0.12);
+  --vp-code-copy-code-bg: rgba(255, 255, 255, 0.07);
+  --vp-code-copy-code-hover-bg: rgba(15, 186, 148, 0.18);
+  --vp-code-copy-code-hover-border-color: var(--teal-400);
+  --vp-code-copy-code-active-text: rgba(255, 255, 255, 0.78);
+  --vp-icon-copy: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='rgba(255,255,255,0.7)' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Crect width='8' height='4' x='8' y='2' rx='1' ry='1'/%3E%3Cpath d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/%3E%3C/svg%3E");
+  --vp-icon-copied: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='rgba(111,231,188,1)' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Crect width='8' height='4' x='8' y='2' rx='1' ry='1'/%3E%3Cpath d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/%3E%3Cpath d='m9 14 2 2 4-4'/%3E%3C/svg%3E");
+
   --vp-sidebar-bg-color: var(--bg);
-  --vp-nav-bg-color: color-mix(in srgb, var(--bg) 78%, transparent);
+  /* Kept high in light mode: code blocks are near-black, and a thinner
+     surface turns the bar into a muddy gray band as they scroll under it. */
+  --vp-nav-bg-color: color-mix(in srgb, var(--bg) 92%, transparent);
 
   --vp-home-hero-name-color: var(--text);
   --vp-home-hero-name-background: linear-gradient(135deg, var(--teal-500), var(--teal-700));
@@ -144,9 +166,11 @@
   --text:       #ecf1f6;
   --text-soft:  #b4bcc7;
   --text-muted: #8a939f;
-  --text-faint: #5a6473;
+  --text-faint: #6d788a;
 
   --accent-soft: rgba(15, 186, 148, 0.10);
+  /* Inverted for dark surfaces: the light-mode teal-700 is unreadable here. */
+  --accent-strong: var(--teal-300);
   --link:        var(--teal-300);
   --grid-line:   rgba(15, 186, 148, 0.08);
 
@@ -158,6 +182,13 @@
   --vp-c-brand-2: var(--teal-400);
   --vp-c-brand-3: var(--teal-500);
   --vp-c-brand-soft: var(--accent-soft);
+
+  /* :root wins over VitePress' own .dark values (equal specificity, later
+     file), so every accent declared there needs a dark counterpart here. */
+  --vp-c-tip-1: var(--teal-300);
+  --vp-c-note-1: var(--teal-300);
+  --vp-c-warning-1: #f0b86c;
+  --vp-c-danger-1: #ff8a8a;
 
   --vp-button-brand-bg: var(--text);
   --vp-button-brand-text: var(--bg);
@@ -210,7 +241,10 @@ strong, b { font-weight: 500; }
 .vp-doc a:hover { border-bottom-color: var(--link); }
 
 /* ---------- 4. Navigation bar ---------- */
+/* .VPNavBar backgrounds are cleared below, so the bar itself must carry the
+   translucent surface — otherwise scrolled content shows through unblurred. */
 .VPNav {
+  background-color: var(--vp-nav-bg-color);
   border-bottom: 1px solid var(--hairline);
   backdrop-filter: saturate(180%) blur(12px);
   -webkit-backdrop-filter: saturate(180%) blur(12px);
@@ -267,6 +301,15 @@ strong, b { font-weight: 500; }
   border-radius: 1px;
 }
 .VPNavBarMenuLink { position: relative; }
+
+/* VitePress switches to the desktop nav menu at 768px, but this site's menu is
+   wide enough to push the whole document sideways until ~960px. Keep the
+   hamburger nav screen (which carries the same links) until it actually fits. */
+@media (max-width: 959px) {
+  .VPNavBarMenu.menu { display: none !important; }
+  .VPNavBarExtra { display: none !important; }
+  .VPNavBarHamburger { display: block !important; }
+}
 
 /* ---------- 5. Sidebar ---------- */
 .VPSidebar { background: var(--bg) !important; border-right: 1px solid var(--hairline); }
@@ -405,7 +448,7 @@ strong, b { font-weight: 500; }
 /* ---------- 7. Home features grid ---------- */
 .VPFeatures { padding-top: 0 !important; }
 .VPFeatures .container { max-width: 1200px !important; }
-.VPFeatures .items { margin: 0 !important; gap: 1px !important; background: var(--hairline); border: 1px solid var(--hairline); border-radius: var(--r-lg); overflow: hidden; }
+.VPFeatures .items { margin: 0 !important; gap: 0 !important; background: var(--hairline); border: 1px solid var(--hairline); border-radius: var(--r-lg); overflow: hidden; }
 .VPFeatures .item { padding: 0 !important; }
 .VPFeature {
   background: var(--bg-elev) !important;
@@ -415,6 +458,9 @@ strong, b { font-weight: 500; }
   height: 100% !important;
   transition: background .18s var(--ease), transform .18s var(--ease) !important;
   position: relative;
+  /* Hairline grid drawn as insets — a real `gap` would break VitePress'
+     percentage column widths and drop a whole column off every row. */
+  box-shadow: inset -1px 0 0 var(--hairline), inset 0 -1px 0 var(--hairline);
 }
 .VPFeature:hover {
   background: var(--bg) !important;
@@ -509,6 +555,10 @@ strong, b { font-weight: 500; }
   transition: color .15s var(--ease);
 }
 .vp-doc :is(h1, h2, h3, h4):hover .header-anchor { color: var(--accent-strong); }
+/* h2 padding-top is 36px here (vs VitePress default 24px) — realign the
+   anchor so it doesn't float above the heading text and overlap the
+   previous block (most visible in light mode due to higher contrast). */
+.vp-doc h2 .header-anchor { top: 36px; }
 
 .vp-doc p { margin: 14px 0; color: var(--text-soft); }
 
@@ -545,19 +595,39 @@ strong, b { font-weight: 500; }
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.45);
-  top: 10px;
-  right: 14px;
+  color: rgba(255, 255, 255, 0.55);
+  top: 17px;
+  /* Cleared past the always-visible copy button instead of being hidden by it. */
+  right: 54px;
+  opacity: 1 !important;
 }
 .vp-doc div[class*='language-'] .line-numbers-wrapper { color: rgba(255, 255, 255, 0.18); padding: 18px 0; }
+/* Always visible: hover-only discovery is invisible on touch and easy to miss.
+   background-color only — the shorthand would drop the copy icon image. */
 .vp-doc div[class*='language-'] .copy {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 999px !important;
+  opacity: 1;
+  width: 34px;
+  height: 34px;
+  top: 10px;
+  right: 10px;
+  background-size: 15px;
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
 }
 .vp-doc div[class*='language-'] .copy:hover {
-  background: rgba(15, 186, 148, 0.15) !important;
-  border-color: var(--accent) !important;
+  background-color: rgba(15, 186, 148, 0.18);
+  border-color: var(--teal-400);
+}
+/* Keep the "Copied" pill flush with the resized, pill-shaped button. */
+.vp-doc div[class*='language-'] .copy.copied,
+.vp-doc div[class*='language-'] .copy:hover.copied {
+  border-radius: 0 999px 999px 0;
+}
+.vp-doc div[class*='language-'] .copy.copied::before,
+.vp-doc div[class*='language-'] .copy:hover.copied::before {
+  height: 34px;
+  border-radius: 999px 0 0 999px;
 }
 
 /* Code groups (tabs) */
@@ -594,9 +664,14 @@ strong, b { font-weight: 500; }
   border-collapse: collapse;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
-  overflow: hidden;
-  display: table;
-  width: 100%;
+  /* Block + auto scroll: `display: table` let wide tables push the whole
+     document sideways on narrow viewports. min-width keeps it full-bleed. */
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: fit-content;
+  min-width: 100%;
+  max-width: 100%;
   margin: 20px 0;
 }
 .vp-doc th {
@@ -605,7 +680,7 @@ strong, b { font-weight: 500; }
   font-size: 11.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-soft);
   font-weight: 500;
   text-align: left;
   padding: 12px 16px;
@@ -653,10 +728,8 @@ strong, b { font-weight: 500; }
   margin-bottom: 8px;
 }
 .dark .vp-doc .custom-block .custom-block-title { color: var(--teal-300); }
-.vp-doc .custom-block.warning .custom-block-title { color: #c87b15; }
-.dark .vp-doc .custom-block.warning .custom-block-title { color: #f0b86c; }
-.vp-doc .custom-block.danger .custom-block-title { color: #c83a3a; }
-.dark .vp-doc .custom-block.danger .custom-block-title { color: #ff8a8a; }
+.vp-doc .custom-block.warning .custom-block-title { color: var(--vp-c-warning-1); }
+.vp-doc .custom-block.danger .custom-block-title { color: var(--vp-c-danger-1); }
 .vp-doc .custom-block p { color: var(--text-soft); margin: 6px 0; }
 
 /* ---------- 11. Right-side TOC (outline) ---------- */
