@@ -3,8 +3,12 @@ import {
   Agent,
   AgentChatRequest,
   AgentChatResponse,
+  AgentCreateRequest,
+  AgentPublishRequest,
   AgentResponseCreateRequest,
   AgentResponse,
+  AgentUpdateRequest,
+  AgentVersion,
   ListAgentsQuery,
 } from '../types';
 
@@ -77,6 +81,61 @@ export class AgentsResource {
       `/api/client/v1/agents/${encodeURIComponent(agentKey)}`,
     );
     return response.agent;
+  }
+
+  /**
+   * Create an agent definition.
+   * @param params - Agent creation parameters (name + config required)
+   * @returns The created agent
+   */
+  async create(params: AgentCreateRequest): Promise<Agent> {
+    const response = await this.http.request<{ agent: Agent }>(
+      'POST',
+      '/api/client/v1/agents',
+      { body: params },
+    );
+    return response.agent;
+  }
+
+  /**
+   * Update an agent definition.
+   * @param agentKey - The agent key
+   * @param params - Fields to update
+   * @returns The updated agent
+   */
+  async update(agentKey: string, params: AgentUpdateRequest): Promise<Agent> {
+    const response = await this.http.request<{ agent: Agent }>(
+      'PATCH',
+      `/api/client/v1/agents/${encodeURIComponent(agentKey)}`,
+      { body: params },
+    );
+    return response.agent;
+  }
+
+  /**
+   * Delete an agent definition.
+   * @param agentKey - The agent key
+   */
+  async delete(agentKey: string): Promise<{ success: boolean }> {
+    return this.http.request<{ success: boolean }>(
+      'DELETE',
+      `/api/client/v1/agents/${encodeURIComponent(agentKey)}`,
+    );
+  }
+
+  /**
+   * Publish the agent's current config as a new immutable version.
+   * @param agentKey - The agent key
+   * @param params - Optional changelog note
+   * @returns The newly-published version
+   */
+  async publish(agentKey: string, params?: AgentPublishRequest): Promise<AgentVersion> {
+    const response = await this.http.request<{ version: AgentVersion }>(
+      'POST',
+      `/api/client/v1/agents/${encodeURIComponent(agentKey)}/publish`,
+      { body: params ?? {} },
+    );
+    return response.version;
   }
 
   /**

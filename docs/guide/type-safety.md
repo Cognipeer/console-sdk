@@ -14,7 +14,7 @@ import { ConsoleClient, ConsoleClientOptions } from '@cognipeer/console-sdk';
 // Options are fully typed
 const options: ConsoleClientOptions = {
   apiKey: 'your-api-key',
-  baseURL: 'https://api.cognipeer.com',
+  baseURL: 'https://console.cognipeer.com',
   timeout: 30000,
   maxRetries: 3,
 };

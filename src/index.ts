@@ -98,6 +98,9 @@ export type {
   RenderPromptOptions,
   PromptRenderResponse,
   PromptVersionsResponse,
+  PromptCreateRequest,
+  PromptUpdateRequest,
+  SetPromptVersionRequest,
 
   // Guardrails
   GuardrailTarget,
@@ -107,6 +110,10 @@ export type {
   GuardrailEvaluateRequest,
   GuardrailEvaluateResponse,
   GuardrailFinding,
+  GuardrailType,
+  Guardrail,
+  GuardrailCreateRequest,
+  GuardrailUpdateRequest,
   
   // Tracing
   TracingSessionRequest,
@@ -140,6 +147,9 @@ export type {
   ToolAction,
   ToolExecutionResult,
   ToolActionAdapter,
+  ToolType,
+  ToolCreateRequest,
+  ToolUpdateRequest,
 
   // RAG
   RagModule,
@@ -155,6 +165,8 @@ export type {
   RagQueryMatch,
   RagQueryResult,
   RagDeleteDocumentResponse,
+  RagModuleCreateRequest,
+  RagModuleUpdateRequest,
   
   // Config
   ConfigValueType,
@@ -182,6 +194,12 @@ export type {
   AgentChatRequest,
   AgentChatResponse,
   ListAgentsQuery,
+  AgentConnectionConfig,
+  AgentDefinitionConfig,
+  AgentCreateRequest,
+  AgentUpdateRequest,
+  AgentPublishRequest,
+  AgentVersion,
 
   // Agent Responses API
   AgentResponseCreateRequest,
@@ -261,6 +279,10 @@ export type {
   RerankerRunRequest,
   RerankerRunResponse,
   RerankerResultItem,
+  RerankerStrategy,
+  RerankerConfig,
+  RerankerCreateRequest,
+  RerankerUpdateRequest,
 
   // Web Search
   WebSearchRequest,
@@ -292,6 +314,16 @@ export type {
   McpExecuteResponse,
   McpConsoleListToolsResponse,
   McpConnectionInfo,
+  McpServer,
+  McpSourceType,
+  McpServerAuthType,
+  McpServerAuthConfig,
+  McpRemoteConfig,
+  McpStdioConfig,
+  McpExposureConfig,
+  McpAegisConfig,
+  McpServerCreateRequest,
+  McpServerUpdateRequest,
 
   // Tracing streaming + OTLP
   TracingStreamStartRequest,
@@ -347,6 +379,66 @@ export type {
   RealtimeModel,
   CreateRealtimeModelRequest,
   UpdateRealtimeModelRequest,
+
+  // Analytics
+  AnalyticsUsageGroupBy,
+  AnalyticsUsageInterval,
+  AnalyticsUsageQuery,
+  AnalyticsUsageModelEntry,
+  AnalyticsUsageTimeseriesPoint,
+  AnalyticsUsageModelTotals,
+  AnalyticsUsageModelResponse,
+  AnalyticsUsageBreakdownTotals,
+  AnalyticsUsageServiceEntry,
+  AnalyticsUsageServiceResponse,
+  AnalyticsUsageEntityEntry,
+  AnalyticsUsageEntityResponse,
+  AnalyticsUsageResponse,
+  AnalyticsOverviewQuery,
+  AnalyticsOverviewStats,
+  AnalyticsOverviewSession,
+  AnalyticsOverviewDailyPoint,
+  AnalyticsOverviewResponse,
+
+  // Tracing threads
+  ListTracingThreadsQuery,
+  TracingThreadSummary,
+  TracingThreadListResponse,
+  TracingThreadSession,
+  TracingThreadDetail,
+
+  // Audit
+  AuditOutcome,
+  AuditActorType,
+  ListAuditLogsQuery,
+  AuditLog,
+  AuditLogListResponse,
+
+  // Monitoring
+  InferenceServerStatus,
+  InferenceServerType,
+  MonitoringInferenceQuery,
+  MonitoringInferenceOverview,
+  MonitoringInferenceServerMetrics,
+  MonitoringInferenceServer,
+  MonitoringInferenceTypeBreakdown,
+  MonitoringInferenceResponse,
+
+  // PII
+  PiiAction,
+  PiiLanguage,
+  PiiSeverity,
+  PiiCustomPattern,
+  PiiPolicy,
+  PiiPolicyCreateRequest,
+  PiiPolicyUpdateRequest,
+  PiiFinding,
+  PiiVaultEntry,
+  PiiVault,
+  PiiScanRequest,
+  PiiScanResponse,
+  PiiDetokenizeRequest,
+  PiiDetokenizeResponse,
 } from './types';
 
 // LangGraph types

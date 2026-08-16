@@ -13,7 +13,7 @@
  *
  * const exporter = new CognipeerOTelSpanExporter({
  *   apiKey: 'cp_...',
- *   baseURL: 'https://api.cognipeer.com/api/client/v1',
+ *   baseURL: 'https://console.cognipeer.com/api/client/v1',
  * });
  *
  * const provider = new NodeTracerProvider();
@@ -211,7 +211,7 @@ export interface CognipeerOTelExporterOptions {
   /** API token (Bearer) */
   apiKey: string;
   /**
-   * Console base URL. Pass the host root (e.g. `https://api.cognipeer.com`).
+   * Console base URL. Pass the host root (e.g. `https://console.cognipeer.com`).
    * If a legacy URL ending in `/api/client/v1` is supplied, the suffix is
    * stripped automatically.
    */

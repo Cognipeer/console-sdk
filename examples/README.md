@@ -8,7 +8,7 @@ single TypeScript file you can run with `tsx`.
 ```bash
 npm install
 export COGNIPEER_API_KEY=your-api-key
-# Optional: point at a non-default Console (defaults to https://api.cognipeer.com)
+# Optional: point at a non-default Console (defaults to https://console.cognipeer.com)
 export COGNIPEER_BASE_URL=https://your-console.example.com
 ```
 

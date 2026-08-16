@@ -1,5 +1,7 @@
 import { HttpClient } from '../http';
 import {
+  CognipeerAPIError,
+  ListTracingThreadsQuery,
   OtlpExportTraceServiceRequest,
   OtlpIngestResponse,
   TracingEvent,
@@ -9,6 +11,8 @@ import {
   TracingStreamEventResponse,
   TracingStreamStartRequest,
   TracingStreamStartResponse,
+  TracingThreadDetail,
+  TracingThreadListResponse,
 } from '../types';
 
 /**
@@ -96,5 +100,35 @@ export class TracingResource {
     return this.http.request<OtlpIngestResponse>('POST', '/api/client/v1/traces', {
       body: payload,
     });
+  }
+
+  /**
+   * List tracing threads (sessions grouped by `threadId`) with aggregated
+   * stats, filtered and paginated. Read-only.
+   */
+  async listThreads(query?: ListTracingThreadsQuery): Promise<TracingThreadListResponse> {
+    return this.http.request<TracingThreadListResponse>(
+      'GET',
+      '/api/client/v1/tracing/threads',
+      { query: query as Record<string, string | number | boolean | undefined> },
+    );
+  }
+
+  /**
+   * Get a single thread's detail — every session under the `threadId` plus
+   * aggregated totals. Resolves to `null` when the thread does not exist.
+   */
+  async getThread(threadId: string): Promise<TracingThreadDetail | null> {
+    try {
+      return await this.http.request<TracingThreadDetail>(
+        'GET',
+        `/api/client/v1/tracing/threads/${encodeURIComponent(threadId)}`,
+      );
+    } catch (error) {
+      if (error instanceof CognipeerAPIError && error.statusCode === 404) {
+        return null;
+      }
+      throw error;
+    }
   }
 }

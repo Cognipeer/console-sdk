@@ -1,5 +1,11 @@
 import { HttpClient } from '../http';
-import { Reranker, RerankerRunRequest, RerankerRunResponse } from '../types';
+import {
+  Reranker,
+  RerankerCreateRequest,
+  RerankerRunRequest,
+  RerankerRunResponse,
+  RerankerUpdateRequest,
+} from '../types';
 
 /**
  * Reranker API resource — Cohere-compatible reranking surface.
@@ -50,6 +56,41 @@ export class RerankerResource {
       'POST',
       `/api/client/v1/rerank/${encodeURIComponent(key)}`,
       { body: params },
+    );
+  }
+
+  /**
+   * Create a reranker definition.
+   * @param params Reranker creation parameters (name, strategy, config required)
+   */
+  async create(params: RerankerCreateRequest): Promise<Reranker> {
+    const res = await this.http.request<{ reranker: Reranker }>(
+      'POST',
+      '/api/client/v1/rerank',
+      { body: params },
+    );
+    return res.reranker;
+  }
+
+  /**
+   * Update a reranker definition.
+   * @param key Reranker key
+   * @param params Fields to update
+   */
+  async update(key: string, params: RerankerUpdateRequest): Promise<Reranker> {
+    const res = await this.http.request<{ reranker: Reranker }>(
+      'PATCH',
+      `/api/client/v1/rerank/${encodeURIComponent(key)}`,
+      { body: params },
+    );
+    return res.reranker;
+  }
+
+  /** Delete a reranker definition. */
+  async delete(key: string): Promise<{ success: boolean }> {
+    return this.http.request<{ success: boolean }>(
+      'DELETE',
+      `/api/client/v1/rerank/${encodeURIComponent(key)}`,
     );
   }
 }

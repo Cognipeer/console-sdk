@@ -10,6 +10,8 @@ import {
   RagReingestFileRequest,
   RagReingestResponse,
   RagModule,
+  RagModuleCreateRequest,
+  RagModuleUpdateRequest,
   RagDocument,
 } from '../types';
 
@@ -208,6 +210,35 @@ export class RagResource {
       'GET',
       `/api/client/v1/rag/modules/${encodeURIComponent(moduleKey)}/documents`,
       { query: query as Record<string, string | number | boolean | undefined> },
+    );
+  }
+
+  /**
+   * Create a RAG module definition.
+   *
+   * @param data - Module configuration (name, embeddingModelKey,
+   *   vectorProviderKey, vectorIndexKey, and chunkConfig required)
+   */
+  async createModule(data: RagModuleCreateRequest): Promise<{ module: RagModule }> {
+    return this.http.request('POST', '/api/client/v1/rag/modules', {
+      body: data,
+    });
+  }
+
+  /**
+   * Update a RAG module definition.
+   *
+   * @param moduleKey - RAG module key
+   * @param data - Fields to update
+   */
+  async updateModule(
+    moduleKey: string,
+    data: RagModuleUpdateRequest,
+  ): Promise<{ module: RagModule }> {
+    return this.http.request(
+      'PATCH',
+      `/api/client/v1/rag/modules/${encodeURIComponent(moduleKey)}`,
+      { body: data },
     );
   }
 

@@ -39,7 +39,7 @@ const client = new ConsoleClient({
 });
 ```
 
-**Default**: `https://api.cognipeer.com/api/client/v1`
+**Default**: `https://console.cognipeer.com/api/client/v1`
 
 ### Timeout (Optional)
 
@@ -97,7 +97,7 @@ const client = new ConsoleClient({
 ```typescript
 const client = new ConsoleClient({
   apiKey: process.env.PROD_API_KEY!,
-  baseURL: 'https://api.cognipeer.com/api/client/v1',
+  baseURL: 'https://console.cognipeer.com/api/client/v1',
   timeout: 60000,
   maxRetries: 3,
 });
@@ -149,7 +149,7 @@ function createClient(options: {
 }): ConsoleClient {
   const baseURLs = {
     development: 'http://localhost:3000/api/client/v1',
-    production: 'https://api.cognipeer.com/api/client/v1',
+    production: 'https://console.cognipeer.com/api/client/v1',
   };
 
   return new ConsoleClient({
@@ -242,7 +242,7 @@ Recommended environment variables:
 ```bash
 # .env.example
 COGNIPEER_API_KEY=your-api-key
-COGNIPEER_BASE_URL=https://api.cognipeer.com/api/client/v1
+COGNIPEER_BASE_URL=https://console.cognipeer.com/api/client/v1
 COGNIPEER_TIMEOUT=60000
 COGNIPEER_MAX_RETRIES=3
 ```

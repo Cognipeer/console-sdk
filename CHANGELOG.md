@@ -22,8 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `WebSearchResponse`, `WebSearchResultItem`, `WebSearchProvider`,
   `WebSearchSafeSearch`.
 
+### Changed
+
+- **Default base URL** is now `https://console.cognipeer.com` (was
+  `https://api.cognipeer.com`). Only affects clients constructed without an
+  explicit `baseURL`; pass `baseURL` to target another host. Existing
+  behaviour of stripping a trailing `/api/client/v1` is unchanged.
+
 ### Fixed
 
+- **`client.tools.*` routing** — `list`, `get`, `execute`, and the deprecated
+  agent-tool helpers were calling paths without the `/api/client/v1` prefix
+  (e.g. `/tools` instead of `/api/client/v1/tools`), so every Tools call hit
+  the wrong URL. Now prefixed correctly. No signature changes.
 - `client.crawler.runAdhoc(...)` now sends `seeds` (the field the server's
   ad-hoc schema requires) instead of `urls`, and exposes `engine`/`maxDepth`/
   `maxPages`/`mode` options.

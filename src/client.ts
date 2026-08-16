@@ -25,11 +25,15 @@ import { RerankerResource } from './resources/reranker';
 import { WebSearchResource } from './resources/webSearch';
 import { AegisResource } from './resources/aegis';
 import { McpResource } from './resources/mcp';
+import { AnalyticsResource } from './resources/analytics';
+import { AuditResource } from './resources/audit';
+import { MonitoringResource } from './resources/monitoring';
+import { PiiResource } from './resources/pii';
 
 /**
  * Default configuration values
  */
-const DEFAULT_BASE_URL = 'https://api.cognipeer.com';
+const DEFAULT_BASE_URL = 'https://console.cognipeer.com';
 const DEFAULT_TIMEOUT = 60000; // 60 seconds
 const DEFAULT_MAX_RETRIES = 3;
 
@@ -51,7 +55,7 @@ const DEFAULT_MAX_RETRIES = 3;
  * });
  * ```
  *
- * Note on `baseURL`: pass the host root (e.g. `https://api.cognipeer.com`).
+ * Note on `baseURL`: pass the host root (e.g. `https://console.cognipeer.com`).
  * Older versions of this SDK accepted a base URL that already included
  * `/api/client/v1`. To stay backwards-compatible the trailing
  * `/api/client/v1` (with or without trailing slash) is stripped automatically.
@@ -146,6 +150,18 @@ export class ConsoleClient {
   /** MCP API (tenant + built-in console MCP servers) */
   public mcp: McpResource;
 
+  /** Analytics API (read-only usage time-series + dashboard rollup) */
+  public analytics: AnalyticsResource;
+
+  /** Audit API (read-only security / administrative trail) */
+  public audit: AuditResource;
+
+  /** Monitoring API (read-only inference-server metrics summary) */
+  public monitoring: MonitoringResource;
+
+  /** PII API (policy-based detect / redact / mask / tokenize + policy CRUD) */
+  public pii: PiiResource;
+
   /**
    * Create a new Console client
    * @param options - Client configuration
@@ -191,6 +207,10 @@ export class ConsoleClient {
     this.webSearch = new WebSearchResource(this.http);
     this.aegis = new AegisResource(this.http);
     this.mcp = new McpResource(this.http);
+    this.analytics = new AnalyticsResource(this.http);
+    this.audit = new AuditResource(this.http);
+    this.monitoring = new MonitoringResource(this.http);
+    this.pii = new PiiResource(this.http);
   }
 
   /**
