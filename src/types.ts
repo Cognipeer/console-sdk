@@ -688,6 +688,9 @@ export interface TracingSessionRequest {
   threadId?: string;
   agent?: TracingAgent;
   config?: Record<string, unknown>;
+  /** Free-form attribution tags reported alongside `agent` (e.g. `{ complexity: 'complex' }`),
+   *  usable as a dynamic `group_by`/`group_by_entity=metadata.<key>` dimension in spend/analytics. */
+  metadata?: Record<string, string>;
   summary?: TracingSummary;
   status?: TracingStatus;
   startedAt?: string;
@@ -2021,6 +2024,9 @@ export interface TracingStreamStartRequest {
   threadId?: string;
   agent?: TracingAgent;
   config?: Record<string, unknown>;
+  /** Free-form attribution tags reported alongside `agent` (e.g. `{ complexity: 'complex' }`),
+   *  usable as a dynamic `group_by`/`group_by_entity=metadata.<key>` dimension in spend/analytics. */
+  metadata?: Record<string, string>;
   startedAt?: string;
   traceId?: string;
   rootSpanId?: string;

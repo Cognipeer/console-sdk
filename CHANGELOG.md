@@ -46,6 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   …). The JS Sandbox module has been removed from the Console platform; use
   the Agent Sandbox (`client.sandbox`) `code`/`exec` APIs for code execution.
 
+## [1.7.0]
+
+### Added
+
+- **`metadata` on tracing sessions** — `TracingSessionRequest`/
+  `TracingStreamStartRequest` (`client.tracing.ingest`/`startStream`) accept an
+  optional `metadata: Record<string, string>` sibling of `agent`: free-form
+  attribution tags the Console groups/reports on as a dynamic
+  `group_by`/`group_by_entity=metadata.<key>` dimension (e.g.
+  `{ complexity: 'complex' }`), with no schema change required on either side.
+
 ## [1.3.1] - 2026-06-10
 
 ### Added
