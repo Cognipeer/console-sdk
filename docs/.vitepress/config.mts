@@ -2,7 +2,8 @@ import { defineConfig } from 'vitepress';
 
 export default defineConfig({
   title: 'Cognipeer Console SDK',
-  description: 'Official TypeScript SDK for Cognipeer Console',
+  description:
+    'Official TypeScript/JavaScript SDK for Cognipeer Console — OpenAI-compatible chat, RAG, MCP, realtime voice, and agent tracing.',
   base: '/console-sdk/',
   ignoreDeadLinks: true,
   markdown: {
