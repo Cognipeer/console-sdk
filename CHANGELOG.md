@@ -22,19 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `WebSearchResponse`, `WebSearchResultItem`, `WebSearchProvider`,
   `WebSearchSafeSearch`.
 
-### Changed
-
-- **Default base URL** is now `https://console.cognipeer.com` (was
-  `https://api.cognipeer.com`). Only affects clients constructed without an
-  explicit `baseURL`; pass `baseURL` to target another host. Existing
-  behaviour of stripping a trailing `/api/client/v1` is unchanged.
-
 ### Fixed
 
-- **`client.tools.*` routing** — `list`, `get`, `execute`, and the deprecated
-  agent-tool helpers were calling paths without the `/api/client/v1` prefix
-  (e.g. `/tools` instead of `/api/client/v1/tools`), so every Tools call hit
-  the wrong URL. Now prefixed correctly. No signature changes.
 - `client.crawler.runAdhoc(...)` now sends `seeds` (the field the server's
   ad-hoc schema requires) instead of `urls`, and exposes `engine`/`maxDepth`/
   `maxPages`/`mode` options.
@@ -50,12 +39,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **New resources**: `client.analytics` (usage/overview), `client.audit`
+  (logs), `client.monitoring` (inference), `client.pii` (policy CRUD +
+  detect/redact/…) — additive, no existing method/resource/type field changed.
+- **`client.tracing.listThreads`/`getThread`**.
+- **Authoring on existing resources** — `agents`/`tools`/`mcp`/`prompts`/
+  `guardrails`/`rag`/`reranker` gained `create`/`update`/`delete` (plus
+  `publish`/`sync`/`setLatestVersion`/`refreshTools` where applicable).
 - **`metadata` on tracing sessions** — `TracingSessionRequest`/
   `TracingStreamStartRequest` (`client.tracing.ingest`/`startStream`) accept an
   optional `metadata: Record<string, string>` sibling of `agent`: free-form
   attribution tags the Console groups/reports on as a dynamic
   `group_by`/`group_by_entity=metadata.<key>` dimension (e.g.
   `{ complexity: 'complex' }`), with no schema change required on either side.
+
+### Changed
+
+- **Default base URL** is now `https://console.cognipeer.com` (was
+  `https://api.cognipeer.com`). Only affects clients constructed without an
+  explicit `baseURL`; pass `baseURL` to target another host. Existing
+  behaviour of stripping a trailing `/api/client/v1` is unchanged.
+
+### Fixed
+
+- **`client.tools.*` routing** — `list`, `get`, `execute`, and the deprecated
+  agent-tool helpers were calling paths without the `/api/client/v1` prefix
+  (e.g. `/tools` instead of `/api/client/v1/tools`), so every Tools call hit
+  the wrong URL. Now prefixed correctly. No signature changes.
 
 ## [1.3.1] - 2026-06-10
 
