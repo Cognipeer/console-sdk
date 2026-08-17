@@ -1,6 +1,6 @@
 # Cognipeer Console SDK
 
-Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com) - A multi-tenant SaaS platform for AI and Agentic services.
+Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com) — OpenAI-compatible chat, batch, realtime voice, embeddings, RAG, MCP, agent tracing, and guardrails for multi-tenant AI products.
 
 [![npm version](https://img.shields.io/npm/v/@cognipeer/console-sdk)](https://www.npmjs.com/package/@cognipeer/console-sdk)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
