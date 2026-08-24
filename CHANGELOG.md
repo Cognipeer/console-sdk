@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< Updated upstream
 ### Added
 
 - **Crawler sync runs** — `client.crawler.run(...)` / `crawlWithCrawler(...)`
@@ -21,6 +22,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   AI Answer setting), and `providers.list()`. New types: `WebSearchRequest`,
   `WebSearchResponse`, `WebSearchResultItem`, `WebSearchProvider`,
   `WebSearchSafeSearch`.
+=======
+## [1.7.0] - 2026-08-17
+
+### Added
+
+- **New resources**: `client.analytics` (usage/overview), `client.audit`
+  (logs), `client.monitoring` (inference), `client.pii` (policy CRUD +
+  detect/redact/…) — additive, no existing method/resource/type field changed.
+- **`client.tracing.listThreads`/`getThread`**.
+- **Authoring on existing resources** — `agents`/`tools`/`mcp`/`prompts`/
+  `guardrails`/`rag`/`reranker` gained `create`/`update`/`delete` (plus
+  `publish`/`sync`/`setLatestVersion`/`refreshTools` where applicable).
+- **`metadata` on tracing sessions** — `TracingSessionRequest`/
+  `TracingStreamStartRequest` (`client.tracing.ingest`/`startStream`) accept an
+  optional `metadata: Record<string, string>` sibling of `agent`: free-form
+  attribution tags the Console groups/reports on as a dynamic
+  `group_by`/`group_by_entity=metadata.<key>` dimension (e.g.
+  `{ complexity: 'complex' }`), with no schema change required on either side.
+>>>>>>> Stashed changes
 
 ### Changed
 
@@ -46,6 +66,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   …). The JS Sandbox module has been removed from the Console platform; use
   the Agent Sandbox (`client.sandbox`) `code`/`exec` APIs for code execution.
 
+## [1.6.0] - 2026-07-17
+
+### Added
+
+- **MCP Hubs discovery client** — `client.mcp.hubs.list`/`get`/`servers`/
+  `server` — hub catalog discovery (MCP Registry envelope, cursor pagination,
+  tool schemas on detail).
+- `realtime.connect({ runtimeContext })` sends session-scoped downstream auth
+  right after the socket opens; refreshable via `updateSession`.
+
+## [1.4.0] - 2026-07-05
+
+### Added
+
+- **Crawler sync runs** — `client.crawler.run(...)` / `crawlWithCrawler(...)`
+  accept `mode: 'sync'` and then resolve with the finished job plus inline
+  results (`CrawlRunSyncResponse`, markdown included). New single-URL
+  convenience `client.crawler.crawlUrl(idOrKey, url)`.
+- **Web Search API** (`client.webSearch`) — run web searches through
+  Console-configured Web Search instances (Bing, Brave Search, Serper, Tavily,
+  SearxNG, DuckDuckGo): `search(...)` with provider/count/language/country/
+  safe-search options, `searchWith(key, ...)` for a named instance,
+  `include_answer: true` for AI-interpreted answers (requires the instance's
+  AI Answer setting), and `providers.list()`. New types: `WebSearchRequest`,
+  `WebSearchResponse`, `WebSearchResultItem`, `WebSearchProvider`,
+  `WebSearchSafeSearch`.
+
+### Fixed
+
+- `client.crawler.runAdhoc(...)` now sends `seeds` (the field the server's
+  ad-hoc schema requires) instead of `urls`, and exposes `engine`/`maxDepth`/
+  `maxPages`/`mode` options.
+
+## [1.3.4] - 2026-07-02
+
+### Removed
+
+- **BREAKING: JS Sandbox API** (`client.jsSandbox`) and its types
+  (`JsSandboxRuntime`, `JsSandboxExecuteRequest`, `JsSandboxExecutionResult`,
+  …). The JS Sandbox module has been removed from the Console platform; use
+  the Agent Sandbox (`client.sandbox`) `code`/`exec` APIs for code execution.
+  Note: this landed as a patch release, not a major bump — pin an exact
+  version if you still depend on `client.jsSandbox`.
+
+## [1.3.3] - 2026-06-29
+
+### Added
+
+- `client.sandbox.setPreview(id, { enabled?, public? })` — toggle port
+  preview on/off and public (share links) vs. private (login-only), applied
+  live. `create()` accepts `previewEnabled`/`previewPublic`; `preview()`/
+  `SandboxPreviewInfo` now expose `enabled`/`public`.
+
+## [1.3.2] - 2026-06-27
+
+### Added
+
+- **Sandbox port preview helpers** — `sandbox.preview(id)` (list previewable
+  ports and their proxy URLs), `sandbox.createPreviewLink(id, port, opts?)`
+  (session-less, expiring share link), `sandbox.previewUrl(id, port, path?)`
+  (authenticated proxy path). New types: `SandboxPreviewPort`/`Info`/
+  `ShareLink`; `SandboxSummary.preview`.
+- `resources` override (`cpuCores`/`memoryMb`/`diskMb`/`pids`) on
+  `sandbox.create()` and on snapshot restore, for sizing a sandbox or a
+  resumed snapshot.
+
 ## [1.3.1] - 2026-06-10
 
 ### Added
@@ -64,6 +150,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented the full client surface on the VitePress site (previously
   README-only): Batches, Moderations, Spend & Budgets, Realtime, Agent Sandbox,
   plus LangChain and OpenTelemetry integration pages.
+
+## [1.3.0] - 2026-06-22
+
+### Added
+
+- **Agent Sandbox API** (`client.sandbox`) — initial resource for remote
+  runtime containers: `create`/`list`/`get`/`delete`, `exec`/`code`,
+  `waitUntilRunning`, filesystem (`fs.*`: list/info/read/write/mkdir/delete/
+  move/find/replace), `git.*` (clone/status/branches/checkout/add/commit/
+  push/pull/log), and detached `sessions.*`. (Lifecycle `start`/`stop`,
+  volume file IO, and snapshot/fork/restore followed in 1.3.1.)
+- `reasoning_content`/`reasoning` on chat messages (streamed and
+  non-streamed) — reasoning/"thinking" models' chain-of-thought, surfaced end
+  to end including through the LangChain integration (`additional_kwargs` on
+  `AIMessage`/`AIMessageChunk`).
 
 ## [1.2.0] - 2026-06-03
 
@@ -126,6 +227,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Resolved the double `/api/client/v1/api/client/v1/...` URL that occurred
   when the default `baseURL` was used together with the resource-level path
   prefix.
+
+## [1.0.6] - 2026-05-14
+
+### Added
+
+- **Browser automation resources** — `client.browsers` (profiles),
+  `client.browserSessions` (Playwright-backed sessions: `action`/`extract`/
+  `snapshot`/`screenshot`/`screenshotLive`/`pdf`/`close`), and
+  `client.browserMcp` (per-browser MCP tool bridge: `initialize`/
+  `listTools`). This split superseded the older `client.browserAgents`,
+  which was removed in 1.2.0.
+
+### Changed
+
+- Clarified memory API docs/examples (base URL usage, added debug logging)
+  and refined the `MemorySource`/`MemoryItemStatus` types.
+
+## [1.0.5] - 2026-03-25
+
+Housekeeping release. This commit ("Initial public release") is the
+earliest point in this repository's git history; no per-commit detail is
+available for what changed since 1.0.4.
+
+## [1.0.4] - 2026-02-20
+
+Published to npm; no corresponding commit survives in this repository's
+history — the visible git history begins after this release, at the 1.0.5
+snapshot above. No further detail could be grounded in source.
 
 ## [1.0.0] - 2025-10-09
 
