@@ -136,28 +136,28 @@ console.log(recall.context);
 
 ## Documentation
 
-Full documentation is available at [cognipeer.github.io/console-sdk](https://cognipeer.github.io/console-sdk)
+Full documentation is available at [docs.cognipeer.com/console-sdk](https://docs.cognipeer.com/console-sdk)
 
-If you need the platform itself, deployment guidance, tenant architecture, provider setup, or raw HTTP API semantics, use the [Cognipeer Console docs](https://cognipeer.github.io/cognipeer-console/).
+If you need the platform itself, deployment guidance, tenant architecture, provider setup, or raw HTTP API semantics, use the [Cognipeer Console docs](https://docs.cognipeer.com/console/).
 
-- [Getting Started](https://cognipeer.github.io/console-sdk/guide/getting-started)
-- [Working with Console](https://cognipeer.github.io/console-sdk/guide/working-with-console)
-- [Console API Mapping](https://cognipeer.github.io/console-sdk/api/console-mapping)
-- [Chat API](https://cognipeer.github.io/console-sdk/api/chat)
-- [Embeddings API](https://cognipeer.github.io/console-sdk/api/embeddings)
-- [Audio API](https://cognipeer.github.io/console-sdk/api/audio)
-- [OCR API](https://cognipeer.github.io/console-sdk/api/ocr)
-- [Crawler API](https://cognipeer.github.io/console-sdk/api/crawler)
-- [Automations API](https://cognipeer.github.io/console-sdk/api/automations)
-- [Rerankers API](https://cognipeer.github.io/console-sdk/api/rerankers)
-- [Web Search API](https://cognipeer.github.io/console-sdk/api/web-search)
-- [MCP API](https://cognipeer.github.io/console-sdk/api/mcp)
-- [Guardrails API](https://cognipeer.github.io/console-sdk/api/guardrails)
-- [Memory API](https://cognipeer.github.io/console-sdk/api/memory)
-- [Vector API](https://cognipeer.github.io/console-sdk/api/vectors)
-- [Files API](https://cognipeer.github.io/console-sdk/api/files)
-- [Tracing API](https://cognipeer.github.io/console-sdk/api/tracing)
-- [Examples](https://cognipeer.github.io/console-sdk/examples/)
+- [Getting Started](https://docs.cognipeer.com/console-sdk/guide/getting-started)
+- [Working with Console](https://docs.cognipeer.com/console-sdk/guide/working-with-console)
+- [Console API Mapping](https://docs.cognipeer.com/console-sdk/api/console-mapping)
+- [Chat API](https://docs.cognipeer.com/console-sdk/api/chat)
+- [Embeddings API](https://docs.cognipeer.com/console-sdk/api/embeddings)
+- [Audio API](https://docs.cognipeer.com/console-sdk/api/audio)
+- [OCR API](https://docs.cognipeer.com/console-sdk/api/ocr)
+- [Crawler API](https://docs.cognipeer.com/console-sdk/api/crawler)
+- [Automations API](https://docs.cognipeer.com/console-sdk/api/automations)
+- [Rerankers API](https://docs.cognipeer.com/console-sdk/api/rerankers)
+- [Web Search API](https://docs.cognipeer.com/console-sdk/api/web-search)
+- [MCP API](https://docs.cognipeer.com/console-sdk/api/mcp)
+- [Guardrails API](https://docs.cognipeer.com/console-sdk/api/guardrails)
+- [Memory API](https://docs.cognipeer.com/console-sdk/api/memory)
+- [Vector API](https://docs.cognipeer.com/console-sdk/api/vectors)
+- [Files API](https://docs.cognipeer.com/console-sdk/api/files)
+- [Tracing API](https://docs.cognipeer.com/console-sdk/api/tracing)
+- [Examples](https://docs.cognipeer.com/console-sdk/examples/)
 
 ## API Reference
 
@@ -371,7 +371,7 @@ Check out the [examples](./examples) directory for more detailed usage:
 - [Chat with streaming](./examples/chat-streaming.ts)
 - [RAG with vectors](./examples/rag-example.ts)
 - [Scoped memory](./examples/memory-basic.ts)
-- [Browser API reference](https://cognipeer.github.io/console-sdk/api/browser)
+- [Browser API reference](https://docs.cognipeer.com/console-sdk/api/browser)
 
 ## Contributing
 
@@ -384,5 +384,5 @@ MIT © [Cognipeer](https://cognipeer.com)
 ## Support
 
 - 📧 Email: support@cognipeer.com
-- 📖 Documentation: [cognipeer.github.io/console-sdk](https://cognipeer.github.io/console-sdk)
+- 📖 Documentation: [docs.cognipeer.com/console-sdk](https://docs.cognipeer.com/console-sdk)
 - 🐛 Issues: [GitHub Issues](https://github.com/Cognipeer/console-sdk/issues)
