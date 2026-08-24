@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Documentation has moved</title>
+<meta name="robots" content="noindex">
+<link rel="canonical" href="https://docs.cognipeer.com/console-sdk/">
+<script>
+(function () {
+  var base = "/console-sdk/";
+  var path = location.pathname;
+  var p = path.indexOf(base) === 0 ? path.slice(base.length) : "";
+  p = p.replace(/^\/+/, "").replace(/\.html$/, "");
+  var target = /^changelog/.test(p) ? 'release-notes/console-sdk/' : 'console-sdk/' + p;
+  location.replace("https://docs.cognipeer.com/" + target + location.hash);
+})();
+</script>
+<p>This documentation now lives at <a href="https://docs.cognipeer.com/console-sdk/">docs.cognipeer.com</a>.</p>
