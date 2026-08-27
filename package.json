@@ -1,7 +1,7 @@
 {
   "name": "@cognipeer/console-sdk",
   "version": "1.6.0",
-  "description": "TypeScript SDK for Cognipeer Console - Multi-tenant AI services platform",
+  "description": "TypeScript/JavaScript SDK for Cognipeer Console — OpenAI-compatible chat, batch, realtime voice, RAG, MCP, and agent tracing for multi-tenant AI products",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -36,8 +36,16 @@
     "embeddings",
     "chat",
     "openai",
+    "openai-compatible",
     "sdk",
-    "typescript"
+    "typescript",
+    "mcp",
+    "model-context-protocol",
+    "rag",
+    "agent-tracing",
+    "realtime-voice",
+    "guardrails",
+    "multi-tenant"
   ],
   "author": "Cognipeer",
   "license": "MIT",
