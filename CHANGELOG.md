@@ -66,6 +66,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   …). The JS Sandbox module has been removed from the Console platform; use
   the Agent Sandbox (`client.sandbox`) `code`/`exec` APIs for code execution.
 
+## [1.7.1] - 2026-08-28
+
+### Added
+
+- Added Node 24 CI and npm Trusted Publishing release workflows.
+- Added client smoke tests covering authentication, URL normalization, resource initialization, and request headers.
+
+### Changed
+
+- Corrected npm repository and documentation homepage metadata for `@cognipeer/console-sdk`.
+
 ## [1.6.0] - 2026-07-17
 
 ### Added
