@@ -1,6 +1,6 @@
 {
   "name": "@cognipeer/console-sdk",
-  "version": "1.6.0",
+  "version": "1.7.1",
   "description": "TypeScript SDK for Cognipeer Console - Multi-tenant AI services platform",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -19,7 +19,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest",
+    "test": "vitest run",
     "test:coverage": "vitest --coverage",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
@@ -43,12 +43,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Cognipeer/console-sdk.git"
+    "url": "https://github.com/Cognipeer/console-sdk.git"
   },
   "bugs": {
     "url": "https://github.com/Cognipeer/console-sdk/issues"
   },
-  "homepage": "https://cognipeer.github.io/console-sdk",
+  "homepage": "https://docs.cognipeer.com/console-sdk/",
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
