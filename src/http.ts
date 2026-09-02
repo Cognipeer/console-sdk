@@ -39,6 +39,17 @@ export class HttpClient {
       query?: Record<string, string | number | boolean | undefined>;
       headers?: Record<string, string>;
       signal?: AbortSignal;
+      /**
+       * Non-2xx statuses whose body is a normal result rather than an error.
+       *
+       * Exists for the guardrail hook route: a guardrail can opt into the
+       * extended verdict status codes, and then a BLOCK answers 446 with a full
+       * verdict body. Without this the SDK would reject a successful,
+       * well-formed evaluation as a transport failure — the caller would learn
+       * that something went wrong but not that its content was blocked, which
+       * is the one thing it asked.
+       */
+      acceptStatuses?: number[];
     } = {}
   ): Promise<T> {
     const url = this.buildURL(path, options.query);
@@ -59,7 +70,7 @@ export class HttpClient {
 
         clearTimeout(timeoutId);
 
-        if (!response.ok) {
+        if (!response.ok && !options.acceptStatuses?.includes(response.status)) {
           await this.handleErrorResponse(response);
         }
 

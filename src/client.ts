@@ -145,6 +145,14 @@ export class ConsoleClient {
 
   /** Web Search API (Bing, Brave, Serper, Tavily, SearxNG, DuckDuckGo providers) */
   public webSearch: WebSearchResource;
+
+  /**
+   * @deprecated The Aegis enforcement plane was removed from the Console — use
+   * `client.guardrails` (a shield is a guardrail, `evaluate({ stage, resource })`
+   * is `guardrails.hooks.evaluate({ hook, tool_name, tool_args })`). Every
+   * method throws with a migration message instead of issuing a request that
+   * would 404. Removed in the next major.
+   */
   public aegis: AegisResource;
 
   /** MCP API (tenant + built-in console MCP servers) */

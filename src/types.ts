@@ -479,16 +479,731 @@ export interface GuardrailFinding {
 }
 
 export interface GuardrailEvaluateResponse {
+  /**
+   * "No BLOCKING finding was produced" — **not** "the request was not blocked".
+   *
+   * The two diverge in monitor mode: a monitoring guardrail still reports
+   * `passed: false` for a blocking finding while `verdict.enforced` is false and
+   * nothing was actually stopped. To decide whether to refuse the call, use
+   * {@link shouldBlock}(response.verdict), never `!passed`.
+   */
   passed: boolean;
   guardrail_key: string;
   guardrail_name: string;
   action: GuardrailAction;
   findings: GuardrailFinding[];
   message: string | null;
-  /** True when the guardrail is disabled — no checks ran and `passed` is vacuous. */
+  /** True when the guardrail is disabled — no policies ran and `passed` is vacuous. */
   disabled?: boolean;
   /** Text with redact-action findings masked; present when redaction applied. */
   redacted_text?: string | null;
+  /**
+   * The full hook verdict behind this legacy result — spans, mutations, risk
+   * score, response codes and the dry-run `wouldBeDecision`. Null when no
+   * guardrail ran.
+   *
+   * Every key above keeps its exact pre-hook-plane meaning; this one is
+   * additive, and it is the field to branch enforcement on
+   * ({@link shouldBlock}).
+   */
+  verdict?: HookVerdict | null;
+}
+
+// ============================================================================
+// Guardrail Hook Plane (contract v2)
+// ============================================================================
+/**
+ * The five hook points a guardrail can run on, the verdict they answer with,
+ * and the persisted configuration `create`/`update` carry.
+ *
+ * Mirrors the Console's own contract; `contractVersion` is bumped only on a
+ * breaking change to the call/verdict shape.
+ */
+
+/** Bumped only on a breaking change to the hook call/verdict shape. */
+export type GuardrailContractVersion = 2;
+
+/**
+ * The six hook points, in PIPELINE order. A string union rather than an enum,
+ * so a seventh is additive and invalidates nothing stored.
+ *
+ * Direction is carried by the hook id itself — a guardrail's `target` column is
+ * not consulted when it runs.
+ *
+ * `prompt.pre` fires ONCE per run on what the person actually typed;
+ * `input.pre` fires again before every model call, so after a tool round trip
+ * the newest message there is a tool result rather than anything a human wrote.
+ * Nothing inside the Console emits `prompt.pre` — it exists for exactly this
+ * kind of remote enforcement point, which is why it belongs in this union.
+ */
+export type HookId =
+  | 'prompt.pre'
+  | 'input.pre'
+  | 'output.pre'
+  | 'output.stream.delta'
+  | 'tool.pre'
+  | 'tool.post';
+
+/**
+ * Enforcement posture. `monitor` evaluates and logs but neutralises the
+ * decision to `'allow'` before anyone acts on it.
+ */
+export type GuardrailMode = 'enforce' | 'monitor' | 'disabled';
+
+/**
+ * The action ladder, strictly ordered:
+ * `allow < flag < warn < redact < block`. Merging several verdicts is max(),
+ * which is why the order is total and guardrails may merge in any order.
+ */
+export type SafetyAction = 'allow' | GuardrailAction;
+
+/** The nine policy families a hook can run. */
+export type GuardrailPolicyFamily =
+  | 'pii'
+  | 'secrets'
+  | 'word_filter'
+  | 'regex'
+  | 'moderation'
+  | 'prompt_shield'
+  | 'custom'
+  | 'tool_access'
+  | 'webhook';
+
+/**
+ * Timing × failure handling as ONE field, so `{ timing: 'async', onFail:
+ * 'block' }` is unrepresentable: an async policy has by definition already let
+ * the flow continue, so it cannot block.
+ */
+export type GuardrailHookSchedule =
+  | { timing: 'sync'; onFail: 'block' | 'log' }
+  | { timing: 'async'; onFail: 'log' };
+
+/** One scannable string, addressed by an RFC-6901 JSON Pointer into the
+ *  subject (`/text`, `/args/url`, `/result/0/body`). */
+export interface SubjectSegment {
+  path: string;
+  text: string;
+  role?: 'system' | 'user' | 'assistant' | 'tool' | string;
+}
+
+interface HookSubjectCommon {
+  /** The segments joined by '\n', in segment order. */
+  text: string;
+  segments: SubjectSegment[];
+}
+
+/** What a hook was evaluated against, returned on the verdict only when a
+ *  mutation actually rewrote it. */
+export type HookSubject =
+  | (HookSubjectCommon & { kind: 'text' })
+  | (HookSubjectCommon & {
+      kind: 'tool_call';
+      /** Canonical policy name (`${serverKey}/${tool}`, `sandbox.fs.read`). */
+      toolName: string;
+      /** The name the model used, before MCP rename resolution. */
+      requestedName?: string;
+      args: Record<string, unknown>;
+      /** `mcp:<serverKey>` | `sandbox:<instanceId>` | `agent:<agentKey>`. */
+      providerRef: string;
+      sandboxAvailable?: boolean;
+    })
+  | (HookSubjectCommon & {
+      kind: 'tool_result';
+      toolName: string;
+      args: Record<string, unknown>;
+      result: unknown;
+      providerRef: string;
+    })
+  | (HookSubjectCommon & {
+      kind: 'stream_delta';
+      /** This window's newly-arrived text; policies read `text`. */
+      delta: string;
+      /** The full accumulated channel text. Spans are ABSOLUTE into this. */
+      buffer: string;
+      /** Absolute offset already written to the client. */
+      releasedTo: number;
+      seq: number;
+      final: boolean;
+    });
+
+/**
+ * A finding, purely additive over {@link GuardrailFinding} — `type`,
+ * `category`, `severity`, `message`, `action`, `block` and `value` keep their
+ * exact names and meanings, so a `SafetyFinding[]` is a `GuardrailFinding[]`.
+ */
+export interface SafetyFinding extends GuardrailFinding {
+  family: GuardrailPolicyFamily;
+  hook: HookId;
+  /** The policy id that produced it. */
+  policyId: string;
+  /** Machine code, e.g. `'tool_not_allowed'`, `'secret_detected'`,
+   *  `'evaluation_error'`. Append-only. */
+  code?: string;
+  /** Criticality, folded out of `severity` (which stays three-valued). A
+   *  critical finding forces decision `'block'` regardless of its `action`. */
+  critical?: boolean;
+  /** Pointer into the subject. Present when the detector knows where. */
+  path?: string;
+  /** Absolute offsets INSIDE the string at `path`. Present only for
+   *  span-capable families (`pii`, `secrets`, `regex`). */
+  span?: { start: number; end: number };
+  confidence?: number;
+}
+
+/**
+ * A rewrite the verdict asks you to apply. When `HookVerdict.subject` /
+ * `.text` is present the Console already applied these to the copy it returned
+ * — send THAT onwards rather than replaying the ops yourself.
+ */
+export type Mutation =
+  /** The primary redaction op. Absolute offsets into the string at `path`. */
+  | {
+      op: 'replace_span';
+      path: string;
+      start: number;
+      end: number;
+      replacement: string;
+      family: GuardrailPolicyFamily;
+      policyId: string;
+      category?: string;
+    }
+  /** For span-less detectors. Replaces every occurrence of `value` WITHIN THE
+   *  SEGMENT AT `path` — never across the whole document. */
+  | {
+      op: 'replace_value';
+      path: string;
+      value: string;
+      replacement: string;
+      family: GuardrailPolicyFamily;
+      policyId: string;
+      category?: string;
+    }
+  /** Delete the property at `path` (a tool argument, a result field). */
+  | { op: 'remove'; path: string; family: GuardrailPolicyFamily; policyId: string };
+
+/** Coarse reason shown to an end user — never the matched value. */
+export type GuardrailBlockReasonClass =
+  | 'pii'
+  | 'secrets'
+  | 'profanity'
+  | 'moderation'
+  | 'injection'
+  | 'tool_denied'
+  | 'custom'
+  | 'unavailable';
+
+/**
+ * The rendered end-user message for a block. **An object, not a string** — the
+ * human-readable text is `body`.
+ *
+ * `mode` says how to deliver it:
+ * - `'error'` — REJECT the call and surface `body` as the error message, with
+ *   HTTP `status`.
+ * - `'replace'` — do NOT reject: SUBSTITUTE `body` for the model's response and
+ *   answer normally (a chat UI renders it as the assistant turn). Returning an
+ *   error here would show a failure where the policy asked for a polite
+ *   refusal.
+ */
+export interface RenderedBlockMessage {
+  reasonClass: GuardrailBlockReasonClass;
+  body: string;
+  mode: 'error' | 'replace';
+  /** 400 unless the guardrail opted into the verdict status codes (then 446). */
+  status: number;
+  traceId: string;
+}
+
+/**
+ * The result of running one hook.
+ *
+ * READ `decision` AND `enforced` TOGETHER. `decision` is the EFFECTIVE
+ * decision, already neutralised to `'allow'` in monitor mode, and `enforced`
+ * says whether it was applied at all:
+ *
+ * ```ts
+ * if (shouldBlock(verdict)) refuse(verdict.message?.body);
+ * ```
+ *
+ * Do not re-derive that rule per call site — {@link shouldBlock} encodes it
+ * once.
+ */
+export interface HookVerdict {
+  contractVersion: GuardrailContractVersion;
+  hook: HookId;
+  mode: GuardrailMode;
+  /**
+   * The EFFECTIVE decision, ALREADY neutralised to `'allow'` when
+   * `mode !== 'enforce'`. Compare against `wouldBeDecision` to see what a
+   * monitoring guardrail WOULD have done.
+   */
+  decision: SafetyAction;
+  /** What would have happened in enforce mode. The dry-run affordance. */
+  wouldBeDecision: SafetyAction;
+  /**
+   * Whether the decision was APPLIED.
+   *
+   * `decision === 'block' && enforced === false` means the decision was NOT
+   * applied — the guardrail is monitoring, and the call must proceed. Blocking
+   * on `decision` alone turns every monitor-mode guardrail into an enforcing
+   * one. Use {@link shouldBlock}.
+   */
+  enforced: boolean;
+  /**
+   * True when the guardrail is disabled or absent: no policies ran, so
+   * `decision: 'allow'` is VACUOUS rather than "the content is safe".
+   */
+  disabled: boolean;
+  findings: SafetyFinding[];
+  mutations: Mutation[];
+  /** Present iff mutations were produced — the rewrite is already applied. */
+  subject?: HookSubject;
+  /** Shortcut onto the rewritten text; the legacy result calls it
+   *  `redacted_text`. Send this instead of what you submitted. */
+  text?: string;
+  riskScore: number;
+  codes: string[];
+  /** The rendered block message — an OBJECT (see {@link RenderedBlockMessage}),
+   *  whose `mode` decides between rejecting and substituting `body`. */
+  message?: RenderedBlockMessage;
+  guardrailKeys: string[];
+  /** First evaluated key — what the legacy result reports. */
+  guardrailKey: string;
+  guardrailName: string;
+  /** `${key}@${updatedAt}`, joined with '+' when several guardrails merged. */
+  policyVersion: string;
+  traceId: string;
+  latencyMs: number;
+  /** Policies that could not run; `failMode` has already been applied. */
+  degraded?: Array<{ policyId: string; family: GuardrailPolicyFamily; reason: string }>;
+  /**
+   * Policies that were STARTED and then abandoned, because another policy in
+   * the same lane blocked first. Distinct from `degraded`: that one tried and
+   * failed, this one was never allowed to finish, so it contributed no finding
+   * and no mutation.
+   *
+   * Read it whenever you compare two evaluations of the same input: a lane
+   * configured to stop on the first block may report a different number of
+   * findings from one run to the next, and this is the only field that says so.
+   */
+  cancelled?: Array<{
+    policyId: string;
+    family: GuardrailPolicyFamily;
+    /** The lane it was running in. */
+    layer: number;
+    reason: string;
+  }>;
+}
+
+// ── Hook evaluation (POST /guardrails/hooks/evaluate) ────────────────────
+
+/** Options every hook evaluation accepts, whatever the hook. */
+interface GuardrailHookEvaluateOptions {
+  /**
+   * Run ONLY these policy families — what lets a latency-sensitive caller ask
+   * for just the deterministic part instead of racing the whole evaluation.
+   */
+  only?: GuardrailPolicyFamily[];
+  /**
+   * Suppress evaluation-log writes and usage events. Opt-IN, and only for a
+   * preview ("would this block?"): real enforcement traffic belongs in the
+   * audit trail.
+   */
+  shadow?: boolean;
+  /** Wall-clock budget in ms for SYNC policies. On expiry `failMode` decides. */
+  budget_ms?: number;
+  /** Your correlation id; it becomes the verdict's `traceId`. */
+  request_id?: string;
+}
+
+/**
+ * Which guardrails to evaluate. At least one of the two is required — a hook
+ * may be governed by several guardrails, whose verdicts merge by max().
+ */
+type GuardrailHookKeys =
+  | { guardrail_key: string; guardrail_keys?: string[] }
+  | { guardrail_key?: string; guardrail_keys: string[] };
+
+/** `prompt.pre` / `input.pre` / `output.pre` — a flat string subject. */
+export type GuardrailTextHookEvaluateParams = GuardrailHookEvaluateOptions &
+  GuardrailHookKeys & {
+    hook: 'prompt.pre' | 'input.pre' | 'output.pre';
+    text: string;
+  };
+
+/** `output.stream.delta` — one window of a streamed answer. */
+export type GuardrailStreamHookEvaluateParams = GuardrailHookEvaluateOptions &
+  GuardrailHookKeys & {
+    hook: 'output.stream.delta';
+    /** The FULL accumulated channel text. Finding spans are absolute into it. */
+    buffer: string;
+    /** This window's newly-arrived text. Defaults to `buffer.slice(released_to)`. */
+    delta?: string;
+    /** Absolute offset already written to the client. Default 0. */
+    released_to?: number;
+    seq?: number;
+    final?: boolean;
+  };
+
+/** `tool.pre` — a tool call about to run. `tool_name` is required. */
+export type GuardrailToolPreHookEvaluateParams = GuardrailHookEvaluateOptions &
+  GuardrailHookKeys & {
+    hook: 'tool.pre';
+    /** Canonical policy name with route params stripped — a concrete URL leaks
+     *  ids into policy and stops `sideEffects` entries from matching. */
+    tool_name: string;
+    tool_args?: Record<string, unknown>;
+    /** The name the model used, before MCP rename resolution. */
+    requested_name?: string;
+    /** `mcp:<serverKey>` | `sandbox:<instanceId>` | `agent:<agentKey>`. */
+    provider_ref?: string;
+    sandbox_available?: boolean;
+  };
+
+/** `tool.post` — a tool result about to reach the model. `tool_name` and
+ *  `tool_result` are both required. */
+export type GuardrailToolPostHookEvaluateParams = GuardrailHookEvaluateOptions &
+  GuardrailHookKeys & {
+    hook: 'tool.post';
+    tool_name: string;
+    /** The tool's output. Required — pass `null` for a tool that returns
+     *  nothing rather than omitting the field. */
+    tool_result: unknown;
+    tool_args?: Record<string, unknown>;
+    provider_ref?: string;
+  };
+
+/**
+ * The body of `client.guardrails.hooks.evaluate(...)`, discriminated on
+ * `hook`: a `tool.pre` call cannot compile without `tool_name`, and a
+ * `tool.post` call cannot compile without `tool_result`.
+ */
+export type GuardrailHookEvaluateParams =
+  | GuardrailTextHookEvaluateParams
+  | GuardrailStreamHookEvaluateParams
+  | GuardrailToolPreHookEvaluateParams
+  | GuardrailToolPostHookEvaluateParams;
+
+/**
+ * The wire form of a {@link HookVerdict} — the same decision, in the snake_case
+ * this API answers with. `decision` / `enforced` keep their names, so
+ * {@link shouldBlock} accepts this directly.
+ */
+export interface GuardrailHookEvaluateResponse {
+  hook: HookId;
+  contract_version: GuardrailContractVersion;
+  /** EFFECTIVE decision, already neutralised in monitor mode. */
+  decision: SafetyAction;
+  /** What would have happened in enforce mode. */
+  would_be_decision: SafetyAction;
+  /** False = the decision was NOT applied. See {@link shouldBlock}. */
+  enforced: boolean;
+  mode: GuardrailMode;
+  /** True when nothing ran, so `decision: 'allow'` is vacuous. */
+  disabled: boolean;
+  /** "No blocking finding", NOT "the request was not blocked" — the two
+   *  diverge in monitor mode. */
+  passed: boolean;
+  findings: SafetyFinding[];
+  mutations: Mutation[];
+  /** The rewritten subject; present only when a mutation was applied. */
+  subject: HookSubject | null;
+  /** The rewritten flat text; present only when a mutation was applied. */
+  redacted_text: string | null;
+  risk_score: number;
+  codes: string[];
+  /** The rendered block message OBJECT — `body` is the text, `mode` decides
+   *  between rejecting and substituting it. See {@link RenderedBlockMessage}. */
+  blocked_message: RenderedBlockMessage | null;
+  /** A flat summary string built from the findings. Not the block message —
+   *  that is `blocked_message`. */
+  message: string | null;
+  guardrail_key: string;
+  guardrail_keys: string[];
+  guardrail_name: string;
+  /** Pair with the compiled policy's ETag to tell whether a cached policy is
+   *  still current. */
+  policy_version: string;
+  trace_id: string;
+  latency_ms: number;
+  /** Policies that could not run; `failMode` has already been applied. */
+  degraded: Array<{ policyId: string; family: GuardrailPolicyFamily; reason: string }>;
+  /**
+   * Policies that were STARTED and then abandoned, because another policy in
+   * the same lane blocked first — they contributed no finding and no mutation.
+   * Empty on every evaluation that ran to completion.
+   *
+   * OPTIONAL on this wire type even though the current server always sends it:
+   * a client pinned to this SDK may be talking to an older console, and a
+   * required field would make it describe a response that does not arrive.
+   */
+  cancelled?: Array<{
+    policyId: string;
+    family: GuardrailPolicyFamily;
+    /** The lane it was running in. */
+    layer: number;
+    reason: string;
+  }>;
+}
+
+// ── Persisted hook configuration (create / update / list) ────────────────
+
+export interface GuardrailPolicyBase<F extends GuardrailPolicyFamily> {
+  /** Stable within the guardrail and never reused — it appears on every
+   *  finding. */
+  id: string;
+  family: F;
+  enabled: boolean;
+  /** Must be a subset of the family's valid hooks; enforced at save time. */
+  hooks: HookId[];
+  schedule: GuardrailHookSchedule;
+  /** Overrides the record-level `action` for this policy's findings. */
+  action?: SafetyAction;
+  /** Per-POLICY, unlike the record-level `failMode`. */
+  failMode?: 'open' | 'closed';
+  /** 0 / absent = no timeout. */
+  timeoutMs?: number;
+  /**
+   * WHEN this policy may spend a model call. `'onFinding'` runs it only after a
+   * cheap deterministic policy has already flagged something; `'onSideEffect'`
+   * only for a destructive, external or UNCLASSIFIED tool call. Absent — and
+   * any unrecognised stored value — means `'always'`.
+   *
+   * Read only by the three LLM families; the deterministic ones cost a pass
+   * over a string, so gating them would add nothing but a way to switch them
+   * off by accident.
+   */
+  runIf?: 'always' | 'onFinding' | 'onSideEffect';
+  label?: string;
+  /**
+   * What an end user is told when THIS policy blocks something, overriding the
+   * per-reason template on `blockedMessage.templates`.
+   *
+   * WHY IT EXISTS. Messages are keyed by reason class, and `regex`, `custom`
+   * and `webhook` all collapse onto `'custom'` — so without this field an
+   * operator editing "the regex policy's message" is also rewriting the webhook
+   * policy's, with nothing saying so.
+   *
+   * RESOLUTION ORDER, normative: this field, then
+   * `blockedMessage.templates[reasonClass]`, then the built-in default for the
+   * locale. BLANK MEANS INHERIT rather than "an empty message" — a whitespace
+   * layer is skipped, so clearing it restores the inherited wording.
+   *
+   * Same closed variable set as every other template: the output is shown to
+   * end users, so there is deliberately no way to interpolate a matched value —
+   * that would turn the guardrail into an exfiltration channel for the very
+   * data it exists to protect. The server rejects an unknown `{{variable}}`.
+   */
+  message?: string;
+}
+
+export interface GuardrailPiiPolicyConfig extends GuardrailPolicyBase<'pii'> {
+  /** The `PiiPolicy.key` this policy scans through — a separate, reusable
+   *  tenant asset it REFERENCES, not an id of its own. Required once enabled:
+   *  the PII service owns categories, languages, patterns and mask
+   *  strategies. */
+  piiPolicyKey: string;
+  actionOverride?: PiiAction;
+  locale?: PiiLanguage;
+  /** Extra NFKC + zero-width-strip + de-obfuscation pass. Its findings are
+   *  span-less. Default true. */
+  detectObfuscated?: boolean;
+  /** Set only by the Console's legacy lift, never by an authored config. */
+  legacyCategories?: Record<string, boolean>;
+}
+
+export interface GuardrailSecretsPolicyConfig extends GuardrailPolicyBase<'secrets'> {
+  /** Named vendor patterns (Stripe / OpenAI / AWS / GitHub / Slack / JWT / PEM). */
+  known?: boolean;
+  /** The `\b[A-Za-z0-9-_]{32,}\b` heuristic, gated behind `minEntropy`. */
+  genericHighEntropy?: boolean;
+  minEntropy?: number;
+  /** Known-safe literals: test fixtures, documentation samples. */
+  allowValues?: string[];
+}
+
+export interface GuardrailWordFilterPolicyConfig extends GuardrailPolicyBase<'word_filter'> {
+  builtinLists?: Record<string, boolean>;
+  customListKeys?: string[];
+  words?: string[];
+  /** Legacy patterns. Newly authored ones belong in the `regex` family, which
+   *  is span-capable and stream-eligible; these are neither. */
+  regexes?: string[];
+}
+
+export interface GuardrailRegexRule {
+  id: string;
+  label: string;
+  /** JavaScript regex source. Inline flags (`(?i)`) are not supported — put
+   *  the letter in `flags` instead. */
+  pattern: string;
+  flags?: string;
+  category: string;
+  severity: GuardrailSeverity;
+  action?: SafetyAction;
+  /** Redact only this capture group instead of the whole match. */
+  captureGroup?: number;
+  /** Longest string this rule can match. Required, and rejected above 4096: it
+   *  sizes the streaming hold-back window. */
+  maxMatchChars: number;
+}
+
+export interface GuardrailRegexPolicyConfig extends GuardrailPolicyBase<'regex'> {
+  rules: GuardrailRegexRule[];
+}
+
+export interface GuardrailModerationPolicyConfig extends GuardrailPolicyBase<'moderation'> {
+  modelKey?: string;
+  categories: Record<string, boolean>;
+}
+
+export interface GuardrailPromptShieldPolicyConfig extends GuardrailPolicyBase<'prompt_shield'> {
+  modelKey?: string;
+  sensitivity: 'low' | 'balanced' | 'high';
+}
+
+export interface GuardrailCustomPolicyConfig extends GuardrailPolicyBase<'custom'> {
+  modelKey?: string;
+  prompt: string;
+  /** What a policy with no model does: `'skip'` passes (the legacy quirk),
+   *  `'error_finding'` reports. */
+  onMissingModel: 'skip' | 'error_finding';
+}
+
+export type GuardrailSideEffect = 'none' | 'read' | 'write' | 'destructive' | 'external';
+
+/** A deliberate subset of JSON Schema — no `$ref`, no remote schemas. */
+export interface GuardrailJsonSchemaLite {
+  type?: 'object' | 'string' | 'number' | 'boolean' | 'array';
+  required?: string[];
+  properties?: Record<string, GuardrailJsonSchemaLite>;
+  enum?: unknown[];
+  additionalProperties?: boolean;
+}
+
+export interface GuardrailToolAccessPolicyConfig extends GuardrailPolicyBase<'tool_access'> {
+  allow?: string[];
+  deny?: string[];
+  sideEffects?: Record<string, GuardrailSideEffect>;
+  allowedRoles?: Record<string, string[]>;
+  allowedDomains?: string[];
+  /** Deny wins over allow and also matches subdomains. */
+  deniedDomains?: string[];
+  allowedPathPrefixes?: string[];
+  deniedPathPrefixes?: string[];
+  argumentSchemas?: Record<string, GuardrailJsonSchemaLite>;
+  maxArgBytes?: number;
+  maxResultBytes?: number;
+  /** JSON-bomb defence. Default 32. */
+  maxArgDepth?: number;
+  /** Which arguments actually carry a URL / a filesystem path, per tool name.
+   *  Declared paths are authoritative. */
+  urlArgPaths?: Record<string, string[]>;
+  pathArgPaths?: Record<string, string[]>;
+  /** Scrape every string for URLs/paths instead. Default false; its findings
+   *  are clamped to 'medium'/'flag'. */
+  scanUndeclaredStrings?: boolean;
+  /** Root that path prefixes resolve against, POSIX-normalised. */
+  fsRoot?: string;
+  /** SSRF guard on DECLARED url arguments only (it resolves DNS). */
+  denyPrivateNetworks?: boolean;
+  /** Default 'read'. */
+  defaultSideEffect?: GuardrailSideEffect;
+  /** Side effect → action. Defaults to warn (not block) for destructive and
+   *  external. */
+  sideEffectActions?: Partial<Record<GuardrailSideEffect, SafetyAction>>;
+}
+
+/**
+ * The extension point: its request body IS a hook call and its response body
+ * IS a hook verdict.
+ */
+export interface GuardrailWebhookPolicyConfig extends GuardrailPolicyBase<'webhook'> {
+  /** https only, enforced at save. */
+  url: string;
+  headers?: Record<string, string>;
+  /** Provider key holding the encrypted bearer. */
+  credentialProviderKey?: string;
+  /** Config key of the HMAC secret used to sign `${timestamp}.${body}`. */
+  signingSecretRef?: string;
+  /** `'text'` keeps structured PII off the wire unless you opt in. */
+  send: 'text' | 'subject';
+  retries?: 0 | 1 | 2;
+}
+
+export type GuardrailPolicy =
+  | GuardrailPiiPolicyConfig
+  | GuardrailSecretsPolicyConfig
+  | GuardrailWordFilterPolicyConfig
+  | GuardrailRegexPolicyConfig
+  | GuardrailModerationPolicyConfig
+  | GuardrailPromptShieldPolicyConfig
+  | GuardrailCustomPolicyConfig
+  | GuardrailToolAccessPolicyConfig
+  | GuardrailWebhookPolicyConfig;
+
+/** A hook runs iff its binding is enabled AND an enabled policy names it. */
+export interface GuardrailHookBinding {
+  enabled: boolean;
+  schedule: GuardrailHookSchedule;
+  failMode?: 'open' | 'closed';
+  /** Whole-hook budget. 0 / absent = no timeout. */
+  timeoutMs?: number;
+}
+
+export interface GuardrailStreamSettings {
+  /** Opt-in. Lifted legacy rows get false so streaming behaviour does not
+   *  change on upgrade. */
+  enabled: boolean;
+  /** Characters withheld behind the write frontier. The engine RAISES this to
+   *  the longest match any enabled stream-eligible policy can produce. Default 256. */
+  holdBackChars?: number;
+  /** ...or this long, whichever comes first. Default 200. */
+  holdBackMs?: number;
+  /** Characters re-scanned each window so a match spanning the boundary is
+   *  found with a correct absolute span. Default 64. */
+  overlapChars?: number;
+  /** Cap on the held region; on overflow `onBudgetExceeded` decides. Default 4000. */
+  maxHeldChars?: number;
+  onBudgetExceeded?: 'release' | 'terminate';
+  /** `'truncate'` ends the stream after the block message; `'replace'` is only
+   *  honest when nothing has been flushed yet. Default 'truncate'. */
+  onBlock?: 'truncate' | 'replace';
+}
+
+export interface GuardrailBlockedMessageSettings {
+  /** `'error'` returns the OpenAI-shaped error body; `'replace'` returns a
+   *  normal 200 whose assistant content IS the message. */
+  mode?: 'error' | 'replace';
+  /** Per-reason overrides. The variable set is closed and excludes the matched
+   *  text — a template is tenant-editable and its output is shown to end users. */
+  templates?: Partial<Record<GuardrailBlockReasonClass, string>>;
+  /** Default true — support cannot debug a block without the trace id. */
+  includeTraceId?: boolean;
+}
+
+export interface GuardrailVerdictVisibility {
+  /** Response headers describing the verdict (`x-cognipeer-guardrail*`).
+   *  Default true. */
+  headers?: boolean;
+  /** Opt-in 246 (passed with findings) / 446 (blocked). Off by default: a
+   *  block is HTTP 400 today and every deployed client parses that. */
+  useVerdictStatusCodes?: boolean;
+  detailedHeaders?: boolean;
+  /** Keep the pre-rename `x-aegis-*` header aliases for one release. */
+  aegisCompatHeaders?: boolean;
+}
+
+/** The whole v2 configuration in one blob — what `hooks` carries on create and
+ *  update. */
+export interface GuardrailHooksConfig {
+  contractVersion: GuardrailContractVersion;
+  policies: GuardrailPolicy[];
+  bindings: Partial<Record<HookId, GuardrailHookBinding>>;
+  stream?: GuardrailStreamSettings;
+  blockedMessage?: GuardrailBlockedMessageSettings;
+  visibility?: GuardrailVerdictVisibility;
+  /** Stop after the first synchronous `block`. Default true. */
+  shortCircuit?: boolean;
 }
 
 // ============================================================================
@@ -2771,8 +3486,31 @@ export interface WebSearchProvider {
   aiAnswer: boolean;
 }
 
-// ── Aegis (enforcement plane, Enterprise module) ─────────────────────────────
+// ── Aegis (enforcement plane) — DEPRECATED ───────────────────────────────────
+/**
+ * The Aegis enforcement plane has been REMOVED from the Console:
+ * `/api/client/v1/aegis/*` no longer exists and `client.aegis.*` throws a
+ * migration error instead of issuing a request.
+ *
+ * These types are kept exported so 1.x builds keep compiling, and are removed
+ * in the next major. The replacements:
+ *
+ * | Aegis                          | Guardrails                                   |
+ * | ------------------------------ | -------------------------------------------- |
+ * | shield                         | guardrail (`client.guardrails.list()`)        |
+ * | `shieldId`                     | `guardrail_key`                               |
+ * | `stage`                        | `hook` — `tool.pre` / `tool.post` /           |
+ * |                                | `input.pre` / `output.pre` keep their names   |
+ * | `resource.name` / `.arguments` | `tool_name` / `tool_args` (`tool_result` on   |
+ * |                                | `tool.post`)                                  |
+ * | `AegisEvaluation`              | {@link GuardrailHookEvaluateResponse}         |
+ * | `decision` + `enforced`        | same names — read them with `shouldBlock()`   |
+ *
+ * `retrieval.pre` and `retrieval.post` have no hook and no replacement.
+ */
 
+
+/** @deprecated Aegis is removed from the Console. Hook ids replace stages: `tool.pre`, `tool.post`, `input.pre` and `output.pre` carry over unchanged as {@link HookId}; `retrieval.pre` / `retrieval.post` have no equivalent. Removed in the next major. */
 export type AegisStage =
   | 'input.pre'
   | 'retrieval.pre'
@@ -2781,13 +3519,17 @@ export type AegisStage =
   | 'tool.post'
   | 'output.pre';
 
+/** @deprecated Aegis is removed from the Console. Use {@link SafetyAction} (`allow` | `flag` | `warn` | `redact` | `block`). `require_approval` and `sandbox` have no equivalent. Removed in the next major. */
 export type AegisDecision = 'allow' | 'redact' | 'require_approval' | 'sandbox' | 'block';
 
-/** Shield lifecycle: enforce = binding, simulate = observe-only, disabled = pass-through. */
+/** Shield lifecycle: enforce = binding, simulate = observe-only, disabled = pass-through.
+ *  @deprecated Aegis is removed from the Console. Use {@link GuardrailMode} — `simulate` is now spelled `monitor`. Removed in the next major. */
 export type AegisShieldMode = 'enforce' | 'simulate' | 'disabled';
 
+/** @deprecated Aegis is removed from the Console. Use {@link GuardrailSideEffect}. Removed in the next major. */
 export type AegisSideEffect = 'none' | 'read' | 'write' | 'destructive' | 'external';
 
+/** @deprecated Aegis is removed from the Console. Fold into {@link GuardrailToolAccessPolicyConfig} (`maxArgBytes` / `maxResultBytes`); the per-minute rate limits have no equivalent. Removed in the next major. */
 export interface AegisToolLimits {
   perActorPerMinute?: number;
   perToolPerMinute?: number;
@@ -2795,6 +3537,7 @@ export interface AegisToolLimits {
   maxResultBytes?: number;
 }
 
+/** @deprecated Aegis is removed from the Console. Use {@link GuardrailToolAccessPolicyConfig}. Removed in the next major. */
 export interface AegisToolRule {
   allow?: string[];
   deny?: string[];
@@ -2809,7 +3552,7 @@ export interface AegisToolRule {
   limits?: AegisToolLimits;
 }
 
-/** An enforcement instance: one protected surface with its own policy and DLP settings. */
+/** @deprecated Aegis is removed from the Console. Use {@link GuardrailCustomPolicyConfig} or {@link GuardrailModerationPolicyConfig}. Removed in the next major. */
 export interface AegisJudgeConfig {
   enabled: boolean;
   stages: AegisStage[];
@@ -2818,6 +3561,7 @@ export interface AegisJudgeConfig {
   onlyHighRisk: boolean;
 }
 
+/** @deprecated Aegis is removed from the Console. A shield is a guardrail — use {@link GuardrailListItem} / {@link Guardrail}. Removed in the next major. */
 export interface AegisShield {
   id: string;
   name: string;
@@ -2830,6 +3574,7 @@ export interface AegisShield {
   updatedAt: string;
 }
 
+/** @deprecated Aegis is removed from the Console. Use {@link GuardrailHookEvaluateParams}. Removed in the next major. */
 export interface AegisEvaluateRequest {
   /** Pipeline stage being evaluated. */
   stage: AegisStage;
@@ -2859,6 +3604,7 @@ export interface AegisEvaluateRequest {
   };
 }
 
+/** @deprecated Aegis is removed from the Console. Use {@link SafetyFinding}. Removed in the next major. */
 export interface AegisFinding {
   code: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
@@ -2866,6 +3612,7 @@ export interface AegisFinding {
   path?: string;
 }
 
+/** @deprecated Aegis is removed from the Console. Use {@link GuardrailHookEvaluateResponse} (or {@link HookVerdict}); decide with `shouldBlock()`. Removed in the next major. */
 export interface AegisEvaluation {
   traceId: string;
   shieldId: string;
@@ -2884,6 +3631,7 @@ export interface AegisEvaluation {
   approval?: { approvalId: string; expiresAt: string; scope: 'call_bound' };
 }
 
+/** @deprecated Aegis is removed from the Console. No replacement on the client API — guardrail decisions are evaluation logs read in the Console dashboard, correlated by `trace_id`. Removed in the next major. */
 export interface AegisAuditEvent {
   traceId: string;
   shieldId: string;
@@ -3377,7 +4125,35 @@ export interface McpExposureConfig {
   accessMode: 'token' | 'public';
 }
 
+/**
+ * Guardrail binding for an MCP server's tool calls.
+ *
+ * `mode` keeps the MCP vocabulary (`'off'`, not `'disabled'`) so this and the
+ * deprecated `aegis` field are drop-in interchangeable during the release where
+ * both are written; the Console folds `'off'` onto its own `GuardrailMode`.
+ *
+ * An OMITTED `guardrailKey` is not "no guardrail" — it selects the tenant's
+ * default tool guardrail, which is what keeps a server armed with no per-server
+ * setup. To turn enforcement off, send `mode: 'off'`.
+ */
+export interface McpGuardrailConfig {
+  /** A guardrail KEY. Omit to use the tenant's default tool guardrail. */
+  guardrailKey?: string;
+  mode: 'off' | 'monitor' | 'enforce';
+}
+
+/**
+ * @deprecated Superseded by {@link McpGuardrailConfig}. Kept because every
+ * stored MCP server row still carries this object and the Console still writes
+ * the column, so a client that reads `server.aegis` keeps working.
+ *
+ * `shieldId` values are already dead references — the Console's read-time
+ * normaliser keeps only `mode` and falls back to the default tool guardrail.
+ * Send `guardrail` instead; where both are sent, `guardrail` wins.
+ */
 export interface McpAegisConfig {
+  /** @deprecated Dead reference — shields no longer exist. Use
+   *  {@link McpGuardrailConfig.guardrailKey}. */
   shieldId?: string;
   mode: 'off' | 'monitor' | 'enforce';
 }
@@ -3399,6 +4175,9 @@ export interface McpServer {
   remoteConfig?: McpRemoteConfig;
   stdioConfig?: McpStdioConfig;
   exposure: McpExposureConfig;
+  /** The guardrail bound to this server's tool calls. */
+  guardrail?: McpGuardrailConfig;
+  /** @deprecated Read `guardrail`. Still served for older clients. */
   aegis?: McpAegisConfig;
   status: string;
   endpointSlug: string;
@@ -3423,6 +4202,9 @@ export interface McpServerCreateRequest {
   remoteConfig?: McpRemoteConfig;
   stdioConfig?: McpStdioConfig;
   exposure?: McpExposureConfig;
+  guardrail?: McpGuardrailConfig;
+  /** @deprecated Send `guardrail`. Accepted for one more release; where both
+   *  are sent, `guardrail` wins. */
   aegis?: McpAegisConfig;
 }
 
@@ -3437,6 +4219,9 @@ export interface McpServerUpdateRequest {
   remoteConfig?: McpRemoteConfig;
   stdioConfig?: McpStdioConfig;
   exposure?: McpExposureConfig;
+  guardrail?: McpGuardrailConfig;
+  /** @deprecated Send `guardrail`. Accepted for one more release; where both
+   *  are sent, `guardrail` wins. */
   aegis?: McpAegisConfig;
   /** Runtime-header passthrough policy (`null` clears it). */
   runtimeHeaders?: { allow?: boolean; allowedNames?: string[] } | null;
@@ -3493,6 +4278,14 @@ export interface Guardrail {
   modelKey?: string;
   policy?: Record<string, unknown>;
   customPrompt?: string;
+  /** The v2 hook plane. Absent on records written before it shipped. */
+  hooks?: GuardrailHooksConfig;
+  /** 0 / absent = `hooks` was DERIVED from the legacy columns on read and is
+   *  re-derived on every read; >= 1 = an operator authored it. */
+  hooksVersion?: number;
+  /** Absent = derived from `enabled` (`'enforce'` when on, `'disabled'` when
+   *  off). The list endpoint resolves this for you as `effectiveMode`. */
+  mode?: GuardrailMode;
   createdBy: string;
   updatedBy?: string;
   createdAt?: string;
@@ -3510,6 +4303,18 @@ export interface GuardrailCreateRequest {
   policy?: Record<string, unknown>;
   /** Required for `type: 'custom'` — the LLM-evaluated rule. */
   customPrompt?: string;
+  /**
+   * The v2 hook configuration. When present the legacy `target`/`action`/
+   * `policy` columns are DERIVED from it, so the two descriptions of one policy
+   * can never be saved disagreeing.
+   */
+  hooks?: GuardrailHooksConfig;
+  /** Set to >= 1 to mark `hooks` as authored, i.e. used verbatim instead of
+   *  re-derived from the legacy columns on every read. */
+  hooksVersion?: number;
+  /** Enforcement posture. `'monitor'` evaluates and logs but neutralises the
+   *  decision — see {@link HookVerdict.enforced}. */
+  mode?: GuardrailMode;
 }
 
 export interface GuardrailUpdateRequest {
@@ -3521,6 +4326,74 @@ export interface GuardrailUpdateRequest {
   modelKey?: string;
   policy?: Record<string, unknown>;
   customPrompt?: string;
+  /** Omit to leave the stored hook configuration untouched. */
+  hooks?: GuardrailHooksConfig;
+  hooksVersion?: number;
+  mode?: GuardrailMode;
+}
+
+/** Filters for `client.guardrails.list(...)`. Tenant and project come from the
+ *  API token — there is no `project_id` parameter. */
+export interface GuardrailListQuery {
+  enabled?: boolean;
+  type?: GuardrailType;
+  search?: string;
+}
+
+/** What a listed guardrail says about its hook plane. */
+export interface GuardrailHooksSummary {
+  contractVersion: number;
+  /** False = this configuration was DERIVED from the legacy columns on read,
+   *  and will be re-derived on the next one. */
+  authored: boolean;
+  /**
+   * The hooks `guardrails.hooks.evaluate` will actually evaluate against this
+   * guardrail — its binding is enabled AND an enabled policy dispatches on it.
+   * A hook outside this list answers with a vacuous allow (`disabled: true`).
+   */
+  servable: HookId[];
+  bindings: Partial<
+    Record<
+      HookId,
+      {
+        enabled: boolean;
+        timing: 'sync' | 'async';
+        onFail: 'block' | 'log';
+        failMode?: 'open' | 'closed';
+        timeoutMs?: number;
+      }
+    >
+  >;
+  /**
+   * WHAT runs, never HOW it is configured. The Console whitelists these fields,
+   * so a webhook policy's `url`, `headers` and credential references are never
+   * served here — read them from the dashboard.
+   */
+  policies: Array<{
+    id: string;
+    family: GuardrailPolicyFamily;
+    enabled: boolean;
+    label?: string;
+    hooks: HookId[];
+    action?: SafetyAction;
+  }>;
+  stream: { enabled: boolean; holdBackChars?: number } | null;
+}
+
+/**
+ * A guardrail as `list()` returns it: the create/update serialisation minus
+ * the authored `hooks` blob (which can carry credentials), plus what a caller
+ * needs to know what it can ask of the guardrail.
+ *
+ * Safe to hand straight back to `update()` — an absent `hooks` leaves the
+ * stored configuration untouched.
+ */
+export interface GuardrailListItem extends Omit<Guardrail, 'hooks'> {
+  /** `mode` with `enabled` folded in, by the rule the engine itself applies. A
+   *  legacy record has no `mode`, so reading it raw cannot tell "unset,
+   *  therefore enforcing" from "not enforcing". */
+  effectiveMode: GuardrailMode;
+  hooksSummary: GuardrailHooksSummary;
 }
 
 // ── RAG modules ─────────────────────────────────────────────────────────

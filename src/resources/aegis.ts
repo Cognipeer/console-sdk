@@ -1,4 +1,5 @@
 import { HttpClient } from '../http';
+import { CognipeerError } from '../types';
 import {
   AegisEvaluateRequest,
   AegisEvaluation,
@@ -7,73 +8,125 @@ import {
 } from '../types';
 
 /**
- * Aegis enforcement-plane API resource (Enterprise module).
+ * Common tail on every Aegis migration error: what replaced the concepts, and
+ * when the surface disappears for good.
+ */
+const REMOVAL_NOTICE =
+  'The Aegis enforcement plane has been removed from the Console and '
+  + '/api/client/v1/aegis/* no longer exists. `client.aegis` is kept only so 1.x '
+  + 'builds keep compiling and is removed in the next major.';
+
+function removed(what: string, replacement: string): CognipeerError {
+  return new CognipeerError(`${what} is removed. ${replacement} ${REMOVAL_NOTICE}`);
+}
+
+/**
+ * Aegis enforcement-plane API resource.
  *
- * Evaluates tool calls, retrievals and model I/O against a shield — an
- * enforcement instance with its own policy (tool allow/deny, egress and path
- * rules, side-effect classes) and DLP settings. Decisions are `allow`,
- * `redact`, `require_approval`, `sandbox` or `block`; every decision is
- * recorded on the shield's audit trail.
+ * @deprecated Removed from the Console — every method now throws instead of
+ * issuing a request that would 404. Use `client.guardrails` instead:
  *
- * Shields are created and configured in the Console dashboard
- * (`/dashboard/aegis`); the client surface evaluates against them and reads
- * them back. When no `shieldId` is given, the built-in `default` shield is
- * used.
+ * - a **shield** is a **guardrail**: `shields.list()` → `guardrails.list()`,
+ *   and `shieldId` → `guardrail_key`;
+ * - `evaluate({ stage, resource })` →
+ *   `guardrails.hooks.evaluate({ hook, tool_name, tool_args })`;
+ * - the stage names carry over unchanged — `tool.pre`, `tool.post`,
+ *   `input.pre` and `output.pre` are hook ids as they stand. `retrieval.pre`
+ *   and `retrieval.post` have no hook and no replacement;
+ * - the decision is read with `shouldBlock(verdict)`:
+ *   `decision === 'block' && enforced === false` does NOT block.
+ *
+ * Removed entirely in the next major.
  */
 export class AegisResource {
-  private http: HttpClient;
+  /**
+   * @deprecated Shields are guardrails now — use `client.guardrails`
+   * (`list`/`create`/`update`/`delete`). Every method here rejects.
+   */
   public shields: AegisShieldsResource;
 
-  constructor(http: HttpClient) {
-    this.http = http;
-    this.shields = new AegisShieldsResource(http);
+  /** @deprecated Constructed by `ConsoleClient` for backwards compatibility
+   *  only; the resource issues no requests. */
+  constructor(_http?: HttpClient) {
+    this.shields = new AegisShieldsResource();
   }
 
   /**
    * Evaluate a call against a shield's policy.
    *
-   * A `require_approval` decision includes an `approval.approvalId`; once a
-   * human approves it in the Console, re-run the SAME call with
-   * `context.approvalToken` to proceed.
+   * @deprecated Use `client.guardrails.hooks.evaluate(...)`. `stage` becomes
+   * `hook` (`tool.pre` / `tool.post` / `input.pre` / `output.pre` keep their
+   * names), `shieldId` becomes `guardrail_key`, and `resource` splits into
+   * `tool_name` / `tool_args` — plus `tool_result` on `tool.post`. Rejects;
+   * removed in the next major.
    *
-   * @param params - Stage, actor, resource and optional shieldId/context
+   * @returns A promise that always REJECTS with a {@link CognipeerError}.
    */
-  async evaluate(params: AegisEvaluateRequest): Promise<AegisEvaluation> {
-    return this.http.request<AegisEvaluation>('POST', '/api/client/v1/aegis/evaluate', {
-      body: params,
-    });
+  evaluate(_params: AegisEvaluateRequest): Promise<AegisEvaluation> {
+    // REJECT, do not throw. The signature promises a Promise, so a 1.x caller
+    // written as `client.aegis.evaluate(...).catch(handle)` gets a synchronous
+    // exception past its own error handling if this throws — the migration
+    // message would surface as an unhandled error rather than in the catch
+    // block the caller already has.
+    return Promise.reject(removed(
+      'client.aegis.evaluate()',
+      'Use client.guardrails.hooks.evaluate({ hook, guardrail_key, ... }): `stage` '
+        + 'is now `hook` (tool.pre, tool.post, input.pre and output.pre are unchanged; '
+        + 'retrieval.pre and retrieval.post have no equivalent), `shieldId` is now '
+        + '`guardrail_key`, and `resource` becomes `tool_name` + `tool_args` (plus '
+        + '`tool_result` on tool.post). Decide with shouldBlock(verdict) — a verdict '
+        + 'with decision "block" and enforced false must NOT block.',
+    ));
   }
 }
 
 /**
  * Read-only access to the tenant's shields and their audit trails.
+ *
+ * @deprecated Shields are guardrails — use `client.guardrails`. Every method
+ * rejects; removed in the next major.
  */
 export class AegisShieldsResource {
-  constructor(private http: HttpClient) {}
+  /** @deprecated Constructed by {@link AegisResource} only; issues no
+   *  requests. */
+  constructor(_http?: HttpClient) {}
 
-  /** List the tenant's shields (including the built-in `default` shield). */
-  async list(): Promise<AegisShield[]> {
-    const res = await this.http.request<{ shields: AegisShield[] }>(
-      'GET',
-      '/api/client/v1/aegis/shields',
-    );
-    return res.shields ?? [];
+  /**
+   * List the tenant's shields.
+   *
+   * @deprecated Use `client.guardrails.list()` — it returns the guardrails
+   * this token can address, each with the hooks it can serve
+   * (`hooksSummary.servable`). Rejects; removed in the next major.
+   *
+   * @returns A promise that always REJECTS with a {@link CognipeerError}.
+   */
+  list(): Promise<AegisShield[]> {
+    return Promise.reject(removed(
+      'client.aegis.shields.list()',
+      'Shields are guardrails now: use client.guardrails.list(), and pass a '
+        + 'guardrail `key` wherever you passed a `shieldId`.',
+    ));
   }
 
   /**
-   * Read a shield's decision audit trail, newest first.
-   * @param shieldId - Shield id (`'default'` for the built-in shield)
-   * @param options - Optional limit (max 500) and decision filter
+   * Read a shield's decision audit trail.
+   *
+   * @deprecated There is no client-API replacement: guardrail decisions are
+   * recorded as evaluation logs and read in the Console dashboard. Every
+   * verdict carries `trace_id` and `policy_version` to correlate against them.
+   * Rejects; removed in the next major.
+   *
+   * @returns A promise that always REJECTS with a {@link CognipeerError}.
    */
-  async audit(
-    shieldId: string,
-    options: { limit?: number; decision?: AegisEvaluation['decision'] } = {},
+  audit(
+    _shieldId: string,
+    _options: { limit?: number; decision?: AegisEvaluation['decision'] } = {},
   ): Promise<AegisAuditEvent[]> {
-    const res = await this.http.request<{ events: AegisAuditEvent[] }>(
-      'GET',
-      `/api/client/v1/aegis/shields/${encodeURIComponent(shieldId)}/audit`,
-      { query: { limit: options.limit, decision: options.decision } },
-    );
-    return res.events ?? [];
+    return Promise.reject(removed(
+      'client.aegis.shields.audit()',
+      'Guardrail decisions are recorded as evaluation logs and read in the Console '
+        + 'dashboard; there is no client-API equivalent. Correlate with the '
+        + '`trace_id` and `policy_version` on each verdict.',
+    ));
   }
 }

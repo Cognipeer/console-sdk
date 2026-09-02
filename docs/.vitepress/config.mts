@@ -61,7 +61,7 @@ export default defineConfig({
             { text: 'Agent Sandbox', link: '/api/sandbox' },
             { text: 'Rerankers', link: '/api/rerankers' },
             { text: 'Web Search', link: '/api/web-search' },
-            { text: 'Aegis', link: '/api/aegis' },
+            { text: 'Aegis (removed — migration)', link: '/api/aegis' },
             { text: 'MCP', link: '/api/mcp' },
             { text: 'Tools', link: '/api/tools' },
             { text: 'Config', link: '/api/config' },

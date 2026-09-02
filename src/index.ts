@@ -20,6 +20,12 @@ export * from './types';
 // Errors
 export { CognipeerError, CognipeerAPIError } from './types';
 
+/**
+ * Guardrail verdict helper — the one correct enforcement test.
+ * `decision === 'block' && enforced === false` does NOT block.
+ */
+export { shouldBlock } from './resources/guardrails';
+
 // LangChain integrations
 export {
   CognipeerLangChainChatModel,
@@ -114,6 +120,49 @@ export type {
   Guardrail,
   GuardrailCreateRequest,
   GuardrailUpdateRequest,
+  GuardrailListQuery,
+  GuardrailListItem,
+  GuardrailHooksSummary,
+
+  // Guardrail hook plane (contract v2)
+  HookId,
+  HookVerdict,
+  HookSubject,
+  SubjectSegment,
+  SafetyAction,
+  SafetyFinding,
+  Mutation,
+  RenderedBlockMessage,
+  GuardrailMode,
+  GuardrailContractVersion,
+  GuardrailPolicyFamily,
+  GuardrailBlockReasonClass,
+  GuardrailHookEvaluateParams,
+  GuardrailTextHookEvaluateParams,
+  GuardrailStreamHookEvaluateParams,
+  GuardrailToolPreHookEvaluateParams,
+  GuardrailToolPostHookEvaluateParams,
+  GuardrailHookEvaluateResponse,
+  GuardrailHooksConfig,
+  GuardrailHookBinding,
+  GuardrailHookSchedule,
+  GuardrailPolicy,
+  GuardrailPolicyBase,
+  GuardrailPiiPolicyConfig,
+  GuardrailSecretsPolicyConfig,
+  GuardrailWordFilterPolicyConfig,
+  GuardrailRegexPolicyConfig,
+  GuardrailRegexRule,
+  GuardrailModerationPolicyConfig,
+  GuardrailPromptShieldPolicyConfig,
+  GuardrailCustomPolicyConfig,
+  GuardrailToolAccessPolicyConfig,
+  GuardrailWebhookPolicyConfig,
+  GuardrailJsonSchemaLite,
+  GuardrailSideEffect,
+  GuardrailStreamSettings,
+  GuardrailBlockedMessageSettings,
+  GuardrailVerdictVisibility,
   
   // Tracing
   TracingSessionRequest,
@@ -291,7 +340,10 @@ export type {
   WebSearchProvider,
   WebSearchSafeSearch,
 
-  // Aegis (enforcement plane, Enterprise)
+  // Aegis — REMOVED from the Console. These are deprecated aliases whose methods
+// throw; see `resources/aegis.ts` for the migration each one names. Kept so a
+// 1.x build still compiles. They also reach consumers through
+// `export * from './types'` above, so deleting this list alone removes nothing.
   AegisStage,
   AegisDecision,
   AegisShieldMode,
@@ -321,6 +373,7 @@ export type {
   McpRemoteConfig,
   McpStdioConfig,
   McpExposureConfig,
+  McpGuardrailConfig,
   McpAegisConfig,
   McpServerCreateRequest,
   McpServerUpdateRequest,
