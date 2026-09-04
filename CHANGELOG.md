@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-09-05
+
+### Added — browser flows: record a task once, replay it without a model
+
+`client.browserFlows` is the new resource. Driving a browser with a model is
+DISCOVERY — it reads the page, guesses, backtracks and bills tokens for every
+step. Replaying a flow is EXECUTION: no model, no guessing, and the same steps
+every time. `record()` freezes a driven session into an ordered step list;
+`run()` replays it with per-run inputs and hands back the values it captured.
+
+```ts
+const flow = await client.browserFlows.record({
+  sessionId: session.id,
+  name: 'Submit expense',
+  status: 'active',
+});
+
+const run = await client.browserFlows.run(flow.key, {
+  inputs: { reference: 'EXP-2002', amount: '999' },
+});
+console.log(run.status, run.outputs);
+```
+
+Also `list`, `get`, `create`, `update`, `delete`, `listRuns` and `getRun`.
+
+### Added — durable element targets
+
+`BrowserTarget` separates the two ways to name an element, because only one of
+them survives being saved. `ref` is a marker the browser mints for ONE snapshot
+and renumbers on the next; `role` + `name`, `testId`, `label`, `placeholder`,
+`text` and `selector` are durable. Every action result now carries
+`resolvedTarget` — the durable description of what the action actually hit —
+so a script can save a working target instead of a ref that will resolve to
+nothing tomorrow.
+
+The action union gained `select`, `check`, `upload`, `drag`, `back`,
+`forward`, `reload` and `tab`, and `wait` learned `text` and `loadState`.
+
+### Added — signed-in browser profiles
+
+`client.browsers.setProfile(idOrKey, storageState, fileName?)` attaches a
+Playwright `storageState` so every new session starts already signed in,
+instead of replaying credentials through a login form on each run. It is
+encrypted server-side and never readable back — only the summary on
+`browser.storageStateMeta` is. `clearProfile()` removes it, and
+`browserSessions.exportProfile()` produces one from a session you signed in by
+hand.
+
+### Added — session observation
+
+`browserSessions.find()` locates visible text and returns a durable target for
+each hit — cheaper than a full snapshot when you already know what you are
+looking for. `browserSessions.diagnostics()` returns the console messages,
+failed requests and last dialog the session saw, for when an action succeeded
+but the page did not do what you expected.
+
+### Added — session configuration
+
+`BrowserSessionConfig` gained `timezoneId`, `proxy`, `extraHTTPHeaders`,
+`httpCredentials`, `acceptDownloads`, `ignoreHTTPSErrors`, `dialogPolicy`,
+`storageState` and the two timeout knobs. These are the settings that decide
+whether a corporate site works at all.
+
+Backward compatible: nothing was removed or changed shape.
+
 ## [2.0.0] - 2026-09-02
 
 ### Why this is a MAJOR, not a minor

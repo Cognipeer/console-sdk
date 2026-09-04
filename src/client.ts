@@ -16,7 +16,7 @@ import { MemoryResource } from './resources/memory';
 import { RagResource } from './resources/rag';
 import { ConfigResource } from './resources/config';
 import { AgentsResource } from './resources/agents';
-import { BrowserMcpResource, BrowserSessionsResource, BrowsersResource } from './resources/browser';
+import { BrowserFlowsResource, BrowserMcpResource, BrowserSessionsResource, BrowsersResource } from './resources/browser';
 import { AudioResource, OcrResource } from './resources/audio';
 import { AutomationsResource } from './resources/automations';
 import { CrawlerResource } from './resources/crawler';
@@ -119,6 +119,8 @@ export class ConsoleClient {
 
   /** Browsers (parent profiles for sessions and Browser Use / MCP integration) */
   public browsers: BrowsersResource;
+  /** Record a browser task once, then replay it without a model. */
+  public browserFlows: BrowserFlowsResource;
 
   /** Browser MCP helper API */
   public browserMcp: BrowserMcpResource;
@@ -205,6 +207,7 @@ export class ConsoleClient {
     this.agents = new AgentsResource(this.http);
     this.browserSessions = new BrowserSessionsResource(this.http);
     this.browsers = new BrowsersResource(this.http);
+    this.browserFlows = new BrowserFlowsResource(this.http);
     this.browserMcp = new BrowserMcpResource(this.http);
     this.audio = new AudioResource(this.http);
     this.ocr = new OcrResource(this.http);

@@ -2,6 +2,15 @@ import { HttpClient } from '../http';
 import {
   Browser,
   BrowserAction,
+  BrowserFindResult,
+  BrowserFlow,
+  BrowserFlowCreateInput,
+  BrowserFlowRecordInput,
+  BrowserFlowRun,
+  BrowserFlowRunInput,
+  BrowserFlowUpdateInput,
+  BrowserObservations,
+  BrowserProfileSummary,
   BrowserActionResult,
   BrowserArtifactResult,
   BrowserCreateInput,
@@ -169,6 +178,51 @@ export class BrowserSessionsResource {
     );
   }
 
+  /**
+   * Find visible text and get a DURABLE target for each hit.
+   *
+   * Cheaper than another snapshot when you already know what you are looking
+   * for, and the targets it returns are safe to save into a flow step.
+   */
+  async find(
+    sessionKey: string,
+    text: string,
+    options: { limit?: number } = {},
+  ): Promise<BrowserFindResult> {
+    const params = new URLSearchParams({ text });
+    if (options.limit !== undefined) params.set('limit', String(options.limit));
+    return this.http.request<BrowserFindResult>(
+      'GET',
+      `${BASE}/sessions/${encodeURIComponent(sessionKey)}/find?${params.toString()}`,
+    );
+  }
+
+  /**
+   * Console messages, failed requests and the last dialog this session saw.
+   * Use it when an action succeeded but the page did not do what you expected.
+   */
+  async diagnostics(sessionKey: string): Promise<BrowserObservations> {
+    return this.http.request<BrowserObservations>(
+      'GET',
+      `${BASE}/sessions/${encodeURIComponent(sessionKey)}/diagnostics`,
+    );
+  }
+
+  /**
+   * Export this session's cookies + origin storage.
+   *
+   * Drive a login once, export here, then `browsers.setProfile(...)` so every
+   * later session starts authenticated instead of replaying credentials
+   * through a form.
+   */
+  async exportProfile(sessionKey: string): Promise<Record<string, unknown>> {
+    const res = await this.http.request<{ storageState: Record<string, unknown> }>(
+      'GET',
+      `${BASE}/sessions/${encodeURIComponent(sessionKey)}/profile`,
+    );
+    return res.storageState;
+  }
+
   async close(sessionKey: string): Promise<{ closed: boolean }> {
     return this.http.request<{ closed: boolean }>(
       'DELETE',
@@ -289,5 +343,162 @@ export class BrowsersResource {
       'DELETE',
       `${BASE}/browsers/${encodeURIComponent(idOrKey)}`,
     );
+  }
+
+  /**
+   * Attach a signed-in profile so every session starts authenticated.
+   *
+   * Pass a Playwright `storageState` export — the object written by
+   * `context.storageState()`, or by `browserSessions.exportProfile()` after
+   * you drive a login once. It is encrypted server-side and never readable
+   * back; only the summary returned here is.
+   *
+   * @example
+   * ```ts
+   * const state = JSON.parse(await fs.readFile('profile.json', 'utf8'));
+   * await client.browsers.setProfile('my-browser', state, 'profile.json');
+   * ```
+   */
+  async setProfile(
+    idOrKey: string,
+    storageState: Record<string, unknown>,
+    fileName?: string,
+  ): Promise<BrowserProfileSummary> {
+    const res = await this.http.request<{ profile: BrowserProfileSummary }>(
+      'PUT',
+      `${BASE}/browsers/${encodeURIComponent(idOrKey)}/profile`,
+      { body: { storageState, fileName } },
+    );
+    return res.profile;
+  }
+
+  async clearProfile(idOrKey: string): Promise<{ deleted: boolean }> {
+    return this.http.request<{ deleted: boolean }>(
+      'DELETE',
+      `${BASE}/browsers/${encodeURIComponent(idOrKey)}/profile`,
+    );
+  }
+}
+
+/**
+ * Browser flows — record a task once, replay it deterministically.
+ *
+ * Driving a browser with a model is DISCOVERY: it reads the page, guesses,
+ * backtracks, and bills tokens for every step. Replaying a flow is
+ * EXECUTION: no model, no guessing, and the same steps every time. Record
+ * the discovery once, then run the flow.
+ *
+ * @example
+ * ```ts
+ * // 1. Drive a session however you like (agent, or by hand).
+ * const session = await client.browserSessions.create({ browserId });
+ * await client.browserSessions.action(session.sessionKey, { type: 'goto', url });
+ * // …
+ *
+ * // 2. Freeze it into a flow. Typed values become declared inputs.
+ * const flow = await client.browserFlows.record({
+ *   sessionId: session.id,
+ *   name: 'Submit expense',
+ *   status: 'active',
+ * });
+ *
+ * // 3. Replay it with different values, any number of times.
+ * const run = await client.browserFlows.run(flow.key, {
+ *   inputs: { reference: 'EXP-2002', amount: '999' },
+ * });
+ * console.log(run.status, run.outputs);
+ * ```
+ */
+export class BrowserFlowsResource {
+  constructor(private http: HttpClient) {}
+
+  async create(input: BrowserFlowCreateInput): Promise<BrowserFlow> {
+    const res = await this.http.request<{ flow: BrowserFlow }>('POST', `${BASE}/flows`, { body: input });
+    return res.flow;
+  }
+
+  async list(query: { status?: string; browserId?: string; search?: string } = {}): Promise<BrowserFlow[]> {
+    const params = new URLSearchParams();
+    if (query.status) params.set('status', query.status);
+    if (query.browserId) params.set('browserId', query.browserId);
+    if (query.search) params.set('search', query.search);
+    const qs = params.toString();
+    const res = await this.http.request<{ flows: BrowserFlow[] }>('GET', `${BASE}/flows${qs ? `?${qs}` : ''}`);
+    return res.flows ?? [];
+  }
+
+  async get(idOrKey: string): Promise<BrowserFlow> {
+    const res = await this.http.request<{ flow: BrowserFlow }>(
+      'GET',
+      `${BASE}/flows/${encodeURIComponent(idOrKey)}`,
+    );
+    return res.flow;
+  }
+
+  async update(idOrKey: string, input: BrowserFlowUpdateInput): Promise<BrowserFlow> {
+    const res = await this.http.request<{ flow: BrowserFlow }>(
+      'PATCH',
+      `${BASE}/flows/${encodeURIComponent(idOrKey)}`,
+      { body: input },
+    );
+    return res.flow;
+  }
+
+  async delete(idOrKey: string): Promise<{ deleted: boolean }> {
+    return this.http.request<{ deleted: boolean }>(
+      'DELETE',
+      `${BASE}/flows/${encodeURIComponent(idOrKey)}`,
+    );
+  }
+
+  /**
+   * Turn a driven session's action log into a replayable flow.
+   *
+   * Volatile element references are substituted for durable ones, and every
+   * typed value becomes a declared input rather than a literal — the recorder
+   * cannot tell a search term from a password.
+   */
+  async record(input: BrowserFlowRecordInput): Promise<BrowserFlow> {
+    const res = await this.http.request<{ flow: BrowserFlow }>('POST', `${BASE}/flows/record`, { body: input });
+    return res.flow;
+  }
+
+  /**
+   * Run a flow and wait for the result.
+   *
+   * A failed RUN still resolves — inspect `run.status`, `run.failedStepIndex`
+   * and `run.stepResults` to see which step broke and why.
+   */
+  async run(idOrKey: string, input: BrowserFlowRunInput = {}): Promise<BrowserFlowRun> {
+    const res = await this.http.request<{ run: BrowserFlowRun }>(
+      'POST',
+      `${BASE}/flows/${encodeURIComponent(idOrKey)}/run`,
+      { body: input },
+    );
+    return res.run;
+  }
+
+  async listRuns(
+    query: { flowId?: string; status?: string; limit?: number; skip?: number } = {},
+  ): Promise<BrowserFlowRun[]> {
+    const params = new URLSearchParams();
+    if (query.flowId) params.set('flowId', query.flowId);
+    if (query.status) params.set('status', query.status);
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    if (query.skip !== undefined) params.set('skip', String(query.skip));
+    const qs = params.toString();
+    const res = await this.http.request<{ runs: BrowserFlowRun[] }>(
+      'GET',
+      `${BASE}/flow-runs${qs ? `?${qs}` : ''}`,
+    );
+    return res.runs ?? [];
+  }
+
+  async getRun(runId: string): Promise<BrowserFlowRun> {
+    const res = await this.http.request<{ run: BrowserFlowRun }>(
+      'GET',
+      `${BASE}/flow-runs/${encodeURIComponent(runId)}`,
+    );
+    return res.run;
   }
 }

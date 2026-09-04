@@ -2046,9 +2046,25 @@ export interface BrowserSessionConfig {
   viewport?: { width: number; height: number };
   userAgent?: string;
   locale?: string;
+  /** IANA zone, e.g. `Europe/Istanbul`. */
+  timezoneId?: string;
   maxLifetimeMs?: number;
   idleTimeoutMs?: number;
+  actionTimeoutMs?: number;
+  navigationTimeoutMs?: number;
   access?: BrowserAccessRules;
+  /** Route the session through an egress proxy. */
+  proxy?: { server: string; username?: string; password?: string; bypass?: string };
+  extraHTTPHeaders?: Record<string, string>;
+  httpCredentials?: { username: string; password: string };
+  /** Off by default — an automated browser that accepts files is an ingest path. */
+  acceptDownloads?: boolean;
+  /** DANGER: disables TLS verification. */
+  ignoreHTTPSErrors?: boolean;
+  /** How `alert` / `confirm` / `prompt` are answered. An unanswered dialog blocks the page. */
+  dialogPolicy?: 'accept' | 'dismiss';
+  /** Cookies + origin storage to start from (a Playwright storageState export). */
+  storageState?: Record<string, unknown>;
 }
 
 export interface BrowserArtifactRef {
@@ -2110,52 +2126,122 @@ export interface BrowserSessionEvent {
   createdAt?: string;
 }
 
+/**
+ * How an action names the element it acts on.
+ *
+ * TWO CLASSES OF FIELD. `ref` is VOLATILE: it is a marker the browser mints
+ * for one `snapshot()` and renumbers on the next, so it addresses an element
+ * only within the turn that produced it. Everything else is DURABLE — it
+ * describes the element the way a person would ("the button labelled Sign
+ * in") and still resolves after a re-render or a deploy.
+ *
+ * A live script uses `ref`. Anything SAVED — a flow step, a fixture — must
+ * use the durable fields; `resolvedTarget` on every action result hands you
+ * exactly that for whatever the action just touched.
+ */
+export interface BrowserTarget {
+  /** Volatile aria marker from the most recent snapshot. Never save this. */
+  ref?: string;
+  /** ARIA role, paired with `name`. */
+  role?: string;
+  /** Accessible name. Exact unless `nameContains` is set. */
+  name?: string;
+  nameContains?: boolean;
+  /** `data-testid` value — the most durable target when the app provides one. */
+  testId?: string;
+  label?: string;
+  placeholder?: string;
+  text?: string;
+  /** CSS selector. Last resort: breaks on markup changes. */
+  selector?: string;
+  /** Disambiguates when the chosen strategy matches several elements. */
+  nth?: number;
+  /** CSS selector of an iframe to resolve inside. */
+  frame?: string | string[];
+}
+
+export type BrowserTargetStrategy =
+  | 'ref' | 'testId' | 'role' | 'label' | 'placeholder' | 'text' | 'selector';
+
 export interface BrowserActionGoto {
   type: 'goto';
   url: string;
   waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
   timeout?: number;
 }
-export interface BrowserActionClick {
+export interface BrowserActionClick extends BrowserTarget {
   type: 'click';
-  ref?: string;
-  selector?: string;
   button?: 'left' | 'right' | 'middle';
+  clickCount?: 1 | 2;
   timeout?: number;
 }
-export interface BrowserActionHover {
+export interface BrowserActionHover extends BrowserTarget {
   type: 'hover';
-  ref?: string;
-  selector?: string;
   timeout?: number;
 }
-export interface BrowserActionType {
+export interface BrowserActionType extends BrowserTarget {
   type: 'type';
-  ref?: string;
-  selector?: string;
   text: string;
   delay?: number;
   clear?: boolean;
+  /** Press Enter after typing. */
+  submit?: boolean;
+  timeout?: number;
 }
-export interface BrowserActionPress {
+export interface BrowserActionPress extends BrowserTarget {
   type: 'press';
-  ref?: string;
-  selector?: string;
   key: string;
+  timeout?: number;
+}
+export interface BrowserActionSelect extends BrowserTarget {
+  type: 'select';
+  values?: string[];
+  labels?: string[];
+  timeout?: number;
+}
+export interface BrowserActionCheck extends BrowserTarget {
+  type: 'check';
+  /** false unchecks. Idempotent either way, unlike a click. */
+  checked?: boolean;
+  timeout?: number;
+}
+export interface BrowserActionUpload extends BrowserTarget {
+  type: 'upload';
+  /** Files-service ids, not filesystem paths. */
+  fileIds: string[];
+  timeout?: number;
+}
+export interface BrowserActionDrag {
+  type: 'drag';
+  from: BrowserTarget;
+  to: BrowserTarget;
+  timeout?: number;
+}
+export interface BrowserActionHistory {
+  type: 'back' | 'forward' | 'reload';
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+  timeout?: number;
 }
 export interface BrowserActionWait {
   type: 'wait';
   ms?: number;
-  ref?: string;
+  text?: string;
   selector?: string;
   state?: 'attached' | 'detached' | 'visible' | 'hidden';
+  loadState?: 'load' | 'domcontentloaded' | 'networkidle';
+  timeout?: number;
 }
-export interface BrowserActionScroll {
+export interface BrowserActionScroll extends BrowserTarget {
   type: 'scroll';
-  ref?: string;
-  selector?: string;
   x?: number;
   y?: number;
+  timeout?: number;
+}
+export interface BrowserActionTab {
+  type: 'tab';
+  op: 'list' | 'new' | 'switch' | 'close';
+  index?: number;
+  url?: string;
 }
 export type BrowserAction =
   | BrowserActionGoto
@@ -2163,22 +2249,33 @@ export type BrowserAction =
   | BrowserActionHover
   | BrowserActionType
   | BrowserActionPress
+  | BrowserActionSelect
+  | BrowserActionCheck
+  | BrowserActionUpload
+  | BrowserActionDrag
+  | BrowserActionHistory
   | BrowserActionWait
-  | BrowserActionScroll;
+  | BrowserActionScroll
+  | BrowserActionTab;
 
 export interface BrowserActionResult {
   ok: boolean;
   url?: string;
   pageTitle?: string;
   ariaSnapshot?: string;
+  /**
+   * DURABLE description of the element the action actually hit — save this,
+   * not the `ref` you passed in.
+   */
+  resolvedTarget?: BrowserTarget;
+  targetStrategy?: BrowserTargetStrategy;
+  tabs?: Array<{ index: number; url: string; title?: string; active: boolean }>;
   artifact?: BrowserArtifactRef;
   errorMessage?: string;
 }
 
-export interface BrowserExtractInput {
-  ref?: string;
-  selector?: string;
-  mode?: 'text' | 'html' | 'attr';
+export interface BrowserExtractInput extends BrowserTarget {
+  mode?: 'text' | 'html' | 'attr' | 'value';
   attribute?: string;
   multiple?: boolean;
 }
@@ -2186,7 +2283,20 @@ export interface BrowserExtractInput {
 export interface BrowserExtractResult {
   ok: boolean;
   values: string[];
+  resolvedTarget?: BrowserTarget;
   errorMessage?: string;
+}
+
+export interface BrowserFindResult {
+  ok: boolean;
+  matches: Array<{ text: string; target: BrowserTarget }>;
+  errorMessage?: string;
+}
+
+export interface BrowserObservations {
+  console: Array<{ type: string; text: string; at: string }>;
+  networkFailures: Array<{ url: string; method?: string; failure?: string; at: string }>;
+  lastDialog?: { type: string; message: string; action: string; at: string };
 }
 
 export interface BrowserSnapshotResult {
@@ -2199,10 +2309,8 @@ export interface BrowserArtifactResult {
   eventId: string;
 }
 
-export interface BrowserScreenshotInput {
+export interface BrowserScreenshotInput extends BrowserTarget {
   fullPage?: boolean;
-  ref?: string;
-  selector?: string;
   type?: 'png' | 'jpeg';
   quality?: number;
 }
@@ -2225,10 +2333,156 @@ export interface Browser {
   defaultSessionConfig?: BrowserSessionConfig;
   defaultModelKey?: string;
   defaultRunOptions?: { maxSteps?: number; temperature?: number; runtimeProfile?: string };
+  /**
+   * Non-secret description of the attached signed-in profile.
+   *
+   * The profile itself (cookies + origin storage) is encrypted server-side
+   * and is never returned — upload it with `browsers.setProfile`.
+   */
+  storageStateMeta?: BrowserProfileSummary;
   metadata?: Record<string, unknown>;
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface BrowserProfileSummary {
+  uploadedAt: string;
+  uploadedBy?: string;
+  cookieCount: number;
+  origins: string[];
+  /** Earliest cookie expiry — warn before a profile goes stale. */
+  earliestExpiry?: string;
+  sourceFileName?: string;
+}
+
+// ── Browser flows (record once, replay deterministically) ───────────────
+
+export type BrowserFlowStatus = 'draft' | 'active' | 'disabled';
+export type BrowserFlowRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type BrowserFlowTrigger = 'manual' | 'agent' | 'api' | 'schedule';
+
+export interface BrowserFlowInput {
+  name: string;
+  label?: string;
+  type: 'string' | 'number' | 'boolean' | 'secret';
+  required?: boolean;
+  /** Never set for `secret` — a default would be a credential in the flow. */
+  default?: string | number | boolean;
+  description?: string;
+}
+
+export interface BrowserFlowStepPolicy {
+  /** Attempts beyond the first. Default 0. */
+  retries?: number;
+  /** Delay between attempts (ms), doubling. Default 500. */
+  retryDelayMs?: number;
+  timeoutMs?: number;
+  /** A failing optional step is recorded and skipped instead of aborting. */
+  optional?: boolean;
+}
+
+export interface BrowserFlowStep {
+  id: string;
+  label?: string;
+  /** A BrowserAction payload — with no volatile `ref`; the API rejects one. */
+  action: Record<string, unknown>;
+  /** Store this step's output under a name, for `{{step.name}}` later. */
+  captureAs?: string;
+  policy?: BrowserFlowStepPolicy;
+  /** Skip the step unless this expression is truthy. */
+  when?: string;
+}
+
+export interface BrowserFlow {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  key: string;
+  name: string;
+  description?: string;
+  status: BrowserFlowStatus;
+  browserId: string;
+  inputs?: BrowserFlowInput[];
+  steps: BrowserFlowStep[];
+  sessionConfig?: BrowserSessionConfig;
+  recordedFromSessionId?: string;
+  /** Bumped on every step change; a run pins the version it executed. */
+  version: number;
+  lastRun?: { runId: string; status: BrowserFlowRunStatus; startedAt: string; durationMs?: number };
+  metadata?: Record<string, unknown>;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BrowserFlowStepResult {
+  stepId: string;
+  index: number;
+  status: 'succeeded' | 'failed' | 'skipped';
+  attempts: number;
+  durationMs?: number;
+  url?: string;
+  action?: Record<string, unknown>;
+  captured?: unknown;
+  artifact?: BrowserArtifactRef;
+  errorMessage?: string;
+}
+
+export interface BrowserFlowRun {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  flowId: string;
+  flowKey: string;
+  flowVersion: number;
+  status: BrowserFlowRunStatus;
+  trigger: BrowserFlowTrigger;
+  sessionId?: string;
+  sessionKey?: string;
+  /** Non-secret inputs only; `secret` parameters are never persisted. */
+  inputs?: Record<string, unknown>;
+  stepResults?: BrowserFlowStepResult[];
+  outputs?: Record<string, unknown>;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+  errorMessage?: string;
+  failedStepIndex?: number;
+  createdBy?: string;
+  createdAt?: string;
+}
+
+export interface BrowserFlowCreateInput {
+  key?: string;
+  name: string;
+  description?: string;
+  status?: BrowserFlowStatus;
+  browserId: string;
+  inputs?: BrowserFlowInput[];
+  steps?: Array<Partial<BrowserFlowStep> & { action: Record<string, unknown> }>;
+  sessionConfig?: BrowserSessionConfig;
+  metadata?: Record<string, unknown>;
+}
+
+export type BrowserFlowUpdateInput = Partial<BrowserFlowCreateInput>;
+
+export interface BrowserFlowRecordInput {
+  /** The driven session to turn into steps. */
+  sessionId: string;
+  name: string;
+  key?: string;
+  description?: string;
+  /** Defaults to `draft` so a recording is reviewed before anything runs it. */
+  status?: 'draft' | 'active';
+  excludeTypes?: string[];
+}
+
+export interface BrowserFlowRunInput {
+  inputs?: Record<string, string | number | boolean>;
+  /** Keep the session open on failure, for debugging. */
+  keepSessionOpen?: boolean;
+  maxSteps?: number;
 }
 
 export interface BrowserCreateInput {
