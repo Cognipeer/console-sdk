@@ -325,6 +325,22 @@ describe('HttpClient', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it('F-16: refuses to sit on an absurd Retry-After instead of blocking the caller for it', async () => {
+      // A server (or a hostile one) answering `Retry-After: 3600` must not
+      // turn one SDK call into a one-hour await -- the error is surfaced
+      // with retryAfterMs attached so the CALLER can reschedule.
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: 'slow down' }, { status: 429, headers: { 'retry-after': '3600' } }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 3, fetchMock);
+
+      await expect(http.request('GET', '/v1/things')).rejects.toMatchObject({
+        statusCode: 429,
+        retryAfterMs: 3_600_000,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('F-16: does not retry a 429 past maxRetries', async () => {
       vi.useFakeTimers();
       const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'slow down' }, { status: 429 }));

@@ -6,6 +6,14 @@ import { CognipeerAPIError, CognipeerError } from './types';
 const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
 
 /**
+ * Longest `Retry-After` this client will actually wait out inside a single
+ * call. Beyond it the error is thrown with `retryAfterMs` attached so the
+ * caller can schedule the retry themselves — an SDK method that silently
+ * blocks for minutes looks identical to a hang from the outside.
+ */
+const MAX_HONOURED_RETRY_AFTER_MS = 30_000;
+
+/**
  * `Retry-After` can be either a number of seconds or an HTTP-date
  * (RFC 7231 7.1.3). Returns milliseconds from now, or undefined if the
  * header is absent or unparseable.
@@ -141,6 +149,14 @@ export class HttpClient {
         }
 
         const retryAfterMs = error instanceof CognipeerAPIError ? error.retryAfterMs : undefined;
+        if (retryAfterMs !== undefined && retryAfterMs > MAX_HONOURED_RETRY_AFTER_MS) {
+          // A server asking us to come back in an hour is telling the CALLER
+          // to reschedule, not telling this client to park their thread for
+          // an hour inside one await. Surface the error (it carries
+          // `retryAfterMs`, so the caller can act on it) instead of silently
+          // becoming unresponsive.
+          throw error;
+        }
         await this.sleep(retryAfterMs ?? Math.pow(2, attempt) * 1000);
       } finally {
         clearTimeout(timeoutId);
