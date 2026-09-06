@@ -96,7 +96,12 @@ export class ConsoleClient {
   /** Agent tracing API */
   public tracing: TracingResource;
 
-  /** Tools API */
+  /**
+   * @deprecated The server-side `/api/client/v1/tools*` endpoints this
+   * resource calls are retired and every method now 404s. Use `client.mcp`
+   * for tool execution/management, or `client.agents`'s `toolBindings` for
+   * an agent's own tools.
+   */
   public tools: ToolsResource;
 
   /** Guardrails API */

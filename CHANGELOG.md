@@ -7,7 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<<<<<<< Updated upstream
 ### Added
 
 - **Crawler sync runs** — `client.crawler.run(...)` / `crawlWithCrawler(...)`
@@ -22,7 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   AI Answer setting), and `providers.list()`. New types: `WebSearchRequest`,
   `WebSearchResponse`, `WebSearchResultItem`, `WebSearchProvider`,
   `WebSearchSafeSearch`.
-=======
+
+### Deprecated
+
+- **`client.tools`** — the `/api/client/v1/tools*` endpoints it calls are no
+  longer served by the Console runtime; every method now 404s. Warns on
+  first use. Use `client.mcp` for tool execution/management, or
+  `client.agents`'s `toolBindings` for an agent's own tools. Will be removed
+  in a future major version.
+
 ## [1.7.0] - 2026-08-17
 
 ### Added
@@ -40,7 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attribution tags the Console groups/reports on as a dynamic
   `group_by`/`group_by_entity=metadata.<key>` dimension (e.g.
   `{ complexity: 'complex' }`), with no schema change required on either side.
->>>>>>> Stashed changes
 
 ### Changed
 

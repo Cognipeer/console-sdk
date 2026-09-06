@@ -1,5 +1,21 @@
 # Tools API
 
+> **Deprecated — this API no longer works against a current Console server.**
+> The `/api/client/v1/tools*` endpoints `client.tools.*` calls below were
+> retired server-side; every method on this page now returns a 404. The
+> class is kept in the SDK only so existing call sites fail with a console
+> warning naming the problem instead of a bare 404, and will be removed in
+> a future major version.
+>
+> For tool execution and management against a current server, use:
+> - **`client.mcp`** for MCP server/tool registration and execution
+>   (`createServer`, `refreshTools`, `listTools`, `execute`, `callTool`).
+> - **`client.agents`** for binding tools to an agent's own config
+>   (`toolBindings` on the agent definition).
+>
+> The examples below are kept for reference only — do not use them for new
+> integrations.
+
 Manage and execute tools from the unified tool system via the Console SDK.
 
 ## Overview
