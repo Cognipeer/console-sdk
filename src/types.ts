@@ -42,7 +42,9 @@ export class CognipeerAPIError extends CognipeerError {
     message: string,
     statusCode: number,
     public errorType?: string,
-    response?: unknown
+    response?: unknown,
+    /** Parsed `Retry-After` response header, in milliseconds, when present. */
+    public retryAfterMs?: number
   ) {
     super(message, statusCode, response);
     this.name = 'CognipeerAPIError';

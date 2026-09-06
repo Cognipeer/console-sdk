@@ -1,5 +1,60 @@
 import { CognipeerAPIError, CognipeerError } from './types';
 
+/** Status codes safe to retry regardless of HTTP method: the request was
+ * rejected before any side effect (rate limit, gateway/upstream failure),
+ * not "the server processed it and then died" (which 500 could mean). */
+const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
+
+/**
+ * `Retry-After` can be either a number of seconds or an HTTP-date
+ * (RFC 7231 7.1.3). Returns milliseconds from now, or undefined if the
+ * header is absent or unparseable.
+ */
+function parseRetryAfterMs(header: string | null): number | undefined {
+  if (!header) return undefined;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const dateMs = Date.parse(header);
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
+  return undefined;
+}
+
+/**
+ * Combines up to two optional AbortSignals into one that aborts when EITHER
+ * source does, carrying through whichever reason fired. `AbortSignal.any`
+ * would do this natively but needs Node 20.3+; this package supports
+ * Node >=18, so it is composed by hand instead. Call `cleanup` once the
+ * operation the signal guards is done, successfully or not, so the listeners
+ * attached to a long-lived caller-supplied signal don't accumulate.
+ */
+function combineSignals(
+  a: AbortSignal | undefined,
+  b: AbortSignal | undefined,
+): { signal: AbortSignal; cleanup: () => void } {
+  if (!a) return { signal: b as AbortSignal, cleanup: () => {} };
+  if (!b) return { signal: a, cleanup: () => {} };
+
+  const controller = new AbortController();
+  const onAbort = (source: AbortSignal) => () => controller.abort((source as { reason?: unknown }).reason);
+  const onAbortA = onAbort(a);
+  const onAbortB = onAbort(b);
+
+  if (a.aborted) controller.abort((a as { reason?: unknown }).reason);
+  else if (b.aborted) controller.abort((b as { reason?: unknown }).reason);
+  else {
+    a.addEventListener('abort', onAbortA, { once: true });
+    b.addEventListener('abort', onAbortB, { once: true });
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      a.removeEventListener('abort', onAbortA);
+      b.removeEventListener('abort', onAbortB);
+    },
+  };
+}
+
 /**
  * HTTP client for making requests to the CG API
  */
@@ -46,39 +101,50 @@ export class HttpClient {
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      // Composed, not `options.signal || controller.signal`: the caller's
+      // own signal used to REPLACE the timeout entirely, so passing one
+      // silently disabled the client's timeout instead of adding to it.
+      const { signal, cleanup } = combineSignals(options.signal, controller.signal);
 
+      try {
         const response = await this.fetchImpl(url, {
           method,
           headers,
           body: options.body ? JSON.stringify(options.body) : undefined,
-          signal: options.signal || controller.signal,
+          signal,
         });
-
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
           await this.handleErrorResponse(response);
         }
 
+        // Timeout deliberately stays armed through this await, not just
+        // through the fetch() above: a slow-streaming body could otherwise
+        // hang past the configured timeout once headers had already arrived.
         const data = await response.json();
         return data as T;
       } catch (error) {
         lastError = error as Error;
 
+        const isRetryableStatus =
+          error instanceof CognipeerAPIError && RETRYABLE_STATUS_CODES.has(error.statusCode ?? 0);
+
         // Don't retry on certain errors
         if (
-          error instanceof CognipeerAPIError ||
+          (error instanceof CognipeerAPIError && !isRetryableStatus) ||
           (error as Error).name === 'AbortError' ||
           attempt === this.maxRetries
         ) {
           throw error;
         }
 
-        // Exponential backoff
-        await this.sleep(Math.pow(2, attempt) * 1000);
+        const retryAfterMs = error instanceof CognipeerAPIError ? error.retryAfterMs : undefined;
+        await this.sleep(retryAfterMs ?? Math.pow(2, attempt) * 1000);
+      } finally {
+        clearTimeout(timeoutId);
+        cleanup();
       }
     }
 
@@ -101,27 +167,51 @@ export class HttpClient {
     const url = this.buildURL(path, options.query);
     const headers = this.buildHeaders(options.headers);
 
-    const response = await this.fetchImpl(url, {
-      method,
-      headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: options.signal,
-    });
+    // The client's default timeout previously applied to nothing in this
+    // method at all -- only a caller-supplied signal did anything. Applied
+    // here as an IDLE timeout (re-armed on every chunk, including the
+    // initial connect/headers phase before the first one), not a total
+    // stream-duration cap: a long-lived but actively-producing stream should
+    // not be killed just for running a while, only one that stalls.
+    const idleController = new AbortController();
+    const { signal, cleanup } = combineSignals(options.signal, idleController.signal);
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    const armIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => idleController.abort(), this.timeout);
+    };
+    const disarmIdleTimer = () => {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = undefined;
+      }
+    };
 
-    if (!response.ok) {
-      await this.handleErrorResponse(response);
-    }
-
-    if (!response.body) {
-      throw new CognipeerError('Response body is null');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
+    armIdleTimer();
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
     try {
+      const response = await this.fetchImpl(url, {
+        method,
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal,
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      if (!response.body) {
+        throw new CognipeerError('Response body is null');
+      }
+
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
       while (true) {
+        armIdleTimer();
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -138,15 +228,25 @@ export class HttpClient {
             }
             try {
               yield JSON.parse(data) as T;
-            } catch (e) {
-              // Skip invalid JSON
-              console.warn('Failed to parse SSE data:', data);
+            } catch {
+              // Never log the raw payload: it is upstream content, not
+              // diagnostic metadata, and may carry a caller's own data.
+              console.warn(`Failed to parse SSE data (${data.length} chars) — skipping malformed chunk`);
             }
           }
         }
       }
     } finally {
-      reader.releaseLock();
+      disarmIdleTimer();
+      cleanup();
+      if (reader) {
+        // Early exit (the caller broke out of a `for await` loop) used to
+        // leave the underlying connection open -- releaseLock() alone frees
+        // this reader to be re-acquired, it does not tell the stream (or the
+        // server) that nobody is reading anymore.
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
+      }
     }
   }
 
@@ -179,13 +279,14 @@ export class HttpClient {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const { signal, cleanup } = combineSignals(options.signal, controller.signal);
 
     try {
       const response = await this.fetchImpl(url, {
         method,
         headers,
         body: options.body ? JSON.stringify(options.body) : undefined,
-        signal: options.signal || controller.signal,
+        signal,
       });
 
       if (!response.ok) {
@@ -200,6 +301,7 @@ export class HttpClient {
       };
     } finally {
       clearTimeout(timeoutId);
+      cleanup();
     }
   }
 
@@ -224,13 +326,14 @@ export class HttpClient {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const { signal, cleanup } = combineSignals(options.signal, controller.signal);
 
     try {
       const response = await this.fetchImpl(url, {
         method,
         headers,
         body: form as unknown as ArrayBuffer,
-        signal: options.signal || controller.signal,
+        signal,
       });
 
       if (!response.ok) {
@@ -241,6 +344,7 @@ export class HttpClient {
       return data as T;
     } finally {
       clearTimeout(timeoutId);
+      cleanup();
     }
   }
 
@@ -296,7 +400,8 @@ export class HttpClient {
       // If JSON parsing fails, use default error message
     }
 
-    throw new CognipeerAPIError(errorMessage, response.status, errorType, responseData);
+    const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+    throw new CognipeerAPIError(errorMessage, response.status, errorType, responseData, retryAfterMs);
   }
 
   /**
