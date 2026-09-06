@@ -243,6 +243,117 @@ describe('HttpClient', () => {
       await vi.advanceTimersByTimeAsync(1000);
       await expectation;
     });
+
+    it('F-16: still enforces the timeout when the caller ALSO passes their own (never-aborting) signal', async () => {
+      // Previously `options.signal || controller.signal` meant a caller-
+      // supplied signal replaced the timeout controller entirely instead of
+      // composing with it -- a caller who passed any signal at all (even one
+      // that would only ever be used for manual cancellation, never firing
+      // on its own) silently lost the client's timeout protection.
+      vi.useFakeTimers();
+      const callerController = new AbortController(); // never aborted in this test
+      const fetchMock = vi.fn().mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(abortError()));
+          })
+      );
+      const http = new HttpClient('https://api.test', 'key', 1000, 0, fetchMock);
+
+      const promise = http.request('GET', '/v1/slow', { signal: callerController.signal });
+      const expectation = expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(1000);
+      await expectation;
+    });
+
+    it('F-16: the caller\'s own signal can still abort the request independently of the timeout', async () => {
+      const callerController = new AbortController();
+      const fetchMock = vi.fn().mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(abortError()));
+          })
+      );
+      const http = new HttpClient('https://api.test', 'key', 60_000, 0, fetchMock);
+
+      const promise = http.request('GET', '/v1/slow', { signal: callerController.signal });
+      callerController.abort();
+      await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+    });
+
+    it('F-16: retries a 429 and honours Retry-After (seconds) instead of exponential backoff', async () => {
+      vi.useFakeTimers();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ error: 'slow down' }, { status: 429, headers: { 'retry-after': '5' } }))
+        .mockResolvedValueOnce(jsonResponse({ ok: true }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 1, fetchMock);
+
+      const promise = http.request('GET', '/v1/things');
+      // Would still be pending after 1s (exponential backoff's own delay for
+      // attempt 0) if Retry-After were not honoured.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(4000); // total 5s, matching Retry-After
+      const result = await promise;
+
+      expect(result).toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([429, 502, 503, 504])('F-16: retries a %i instead of failing on the first attempt', async (status) => {
+      vi.useFakeTimers();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ error: 'transient' }, { status }))
+        .mockResolvedValueOnce(jsonResponse({ ok: true }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 1, fetchMock);
+
+      const promise = http.request('GET', '/v1/things');
+      await vi.advanceTimersByTimeAsync(1000);
+      const result = await promise;
+
+      expect(result).toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('F-16: still does not retry a 500 (ambiguous whether the request was processed)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'oops' }, { status: 500 }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 3, fetchMock);
+
+      await expect(http.request('GET', '/v1/things')).rejects.toBeInstanceOf(CognipeerAPIError);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('F-16: refuses to sit on an absurd Retry-After instead of blocking the caller for it', async () => {
+      // A server (or a hostile one) answering `Retry-After: 3600` must not
+      // turn one SDK call into a one-hour await -- the error is surfaced
+      // with retryAfterMs attached so the CALLER can reschedule.
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: 'slow down' }, { status: 429, headers: { 'retry-after': '3600' } }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 3, fetchMock);
+
+      await expect(http.request('GET', '/v1/things')).rejects.toMatchObject({
+        statusCode: 429,
+        retryAfterMs: 3_600_000,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('F-16: does not retry a 429 past maxRetries', async () => {
+      vi.useFakeTimers();
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'slow down' }, { status: 429 }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 2, fetchMock);
+
+      const promise = http.request('GET', '/v1/things');
+      const expectation = expect(promise).rejects.toBeInstanceOf(CognipeerAPIError);
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(2000);
+      await expectation;
+
+      expect(fetchMock).toHaveBeenCalledTimes(3); // initial attempt + 2 retries
+    });
   });
 
   describe('stream()', () => {
@@ -262,10 +373,10 @@ describe('HttpClient', () => {
       expect(init.method).toBe('POST');
     });
 
-    it('skips lines that are not valid JSON without throwing', async () => {
+    it('skips lines that are not valid JSON without throwing, and never logs the raw payload', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const fetchMock = vi.fn().mockResolvedValue(
-        textStreamResponse(['data: not-json\n\n', 'data: {"n":1}\n\n', 'data: [DONE]\n\n'])
+        textStreamResponse(['data: not-json-super-secret-payload\n\n', 'data: {"n":1}\n\n', 'data: [DONE]\n\n'])
       );
       const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
 
@@ -276,6 +387,9 @@ describe('HttpClient', () => {
 
       expect(received).toEqual([{ n: 1 }]);
       expect(warnSpy).toHaveBeenCalled();
+      // F-16: the warning used to include the raw upstream payload verbatim.
+      const loggedText = warnSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+      expect(loggedText).not.toContain('not-json-super-secret-payload');
     });
 
     it('throws on a non-ok response before streaming', async () => {
@@ -293,6 +407,46 @@ describe('HttpClient', () => {
 
       const iterator = http.stream('POST', '/v1/stream');
       await expect(iterator.next()).rejects.toBeInstanceOf(CognipeerError);
+    });
+
+    it('F-16: cancels the underlying reader when the caller stops iterating early', async () => {
+      const cancel = vi.fn().mockResolvedValue(undefined);
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"n":1}\n\n'));
+        },
+        cancel,
+      });
+      const fetchMock = vi.fn().mockResolvedValue(new Response(stream, { status: 200 }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+
+      const iterator = http.stream('POST', '/v1/stream');
+      await iterator.next(); // caller only wanted the first item
+      await iterator.return?.(); // what a `for await ... break` triggers under the hood
+
+      expect(cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('F-16: applies the client\'s default timeout to a stream that never sends a chunk', async () => {
+      // Simulates what a real fetch()-backed body does: aborting the
+      // request's signal errors the body stream, which is what rejects a
+      // pending reader.read(). Headers arrive immediately -- the stall this
+      // test targets is in the body, not the connection.
+      vi.useFakeTimers();
+      const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            init.signal?.addEventListener('abort', () => controller.error(abortError()));
+          },
+        });
+        return Promise.resolve(new Response(stream, { status: 200 }));
+      });
+      const http = new HttpClient('https://api.test', 'key', 1000, 0, fetchMock);
+
+      const iterator = http.stream('POST', '/v1/stream');
+      const expectation = expect(iterator.next()).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(1000);
+      await expectation;
     });
   });
 
