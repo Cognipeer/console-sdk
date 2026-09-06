@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { ToolsResource } from './tools';
 import { createMockHttp } from '../test/mockHttp';
 import type { AgentToolDefinition, ToolCreateRequest, ToolDefinition, ToolUpdateRequest } from '../types';
@@ -287,5 +287,53 @@ describe('ToolsResource', () => {
       '/api/client/v1/agents/support-bot/tools/weather-api/execute',
       { body: { arguments: {} } },
     );
+  });
+
+  // F-17 (finance-institution assessment, 2026-09-05): the server no longer
+  // serves /api/client/v1/tools* at all -- this resource's own source is not
+  // evidence it works. It stays for source/type compatibility, but must warn
+  // a caller who actually invokes it rather than let them find out from a
+  // 404 with no context.
+  describe('deprecation warning', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('warns on first use, mentioning the retired endpoint and the live alternatives', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const http = createMockHttp();
+      http.request.mockResolvedValue({ tools: [] });
+      const resource = new ToolsResource(http);
+
+      await resource.list();
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const message = warnSpy.mock.calls[0].join(' ');
+      expect(message).toContain('client.tools.list()');
+      expect(message).toContain('client.mcp');
+      expect(message).toContain('client.agents');
+    });
+
+    it('warns only once per instance across multiple calls, not once per call', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const http = createMockHttp();
+      http.request.mockResolvedValue({ tools: [] });
+      const resource = new ToolsResource(http);
+
+      await resource.list();
+      await resource.list();
+      await resource.list();
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not warn on construction -- only on first actual use', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const http = createMockHttp();
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const resource = new ToolsResource(http);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
   });
 });
