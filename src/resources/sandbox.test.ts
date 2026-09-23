@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   SandboxResource,
   SandboxFsResource,
@@ -463,6 +463,70 @@ describe('SandboxFsResource', () => {
     expect(http.request).toHaveBeenCalledWith('POST', `${BASE}/sbx1/fs/replace`, {
       body: { files: ['/app/a.txt'], pattern: 'foo', newValue: 'bar' },
     });
+  });
+});
+
+describe('SandboxFsResource.download', () => {
+  const streamOf = (...parts: Uint8Array[]) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const p of parts) c.enqueue(p);
+        c.close();
+      },
+    });
+  const headersFor = (size: number, extra: Record<string, string> = {}) =>
+    new Headers({ 'content-type': 'application/octet-stream', 'x-sandbox-file-size': String(size), ...extra });
+
+  it('POSTs the path to fs/download and returns the raw stream with its size and name', async () => {
+    const http = createMockHttp();
+    const body = streamOf(new Uint8Array([1, 2, 3]));
+    http.requestStream.mockResolvedValue({
+      body,
+      status: 200,
+      headers: headersFor(3, { 'content-disposition': `attachment; filename="Deck _.pptx"; filename*=UTF-8''Deck%20%C4%B1.pptx` }),
+    });
+    const fs = new SandboxFsResource(http);
+
+    const file = await fs.download('sbx1', '/workspace/work/Deck ı.pptx');
+
+    expect(http.requestStream).toHaveBeenCalledWith('POST', `${BASE}/sbx1/fs/download`, {
+      body: { path: '/workspace/work/Deck ı.pptx' },
+      signal: undefined,
+    });
+    expect(file.size).toBe(3);
+    expect(file.filename).toBe('Deck ı.pptx');
+    expect(file.body).toBe(body);
+  });
+
+  it('downloadBytes collects the body and verifies the byte count', async () => {
+    const http = createMockHttp();
+    http.requestStream.mockResolvedValue({
+      body: streamOf(new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])),
+      status: 200,
+      headers: headersFor(5),
+    });
+    const fs = new SandboxFsResource(http);
+
+    expect(Array.from(await fs.downloadBytes('sbx1', '/w/a.bin'))).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('downloadBytes throws instead of returning a short file', async () => {
+    const http = createMockHttp();
+    http.requestStream.mockResolvedValue({ body: streamOf(new Uint8Array([1, 2])), status: 200, headers: headersFor(5) });
+    const fs = new SandboxFsResource(http);
+
+    await expect(fs.downloadBytes('sbx1', '/w/a.bin')).rejects.toThrow(/ended after 2 of 5 bytes/);
+  });
+
+  it('downloadBytes refuses a file over maxBytes before reading it', async () => {
+    const http = createMockHttp();
+    const body = streamOf(new Uint8Array(10));
+    const cancel = vi.spyOn(body, 'cancel');
+    http.requestStream.mockResolvedValue({ body, status: 200, headers: headersFor(10) });
+    const fs = new SandboxFsResource(http);
+
+    await expect(fs.downloadBytes('sbx1', '/w/a.bin', { maxBytes: 4 })).rejects.toThrow(/over the 4-byte limit/);
+    expect(cancel).toHaveBeenCalled();
   });
 });
 

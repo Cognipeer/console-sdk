@@ -486,6 +486,52 @@ describe('HttpClient', () => {
     });
   });
 
+  describe('requestStream()', () => {
+    it('hands back the body as a stream with the response headers', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(new Uint8Array([7, 8, 9]), { status: 200, headers: { 'x-sandbox-file-size': '3' } }),
+      );
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+
+      const res = await http.requestStream('POST', '/v1/files', { body: { path: '/a' } });
+
+      expect(res.headers.get('x-sandbox-file-size')).toBe('3');
+      expect(new Uint8Array(await new Response(res.body).arrayBuffer())).toEqual(new Uint8Array([7, 8, 9]));
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init.body).toBe(JSON.stringify({ path: '/a' }));
+    });
+
+    it('does not cut off a body that outlives the client timeout', async () => {
+      vi.useFakeTimers();
+      try {
+        let push!: (b: Uint8Array | null) => void;
+        const stream = new ReadableStream<Uint8Array>({
+          start(c) {
+            push = (b) => (b ? c.enqueue(b) : c.close());
+          },
+        });
+        const fetchMock = vi.fn().mockResolvedValue(new Response(stream, { status: 200 }));
+        const http = new HttpClient('https://api.test', 'key', 1000, 0, fetchMock);
+
+        const res = await http.requestStream('GET', '/v1/files');
+        const collected = new Response(res.body).arrayBuffer();
+        await vi.advanceTimersByTimeAsync(5000);
+        push(new Uint8Array([1]));
+        push(null);
+        expect(new Uint8Array(await collected)).toEqual(new Uint8Array([1]));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('throws a CognipeerAPIError on a non-ok response', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'too-large' }, { status: 413 }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+
+      await expect(http.requestStream('POST', '/v1/files')).rejects.toMatchObject({ statusCode: 413, message: 'too-large' });
+    });
+  });
+
   describe('requestMultipart()', () => {
     it('sends the FormData body and lets the runtime set the content-type boundary', async () => {
       const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));

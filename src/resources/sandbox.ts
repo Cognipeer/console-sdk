@@ -1,7 +1,10 @@
 import { HttpClient } from '../http';
+import { CognipeerError } from '../types';
 import {
   SandboxCodeRunRequest,
   SandboxCreateRequest,
+  SandboxDownloadOptions,
+  SandboxFileDownload,
   SandboxExecRequest,
   SandboxExecResult,
   SandboxFileEntry,
@@ -20,6 +23,20 @@ import {
 } from '../types';
 
 const BASE = '/api/client/v1/sandbox/sandboxes';
+
+/** RFC 6266: prefer filename* (UTF-8), fall back to the quoted ASCII filename. */
+function filenameFromDisposition(header: string | null): string | undefined {
+  if (!header) return undefined;
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim());
+    } catch {
+      /* malformed — fall through */
+    }
+  }
+  return /filename="([^"]*)"/i.exec(header)?.[1];
+}
 
 /**
  * Agent Sandbox API resource — remote, API-driven runtime sandboxes.
@@ -292,6 +309,60 @@ export class SandboxFsResource {
   /** Read a file (utf8 by default; binary content falls back to base64). */
   async read(id: string, path: string, encoding: 'utf8' | 'base64' = 'utf8'): Promise<SandboxReadFileResult> {
     return this.post<SandboxReadFileResult>(id, 'read', { path, encoding });
+  }
+
+  /**
+   * Download a file as a raw byte stream — the binary counterpart of `read()`.
+   * Nothing is base64'd or wrapped in JSON, so binary artifacts (PPTX, PDF,
+   * ZIP, media) arrive byte-exact at any size up to the server's transfer
+   * limit. Use `read()` for small text files you want as a string.
+   */
+  async download(id: string, path: string, options: SandboxDownloadOptions = {}): Promise<SandboxFileDownload> {
+    const res = await this.http.requestStream('POST', `${BASE}/${encodeURIComponent(id)}/fs/download`, {
+      body: { path },
+      signal: options.signal,
+    });
+    const size = Number(res.headers.get('x-sandbox-file-size') ?? res.headers.get('content-length'));
+    if (!Number.isSafeInteger(size) || size < 0) {
+      await res.body.cancel().catch(() => undefined);
+      throw new CognipeerError('Sandbox download response carried no file size');
+    }
+    return {
+      size,
+      contentType: res.headers.get('content-type') || 'application/octet-stream',
+      filename: filenameFromDisposition(res.headers.get('content-disposition')),
+      body: res.body,
+    };
+  }
+
+  /**
+   * `download()` collected into memory, with the byte count verified against
+   * the announced size (a short or long body throws instead of returning a
+   * corrupt file). `maxBytes` refuses an oversized file before reading it.
+   */
+  async downloadBytes(id: string, path: string, options: SandboxDownloadOptions = {}): Promise<Uint8Array> {
+    const file = await this.download(id, path, options);
+    if (options.maxBytes !== undefined && file.size > options.maxBytes) {
+      await file.body.cancel().catch(() => undefined);
+      throw new CognipeerError(`Sandbox file is ${file.size} bytes, over the ${options.maxBytes}-byte limit`);
+    }
+    const out = new Uint8Array(file.size);
+    let offset = 0;
+    const reader = file.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (offset + value.length > file.size) {
+        await reader.cancel().catch(() => undefined);
+        throw new CognipeerError(`Sandbox download exceeded its announced size of ${file.size} bytes`);
+      }
+      out.set(value, offset);
+      offset += value.length;
+    }
+    if (offset !== file.size) {
+      throw new CognipeerError(`Sandbox download ended after ${offset} of ${file.size} bytes`);
+    }
+    return out;
   }
 
   /** Create or overwrite a file. Parent directories are created automatically. */

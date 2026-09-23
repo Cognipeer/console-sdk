@@ -60,6 +60,25 @@ const hits = await client.sandbox.fs.find(sbx.id, '/workspace', 'TODO');
 await client.sandbox.fs.replace(sbx.id, ['/workspace/src/app.js'], 'console', 'logger');
 ```
 
+### Binary files: `download`
+
+`fs.read()` returns content inside JSON (base64 for binary), which is fine for small
+text files. For binary artifacts — PPTX, PDF, ZIP, images, recordings — use
+`fs.download()`: the server streams the raw bytes, byte-exact, up to its transfer
+limit (default 100 MiB; a larger file is refused with `413 too-large`).
+
+```typescript
+// Streaming: pipe it wherever it goes.
+const file = await client.sandbox.fs.download(sbx.id, '/workspace/out/deck.pptx');
+console.log(file.size, file.filename); // announced before the body
+await file.body.pipeTo(someWritableStream);
+
+// Or collect it, with the byte count verified (a short transfer throws).
+const bytes = await client.sandbox.fs.downloadBytes(sbx.id, '/workspace/out/deck.pptx', {
+  maxBytes: 50 * 1024 * 1024,
+});
+```
+
 ## Files (volume)
 
 `uploadFiles` / `listFiles` / `downloadFile` operate on the sandbox's **attached volume** (object storage) — they work whether or not the container is running, and require a volume to be attached.
@@ -174,7 +193,7 @@ const resumed = await client.sandbox.restoreSnapshot(snap.id, { name: 'from-base
 
 ### `client.sandbox.fs`
 
-`list`, `info`, `read`, `write`, `mkdir`, `delete`, `move`, `find`, `replace`
+`list`, `info`, `read`, `download`, `downloadBytes`, `write`, `mkdir`, `delete`, `move`, `find`, `replace`
 
 ### `client.sandbox.git`
 
