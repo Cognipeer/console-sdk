@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { AgentsResource, AgentResponsesResource } from './agents';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { AgentsResource, AgentResponsesResource, AgentRunsResource } from './agents';
+import { AgentRunWaitTimeoutError, CognipeerAPIError } from '../types';
 import { createMockHttp } from '../test/mockHttp';
 import type {
   Agent,
@@ -8,6 +9,7 @@ import type {
   AgentPublishRequest,
   AgentResponse,
   AgentResponseCreateRequest,
+  AgentRun,
   AgentUpdateRequest,
   AgentVersion,
 } from '../types';
@@ -337,5 +339,195 @@ describe('AgentResponsesResource', () => {
 
     expect(result).toBe(apiResponse);
     expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/responses', { body: params });
+  });
+});
+
+describe('AgentResponsesResource (background mode)', () => {
+  it('sends background/callback fields in the body and returns the queued run', async () => {
+    const http = createMockHttp();
+    const queued: AgentRun = { id: 'run_abc', object: 'agent.run', status: 'queued', created_at: 1700000010 };
+    http.request.mockResolvedValue(queued);
+    const resource = new AgentResponsesResource(http);
+
+    const params = {
+      model: 'support-bot',
+      input: 'Long task',
+      background: true as const,
+      callback_url: 'https://example.com/hook',
+      callback_secret: 'a-very-long-secret-value',
+    };
+    const run = await resource.create(params);
+
+    expect(run).toBe(queued);
+    expect(run.status).toBe('queued');
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/responses', { body: params });
+  });
+
+  it('sends idempotencyKey as the Idempotency-Key header', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ id: 'run_abc', object: 'agent.run', status: 'queued', created_at: 1 });
+    const resource = new AgentResponsesResource(http);
+    const controller = new AbortController();
+
+    await resource.create(
+      { model: 'support-bot', input: 'x', background: true },
+      { idempotencyKey: 'job-42', signal: controller.signal },
+    );
+
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/responses', {
+      body: { model: 'support-bot', input: 'x', background: true },
+      headers: { 'Idempotency-Key': 'job-42' },
+      signal: controller.signal,
+    });
+  });
+});
+
+function makeRun(overrides: Partial<AgentRun> = {}): AgentRun {
+  return {
+    id: 'run_abc',
+    object: 'agent.run',
+    status: 'running',
+    agent: 'support-bot',
+    conversation_id: 'conv_1',
+    result: null,
+    error: null,
+    created_at: 1700000000,
+    started_at: 1700000001,
+    completed_at: null,
+    ...overrides,
+  };
+}
+
+describe('AgentRunsResource', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('is exposed as client.agents.runs', () => {
+    const resource = new AgentsResource(createMockHttp());
+    expect(resource.runs).toBeInstanceOf(AgentRunsResource);
+  });
+
+  it('gets a run via GET /api/client/v1/agents/runs/{runId}, passing the run_ id through', async () => {
+    const http = createMockHttp();
+    const run = makeRun();
+    http.request.mockResolvedValue(run);
+    const resource = new AgentRunsResource(http);
+
+    const result = await resource.get('run_abc');
+
+    expect(result).toBe(run);
+    expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/agents/runs/run_abc', {});
+  });
+
+  it('encodes the run id', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue(makeRun());
+    const resource = new AgentRunsResource(http);
+
+    await resource.get('run_a/b');
+
+    expect(http.request).toHaveBeenCalledWith('GET', `/api/client/v1/agents/runs/${encodeURIComponent('run_a/b')}`, {});
+  });
+
+  it('cancels a run via POST /api/client/v1/agents/runs/{runId}/cancel', async () => {
+    const http = createMockHttp();
+    const run = makeRun({ status: 'running' });
+    http.request.mockResolvedValue(run);
+    const resource = new AgentRunsResource(http);
+
+    const result = await resource.cancel('run_abc');
+
+    expect(result).toBe(run);
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/agents/runs/run_abc/cancel', { body: {} });
+  });
+
+  it('surfaces agent_run_already_terminal from cancel()', async () => {
+    const http = createMockHttp();
+    http.request.mockRejectedValue(
+      new CognipeerAPIError('already succeeded', 409, 'agent_run_already_terminal', undefined, undefined, 'agent_run_already_terminal'),
+    );
+    const resource = new AgentRunsResource(http);
+
+    await expect(resource.cancel('run_abc')).rejects.toMatchObject({
+      statusCode: 409,
+      errorCode: 'agent_run_already_terminal',
+    });
+  });
+
+  it('wait() polls until the run is terminal and returns it', async () => {
+    vi.useFakeTimers();
+    const http = createMockHttp();
+    const done = makeRun({ status: 'succeeded', completed_at: 1700000009 });
+    http.request
+      .mockResolvedValueOnce(makeRun({ status: 'queued' }))
+      .mockResolvedValueOnce(makeRun({ status: 'running' }))
+      .mockResolvedValueOnce(done);
+    const resource = new AgentRunsResource(http);
+
+    const promise = resource.wait('run_abc', { pollIntervalMs: 500 });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(http.request).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(promise).resolves.toBe(done);
+    expect(http.request).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(['failed', 'canceled'] as const)('wait() resolves (does not throw) on %s', async (status) => {
+    const http = createMockHttp();
+    const run = makeRun({ status, error: { type: 'agent_error', message: 'boom' } });
+    http.request.mockResolvedValue(run);
+    const resource = new AgentRunsResource(http);
+
+    await expect(resource.wait('run_abc')).resolves.toBe(run);
+    expect(http.request).toHaveBeenCalledTimes(1);
+  });
+
+  it('wait() throws AgentRunWaitTimeoutError carrying the last run once timeoutMs elapses', async () => {
+    vi.useFakeTimers();
+    const http = createMockHttp();
+    http.request.mockResolvedValue(makeRun({ status: 'running' }));
+    const resource = new AgentRunsResource(http);
+
+    const promise = resource.wait('run_abc', { pollIntervalMs: 1000, timeoutMs: 2500 });
+    const expectation = expect(promise).rejects.toBeInstanceOf(AgentRunWaitTimeoutError);
+    await vi.advanceTimersByTimeAsync(3000);
+    await expectation;
+    await promise.catch((error: AgentRunWaitTimeoutError) => {
+      expect(error.runId).toBe('run_abc');
+      expect(error.timeoutMs).toBe(2500);
+      expect(error.lastRun.status).toBe('running');
+    });
+    // polls at t=0, 1000, 2000, then the capped 500ms sleep to t=2500
+    expect(http.request).toHaveBeenCalledTimes(4);
+  });
+
+  it('wait() stops polling when the signal aborts', async () => {
+    vi.useFakeTimers();
+    const http = createMockHttp();
+    http.request.mockResolvedValue(makeRun({ status: 'running' }));
+    const resource = new AgentRunsResource(http);
+    const controller = new AbortController();
+
+    const promise = resource.wait('run_abc', { pollIntervalMs: 1000, signal: controller.signal });
+    const expectation = expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await expectation;
+    expect(http.request).toHaveBeenCalledTimes(1);
+    expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/agents/runs/run_abc', {
+      signal: controller.signal,
+    });
+  });
+
+  it('wait() rejects immediately for an already-aborted signal without polling', async () => {
+    const http = createMockHttp();
+    const resource = new AgentRunsResource(http);
+    const controller = new AbortController();
+    controller.abort(new Error('stop'));
+
+    await expect(resource.wait('run_abc', { signal: controller.signal })).rejects.toThrow('stop');
+    expect(http.request).not.toHaveBeenCalled();
   });
 });

@@ -12,6 +12,14 @@ describe('package entry point (index.ts)', () => {
     expect(sdk.CognipeerAPIError).toBeTypeOf('function');
   });
 
+  it('exports agent background run helpers, but not the Node-only webhook verifier', () => {
+    expect(sdk.AgentRunWaitTimeoutError).toBeTypeOf('function');
+    expect(sdk.AgentRunErrorCodes.Conflict).toBe('agent_run_conflict');
+    expect(sdk.isAgentRunTerminal('succeeded')).toBe(true);
+    expect(sdk.isAgentRunTerminal('running')).toBe(false);
+    expect((sdk as Record<string, unknown>).verifyAgentRunCallback).toBeUndefined();
+  });
+
   it('exports the realtime connection helpers', () => {
     expect(sdk.RealtimeConnection).toBeTypeOf('function');
     expect(sdk.RealtimeResource).toBeTypeOf('function');

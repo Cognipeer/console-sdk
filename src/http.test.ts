@@ -341,6 +341,39 @@ describe('HttpClient', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it('parses error.code into errorCode', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(
+          { error: { type: 'agent_run_conflict', code: 'agent_run_conflict', message: 'busy' } },
+          { status: 409 },
+        ),
+      );
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+
+      await expect(http.request('POST', '/v1/responses', { body: {} })).rejects.toMatchObject({
+        statusCode: 409,
+        errorType: 'agent_run_conflict',
+        errorCode: 'agent_run_conflict',
+        message: 'busy',
+      });
+    });
+
+    it('does not retry a 504 whose body says retryable: false (sync agent timeout)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(
+          { error: { type: 'timeout', code: 'timeout', message: 'too slow', retryable: false, side_effects_possible: true } },
+          { status: 504 },
+        ),
+      );
+      const http = new HttpClient('https://api.test', 'key', 5000, 3, fetchMock);
+
+      await expect(http.request('POST', '/v1/responses', { body: {} })).rejects.toMatchObject({
+        statusCode: 504,
+        errorCode: 'timeout',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('F-16: does not retry a 429 past maxRetries', async () => {
       vi.useFakeTimers();
       const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'slow down' }, { status: 429 }));

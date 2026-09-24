@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CognipeerError, CognipeerAPIError } from './types';
+import { AgentRunErrorCodes, CognipeerError, CognipeerAPIError, isAgentRunErrorCode } from './types';
 
 describe('CognipeerError', () => {
   it('sets the message and defaults name to CognipeerError', () => {
@@ -45,5 +45,19 @@ describe('CognipeerAPIError', () => {
     const error = new CognipeerAPIError('server error', 500);
 
     expect(error.errorType).toBeUndefined();
+  });
+});
+
+describe('agent run error helpers', () => {
+  it('isAgentRunErrorCode matches on CognipeerAPIError.errorCode', () => {
+    const conflict = new CognipeerAPIError('busy', 409, 'agent_run_conflict', undefined, undefined, 'agent_run_conflict');
+    expect(isAgentRunErrorCode(conflict, AgentRunErrorCodes.Conflict)).toBe(true);
+    expect(isAgentRunErrorCode(conflict, AgentRunErrorCodes.ConcurrencyLimit)).toBe(false);
+    expect(isAgentRunErrorCode(new Error('x'), AgentRunErrorCodes.Conflict)).toBe(false);
+  });
+
+  it('distinguishes the concurrency limit from other rate_limit_error types by code', () => {
+    const limit = new CognipeerAPIError('cap', 429, 'rate_limit_error', undefined, undefined, 'agent_run_concurrency_limit');
+    expect(isAgentRunErrorCode(limit, AgentRunErrorCodes.ConcurrencyLimit)).toBe(true);
   });
 });

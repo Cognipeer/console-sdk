@@ -179,6 +179,25 @@ const client = new ConsoleClient({
 #### Chat
 - `client.chat.completions.create(params)` - Create chat completion (streaming supported)
 
+#### Agents
+- `client.agents.responses.create(params, options?)` - Invoke an agent (OpenAI Responses API format)
+- `client.agents.responses.create({ ..., background: true, callback_url?, callback_secret? }, { idempotencyKey? })` - Start a background run; returns an `AgentRun` (`run_...`) immediately
+- `client.agents.runs.get(runId)` - Run status, with `result` once `succeeded` / `error` once `failed`/`canceled`
+- `client.agents.runs.cancel(runId)` - Cooperatively cancel a `queued`/`running` run
+- `client.agents.runs.wait(runId, { pollIntervalMs?, timeoutMs?, signal? })` - Poll until the run is terminal
+- `verifyAgentRunCallback({ rawBody, signatureHeader, secret })` from `@cognipeer/console-sdk/webhooks` (Node.js) - Verify a signed run callback
+
+```typescript
+const run = await client.agents.responses.create(
+  { model: 'research-agent', input: 'Compare these vendors', background: true },
+  { idempotencyKey: 'job-42' },
+);
+const done = await client.agents.runs.wait(run.id, { timeoutMs: 15 * 60_000 });
+if (done.status === 'succeeded') console.log(done.result?.output[0]?.content[0]?.text);
+```
+
+See [Agents → Background runs](docs/api/agents.md#background-runs) for callbacks and error codes.
+
 #### Embeddings
 - `client.embeddings.create(params)` - Create embeddings
 

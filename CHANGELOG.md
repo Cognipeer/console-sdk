@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Agent background runs** (1.8.0) — `client.agents.responses.create()`
+  accepts `background: true` plus optional `callback_url` / `callback_secret`
+  and returns an `AgentRun` (`run_...`, `queued`) immediately; a second
+  options argument carries `idempotencyKey` (sent as `Idempotency-Key`) and
+  `signal`. New `client.agents.runs.get(runId)`, `.cancel(runId)` and
+  `.wait(runId, { pollIntervalMs, timeoutMs, signal })` (throws
+  `AgentRunWaitTimeoutError`). New types `AgentRun`, `AgentRunStatus`,
+  `AgentRunError`, `AgentRunWaitOptions`, `AgentRunCallbackEvent`,
+  `AgentResponseCreateOptions`; helpers `isAgentRunTerminal`,
+  `isAgentRunErrorCode` and the `AgentRunErrorCodes` map
+  (`agent_run_conflict`, `agent_run_concurrency_limit`, `timeout`,
+  `agent_run_already_terminal`, `idempotency_key_conflict`,
+  `idempotency_key_sync_not_supported`).
+- **`@cognipeer/console-sdk/webhooks`** (Node.js only) —
+  `verifyAgentRunCallback({ rawBody, signatureHeader, secret, toleranceSeconds })`
+  checks `X-Cognipeer-Signature` (HMAC-SHA256 over `t.rawBody`, timing-safe,
+  300s replay window by default). Separate entry point so the main one stays
+  free of `node:crypto`.
+- **`CognipeerAPIError.errorCode`** — the response body's `error.code`, when
+  present (new optional trailing constructor argument).
+
 - **Crawler sync runs** — `client.crawler.run(...)` / `crawlWithCrawler(...)`
   accept `mode: 'sync'` and then resolve with the finished job plus inline
   results (`CrawlRunSyncResponse`, markdown included). New single-URL
@@ -21,6 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   AI Answer setting), and `providers.list()`. New types: `WebSearchRequest`,
   `WebSearchResponse`, `WebSearchResultItem`, `WebSearchProvider`,
   `WebSearchSafeSearch`.
+
+### Changed
+
+- **HTTP retries honour `error.retryable: false`** — a `429`/`502`/`503`/`504`
+  whose body says `retryable: false` is no longer retried. The Console sends
+  this with a synchronous agent turn's `504 timeout`, whose tool calls may
+  already have had side effects; blindly re-sending it would repeat them.
+- `npm run lint` passes again (`varsIgnorePattern: '^_'` for intentionally
+  discarded destructured fields; one documented `no-this-alias` disable).
 
 ### Deprecated
 

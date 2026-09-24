@@ -203,7 +203,18 @@ export type {
 
   // Agent Responses API
   AgentResponseCreateRequest,
+  AgentResponseCreateOptions,
+  AgentBackgroundResponseCreateRequest,
   AgentResponse,
+
+  // Agent background runs
+  AgentRun,
+  AgentRunStatus,
+  AgentRunError,
+  AgentRunErrorReason,
+  AgentRunErrorCode,
+  AgentRunWaitOptions,
+  AgentRunCallbackEvent,
   ResponseInputItem,
   ResponseInputContent,
   ResponseOutputText,
