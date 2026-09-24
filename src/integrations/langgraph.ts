@@ -436,6 +436,7 @@ export class CognipeerLangGraphTracer {
    * ```
    */
   wrapNode<T extends (...args: unknown[]) => unknown>(nodeName: string, fn: T): T {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- captured for the `function` wrapper below, whose own `this` is the caller's
     const tracer = this;
     
     const wrapped = async function (...args: unknown[]): Promise<unknown> {
