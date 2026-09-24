@@ -322,6 +322,62 @@ export class HttpClient {
   }
 
   /**
+   * Make a request whose response body is handed back as a stream rather than
+   * buffered (large binary downloads). The client timeout covers the wait for
+   * the response headers only — a long transfer that keeps producing bytes is
+   * not cut off — while the caller's `signal` can abort it at any point.
+   */
+  async requestStream(
+    method: string,
+    path: string,
+    options: {
+      body?: unknown;
+      query?: Record<string, string | number | boolean | undefined>;
+      headers?: Record<string, string>;
+      signal?: AbortSignal;
+    } = {},
+  ): Promise<{ body: ReadableStream<Uint8Array>; headers: Headers; status: number }> {
+    const url = this.buildURL(path, options.query);
+    const headers = this.buildHeaders(options.headers);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const { signal, cleanup } = combineSignals(options.signal, controller.signal);
+
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, {
+        method,
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal,
+      });
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+    } catch (error) {
+      cleanup();
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (!response.body) {
+      cleanup();
+      throw new CognipeerError('Response has no body to stream');
+    }
+    // Keep the caller's signal wired to the transfer until the body is done.
+    const body = response.body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        flush() {
+          cleanup();
+        },
+      }),
+    );
+    return { body, headers: response.headers, status: response.status };
+  }
+
+  /**
    * Multipart/form-data request. Used by routes that accept file uploads
    * (e.g. audio/transcriptions, audio/translations, OCR).
    */

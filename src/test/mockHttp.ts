@@ -7,7 +7,7 @@ import { HttpClient } from '../http';
  * path, and payload a resource sends, without making real HTTP calls.
  */
 export type MockHttpClient = {
-  [K in 'request' | 'stream' | 'requestBinary' | 'requestMultipart' | 'resolveURL']: ReturnType<
+  [K in 'request' | 'stream' | 'requestBinary' | 'requestStream' | 'requestMultipart' | 'resolveURL']: ReturnType<
     typeof vi.fn
   >;
 };
@@ -24,6 +24,7 @@ export function createMockHttp(): MockHttpClient & HttpClient {
     request: vi.fn(),
     stream: vi.fn(),
     requestBinary: vi.fn(),
+    requestStream: vi.fn(),
     requestMultipart: vi.fn(),
     resolveURL: vi.fn((path: string) => `https://mock.test${path}`),
   };

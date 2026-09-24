@@ -2663,6 +2663,27 @@ export interface SandboxReadFileResult {
   size: number;
 }
 
+/** A streaming file download from `sandbox.fs.download()`. */
+export interface SandboxFileDownload {
+  /** Exact file size in bytes, as announced by the server before the body. */
+  size: number;
+  contentType: string;
+  /** File name from Content-Disposition, when present. */
+  filename?: string;
+  /** The raw file bytes. Errors (never ends short) if the transfer breaks. */
+  body: ReadableStream<Uint8Array>;
+}
+
+export interface SandboxDownloadOptions {
+  signal?: AbortSignal;
+  /**
+   * Client-side cap for `downloadBytes()`: a file announced larger than this
+   * is refused before its body is read. The server enforces its own limit
+   * (413 `too-large`) regardless.
+   */
+  maxBytes?: number;
+}
+
 export interface SandboxFindMatch {
   file: string;
   line: number;
