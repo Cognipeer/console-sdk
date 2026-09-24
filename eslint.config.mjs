@@ -34,7 +34,7 @@ export default [
       // src/http.ts). Drop this option to adopt the stricter v8 default.
       '@typescript-eslint/no-unused-vars': [
         'error',
-        { argsIgnorePattern: '^_', caughtErrors: 'none' },
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' },
       ],
     },
   },

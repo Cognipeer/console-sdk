@@ -44,7 +44,14 @@ export class CognipeerAPIError extends CognipeerError {
     public errorType?: string,
     response?: unknown,
     /** Parsed `Retry-After` response header, in milliseconds, when present. */
-    public retryAfterMs?: number
+    public retryAfterMs?: number,
+    /**
+     * Machine-readable `error.code` from the response body, when the server
+     * sends one (e.g. `agent_run_conflict`, `agent_run_concurrency_limit`).
+     * More specific than `errorType`: several codes can share one type
+     * (`agent_run_concurrency_limit` is a `rate_limit_error`).
+     */
+    public errorCode?: string
   ) {
     super(message, statusCode, response);
     this.name = 'CognipeerAPIError';
@@ -1243,6 +1250,39 @@ export interface AgentResponseCreateRequest {
   max_output_tokens?: number;
   /** Runtime context (downstream headers/metadata) for this invocation */
   runtime_context?: RuntimeContext;
+  /**
+   * Run the turn in the background. The call returns immediately (`202`)
+   * with an {@link AgentRun} to poll via `client.agents.runs.get/wait()` or
+   * to be notified about through `callback_url`.
+   */
+  background?: boolean;
+  /**
+   * Background only: URL the Console POSTs the run's terminal event to
+   * (`agent_run.succeeded` / `agent_run.failed` / `agent_run.canceled`).
+   */
+  callback_url?: string;
+  /**
+   * Background only: secret (min 16 chars) used to HMAC-sign callback
+   * deliveries (`X-Cognipeer-Signature`). Verify with
+   * `verifyAgentRunCallback` from `@cognipeer/console-sdk/webhooks`.
+   */
+  callback_secret?: string;
+}
+
+/** Request body that starts a background agent run. */
+export type AgentBackgroundResponseCreateRequest = AgentResponseCreateRequest & { background: true };
+
+/** Per-call options for `client.agents.responses.create()`. */
+export interface AgentResponseCreateOptions {
+  /**
+   * Sent as the `Idempotency-Key` header. Background mode only (the server
+   * rejects it on synchronous calls with `400 idempotency_key_sync_not_supported`).
+   * Retrying an identical request with the same key returns the original run
+   * instead of queueing a second one.
+   */
+  idempotencyKey?: string;
+  /** Abort the HTTP request. */
+  signal?: AbortSignal;
 }
 
 /** Text content within a response output message */
@@ -1285,6 +1325,125 @@ export interface AgentResponse {
   previous_response_id: string | null;
   /** Published version used for this response (null if not versioned) */
   version: number | null;
+}
+
+// ============================================================================
+// Agent Background Runs
+// ============================================================================
+
+/** Lifecycle of a background agent run. `succeeded`/`failed`/`canceled` are terminal. */
+export type AgentRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
+
+/** Statuses after which a run never changes again. */
+export const AGENT_RUN_TERMINAL_STATUSES: readonly AgentRunStatus[] = ['succeeded', 'failed', 'canceled'];
+
+/** True when `status` is `succeeded`, `failed` or `canceled`. */
+export function isAgentRunTerminal(status: AgentRunStatus | string): boolean {
+  return (AGENT_RUN_TERMINAL_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Why a run ended in `failed`/`canceled`. Known values are listed; the server
+ * may add more, so treat it as an open string.
+ */
+export type AgentRunErrorReason =
+  | 'agent_error'
+  | 'max_duration_exceeded'
+  | 'worker_lost'
+  | 'canceled'
+  | (string & {});
+
+export interface AgentRunError {
+  type: AgentRunErrorReason;
+  message: string | null;
+}
+
+/**
+ * A background agent run (`object: 'agent.run'`).
+ *
+ * The `202` returned by `responses.create({ background: true })` carries only
+ * `id`, `object`, `status` and `created_at`; `runs.get()`/`runs.wait()` return
+ * the full shape.
+ */
+export interface AgentRun {
+  /** Run id, `run_<id>`. Also accepted as `previous_response_id`. */
+  id: string;
+  object: 'agent.run';
+  status: AgentRunStatus;
+  /** Agent key */
+  agent?: string;
+  conversation_id?: string;
+  /** The turn's Responses API result once `succeeded` (its `id` is `resp_<...>`). */
+  result?: AgentResponse | null;
+  /** Set when `failed` or `canceled`. */
+  error?: AgentRunError | null;
+  /** Unix timestamps (seconds) */
+  created_at: number;
+  started_at?: number | null;
+  completed_at?: number | null;
+}
+
+/** Options for `client.agents.runs.wait()`. */
+export interface AgentRunWaitOptions {
+  /** Delay between polls (default 1000 ms). */
+  pollIntervalMs?: number;
+  /** Give up after this long and throw `AgentRunWaitTimeoutError`. Unset = wait until terminal. */
+  timeoutMs?: number;
+  /** Abort waiting (the run itself keeps going — use `runs.cancel()` to stop it). */
+  signal?: AbortSignal;
+}
+
+/** Machine-readable `error.code` values returned by agent run endpoints. */
+export const AgentRunErrorCodes = {
+  /** 409: a run is already queued/running on this conversation. */
+  Conflict: 'agent_run_conflict',
+  /** 409: cancel was called on a run that already finished. */
+  AlreadyTerminal: 'agent_run_already_terminal',
+  /** 429: the tenant hit its concurrent background-run limit. */
+  ConcurrencyLimit: 'agent_run_concurrency_limit',
+  /** 504: a synchronous turn exceeded the server's ceiling. Not retried: tool side effects may have happened. */
+  SyncTimeout: 'timeout',
+  /** 409: the Idempotency-Key was reused with a different request. */
+  IdempotencyKeyConflict: 'idempotency_key_conflict',
+  /** 400: Idempotency-Key sent without `background: true`. */
+  IdempotencyKeySyncNotSupported: 'idempotency_key_sync_not_supported',
+} as const;
+
+export type AgentRunErrorCode = (typeof AgentRunErrorCodes)[keyof typeof AgentRunErrorCodes];
+
+/** True when `error` is a `CognipeerAPIError` carrying the given `error.code`. */
+export function isAgentRunErrorCode(error: unknown, code: AgentRunErrorCode): error is CognipeerAPIError {
+  return error instanceof CognipeerAPIError && error.errorCode === code;
+}
+
+/** Thrown by `runs.wait()` when `timeoutMs` elapses before the run finishes. */
+export class AgentRunWaitTimeoutError extends CognipeerError {
+  constructor(
+    public runId: string,
+    public timeoutMs: number,
+    /** The last status observed before giving up. */
+    public lastRun: AgentRun,
+  ) {
+    super(`Agent run ${runId} did not finish within ${timeoutMs}ms (last status: ${lastRun.status})`);
+    this.name = 'AgentRunWaitTimeoutError';
+  }
+}
+
+/**
+ * Body of a callback POSTed to `callback_url`. Verify the signature
+ * (`verifyAgentRunCallback`) on the raw body before trusting it.
+ */
+export interface AgentRunCallbackEvent {
+  id: string;
+  /** `agent_run.succeeded` | `agent_run.failed` | `agent_run.canceled` */
+  event: `agent_run.${'succeeded' | 'failed' | 'canceled'}` | (string & {});
+  createdAt: string;
+  runId: string;
+  tenantId?: string;
+  projectId?: string;
+  conversationId?: string;
+  /** `{ result }` on success, `{ errorReason, message? }` on failure, `{}` on cancel. */
+  data: Record<string, unknown>;
 }
 
 // ── Browser sessions, profiles & MCP ────────────────────────────────

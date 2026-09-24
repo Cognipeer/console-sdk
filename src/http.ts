@@ -64,6 +64,17 @@ function combineSignals(
 }
 
 /**
+ * A server can veto the status-based retry by answering
+ * `{ error: { retryable: false } }` — e.g. a synchronous agent turn that hit
+ * its `504` ceiling after tool calls may already have had side effects, so
+ * re-sending it would repeat them.
+ */
+function serverSaysNotRetryable(error: CognipeerAPIError): boolean {
+  const body = error.response as { error?: { retryable?: unknown } } | undefined;
+  return typeof body?.error === 'object' && body.error !== null && body.error.retryable === false;
+}
+
+/**
  * HTTP client for making requests to the CG API
  */
 export class HttpClient {
@@ -137,7 +148,9 @@ export class HttpClient {
         lastError = error as Error;
 
         const isRetryableStatus =
-          error instanceof CognipeerAPIError && RETRYABLE_STATUS_CODES.has(error.statusCode ?? 0);
+          error instanceof CognipeerAPIError &&
+          RETRYABLE_STATUS_CODES.has(error.statusCode ?? 0) &&
+          !serverSaysNotRetryable(error);
 
         // Don't retry on certain errors
         if (
@@ -455,17 +468,19 @@ export class HttpClient {
   private async handleErrorResponse(response: Response): Promise<never> {
     let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
     let errorType: string | undefined;
+    let errorCode: string | undefined;
     let responseData: unknown;
 
     try {
       responseData = await response.json();
       if (typeof responseData === 'object' && responseData !== null) {
-        const errorObj = responseData as { error?: string | { message?: string; type?: string } };
+        const errorObj = responseData as { error?: string | { message?: string; type?: string; code?: unknown } };
         if (typeof errorObj.error === 'string') {
           errorMessage = errorObj.error;
         } else if (errorObj.error && typeof errorObj.error === 'object') {
           errorMessage = errorObj.error.message || errorMessage;
           errorType = errorObj.error.type;
+          if (typeof errorObj.error.code === 'string') errorCode = errorObj.error.code;
         }
       }
     } catch {
@@ -473,7 +488,7 @@ export class HttpClient {
     }
 
     const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
-    throw new CognipeerAPIError(errorMessage, response.status, errorType, responseData, retryAfterMs);
+    throw new CognipeerAPIError(errorMessage, response.status, errorType, responseData, retryAfterMs, errorCode);
   }
 
   /**

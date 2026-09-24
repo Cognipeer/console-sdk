@@ -92,8 +92,9 @@ console.log(response.usage);  // Token usage
 |------|------|----------|-------------|
 | `model` | string | Yes | Agent key |
 | `input` | string \| InputItem[] | Yes | User message |
-| `previous_response_id` | string | No | Continue a conversation |
+| `previous_response_id` | string | No | Continue a conversation (`resp_...` or `run_...`) |
 | `version` | number | No | Specific published version |
+| `background` | boolean | No | Queue the turn and return an `AgentRun` — see [Background Runs](#background-runs) |
 
 ### Multi-Turn Conversations
 
@@ -140,6 +141,166 @@ interface ResponseContent {
   type: 'output_text';
   text: string;
 }
+```
+
+## Background Runs
+
+Long agent turns (many tool calls, slow downstream services) can outlive
+proxies and HTTP timeouts. Pass `background: true` to queue the turn and get
+an `AgentRun` back immediately (`202`), then poll it or receive a callback.
+
+```typescript
+const run = await client.agents.responses.create(
+  {
+    model: 'research-agent',
+    input: 'Compare these three vendors',
+    background: true,
+    callback_url: 'https://example.com/hooks/agent-run', // optional
+    callback_secret: process.env.AGENT_CALLBACK_SECRET,   // optional, min 16 chars
+  },
+  { idempotencyKey: 'vendor-compare-42' },                // optional, sent as Idempotency-Key
+);
+
+run.id;     // "run_66f2..."
+run.status; // "queued"
+
+const done = await client.agents.runs.wait(run.id, {
+  pollIntervalMs: 2000, // default 1000
+  timeoutMs: 15 * 60_000, // default: wait until terminal
+});
+
+if (done.status === 'succeeded') {
+  console.log(done.result?.output[0]?.content[0]?.text);
+  console.log(done.result?.id); // "resp_..."
+} else {
+  console.log(done.status, done.error); // failed | canceled, { type, message }
+}
+```
+
+### Background Parameters
+
+| Name | Where | Description |
+|------|-------|-------------|
+| `background` | body | `true` queues the turn and returns an `AgentRun` |
+| `callback_url` | body | Webhook the Console POSTs the terminal event to |
+| `callback_secret` | body | Min 16 chars; signs callbacks with HMAC-SHA256 |
+| `idempotencyKey` | 2nd argument | `Idempotency-Key` header. Background only — sending it on a synchronous call is a `400` |
+
+Retrying an identical background request with the same `idempotencyKey`
+returns the original run instead of starting a second one. Reusing the key
+with a different request is a `409 idempotency_key_conflict`.
+
+### Run Methods
+
+```typescript
+await client.agents.runs.get('run_66f2...');    // current status
+await client.agents.runs.cancel('run_66f2...'); // request cancellation
+await client.agents.runs.wait('run_66f2...', { signal: controller.signal });
+```
+
+- `wait()` resolves with the terminal run for `succeeded`, `failed` **and**
+  `canceled` — check `status`. It throws `AgentRunWaitTimeoutError` (with
+  `lastRun`) when `timeoutMs` elapses and the signal's reason when `signal`
+  aborts. Neither stops the run; call `cancel()` for that.
+- `cancel()` is cooperative: the run it returns may still say `running` for
+  about a second before it lands on `canceled`. Canceling a finished run is a
+  `409` with `errorCode === 'agent_run_already_terminal'`.
+
+### Continuing the Conversation
+
+Either the run id (`run_...`) or its result id (`resp_...`) works as
+`previous_response_id`:
+
+```typescript
+const next = await client.agents.responses.create({
+  model: 'research-agent',
+  input: 'Now summarize it in three bullets',
+  previous_response_id: done.id,
+});
+```
+
+### AgentRun Type
+
+```typescript
+type AgentRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
+
+interface AgentRun {
+  id: string;                 // "run_..."
+  object: 'agent.run';
+  status: AgentRunStatus;
+  agent?: string;
+  conversation_id?: string;
+  result?: AgentResponse | null;                  // when succeeded
+  error?: { type: string; message: string | null } | null; // when failed/canceled
+  created_at: number;
+  started_at?: number | null;
+  completed_at?: number | null;
+}
+```
+
+The `202` from `create({ background: true })` carries only `id`, `object`,
+`status` and `created_at`; `runs.get()` returns the full shape.
+
+### Error Codes
+
+Errors are `CognipeerAPIError`s; branch on `errorCode` (the body's
+`error.code`) with `isAgentRunErrorCode`:
+
+```typescript
+import { AgentRunErrorCodes, isAgentRunErrorCode } from '@cognipeer/console-sdk';
+
+try {
+  await client.agents.responses.create({ model: 'research-agent', input: '...', previous_response_id: prev });
+} catch (error) {
+  if (isAgentRunErrorCode(error, AgentRunErrorCodes.Conflict)) {
+    // 409: a run is already queued/running on this conversation
+  } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.SyncTimeout)) {
+    // 504: synchronous turn hit the server ceiling — retry with background: true
+  } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.ConcurrencyLimit)) {
+    // 429: too many background runs in flight for this tenant
+  }
+}
+```
+
+| `errorCode` | Status | Meaning |
+|-------------|--------|---------|
+| `agent_run_conflict` | 409 | A run is already active on this conversation (sync or background) |
+| `timeout` | 504 | Synchronous turn exceeded the server ceiling. Tool side effects may have happened, so the SDK does **not** retry it |
+| `agent_run_concurrency_limit` | 429 | Tenant's concurrent background-run limit reached |
+| `idempotency_key_conflict` | 409 | `Idempotency-Key` reused with a different request |
+| `idempotency_key_sync_not_supported` | 400 | `Idempotency-Key` sent without `background: true` |
+| `agent_run_already_terminal` | 409 | `cancel()` on a finished run |
+
+### Verifying Callbacks (Node.js)
+
+When the run finishes, the Console POSTs JSON to `callback_url` with:
+
+- `X-Cognipeer-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(callback_secret, "<t>.<raw body>")>`
+- `X-Cognipeer-Event: agent_run.succeeded | agent_run.failed | agent_run.canceled`
+- `X-Cognipeer-Event-Id` — stable per run + event; deliveries are retried, so dedupe on it
+
+`verifyAgentRunCallback` lives in the Node-only `@cognipeer/console-sdk/webhooks`
+entry point (it uses `node:crypto`, which the browser-safe main entry avoids).
+Always verify the **raw** request body:
+
+```typescript
+import express from 'express';
+import { verifyAgentRunCallback } from '@cognipeer/console-sdk/webhooks';
+import type { AgentRunCallbackEvent } from '@cognipeer/console-sdk';
+
+app.post('/hooks/agent-run', express.raw({ type: 'application/json' }), (req, res) => {
+  const ok = verifyAgentRunCallback({
+    rawBody: req.body, // Buffer
+    signatureHeader: req.get('X-Cognipeer-Signature'),
+    secret: process.env.AGENT_CALLBACK_SECRET!,
+    toleranceSeconds: 300, // default
+  });
+  if (!ok) return res.sendStatus(400);
+
+  const event = JSON.parse(req.body.toString('utf8')) as AgentRunCallbackEvent;
+  // event.event === 'agent_run.succeeded' → event.data.result
+  res.sendStatus(204);
+});
 ```
 
 ## Legacy Chat Method

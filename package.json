@@ -1,6 +1,6 @@
 {
   "name": "@cognipeer/console-sdk",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "TypeScript SDK for Cognipeer Console - Multi-tenant AI services platform",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -10,6 +10,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
+    },
+    "./webhooks": {
+      "types": "./dist/webhooks.d.ts",
+      "import": "./dist/webhooks.mjs",
+      "require": "./dist/webhooks.cjs"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "webhooks": [
+        "dist/webhooks.d.ts"
+      ]
     }
   },
   "files": [
