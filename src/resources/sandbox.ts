@@ -10,11 +10,14 @@ import {
   SandboxFileEntry,
   SandboxFileInfo,
   SandboxFindMatch,
+  SandboxForkRequest,
   SandboxGitLogEntry,
   SandboxGitStatus,
   SandboxReadFileResult,
   SandboxReplaceResult,
+  SandboxRestoreRequest,
   SandboxSessionCommandLogs,
+  SandboxSnapshotRequest,
   SandboxSnapshotSummary,
   SandboxSummary,
   SandboxListeningPort,
@@ -23,6 +26,8 @@ import {
 } from '../types';
 
 const BASE = '/api/client/v1/sandbox/sandboxes';
+/** `/sandboxes/:id` (+ an optional sub-path) with the id URL-encoded. */
+const sandboxPath = (id: string, sub = '') => `${BASE}/${encodeURIComponent(id)}${sub}`;
 
 /** RFC 6266: prefer filename* (UTF-8), fall back to the quoted ASCII filename. */
 function filenameFromDisposition(header: string | null): string | undefined {
@@ -77,30 +82,22 @@ export class SandboxResource {
 
   /** Get a sandbox's current status. */
   async get(id: string): Promise<SandboxSummary> {
-    return this.http.request<SandboxSummary>('GET', `${BASE}/${encodeURIComponent(id)}`);
+    return this.http.request<SandboxSummary>('GET', sandboxPath(id));
   }
 
   /** Delete a sandbox (stops and removes its container). */
   async delete(id: string): Promise<{ ok: boolean }> {
-    return this.http.request<{ ok: boolean }>('DELETE', `${BASE}/${encodeURIComponent(id)}`);
+    return this.http.request<{ ok: boolean }>('DELETE', sandboxPath(id));
   }
 
   /** Run a shell command synchronously and return exitCode/stdout/stderr. */
   async exec(id: string, data: SandboxExecRequest): Promise<SandboxExecResult> {
-    return this.http.request<SandboxExecResult>(
-      'POST',
-      `${BASE}/${encodeURIComponent(id)}/exec`,
-      { body: data },
-    );
+    return this.http.request<SandboxExecResult>('POST', sandboxPath(id, '/exec'), { body: data });
   }
 
   /** Run a code snippet with the appropriate interpreter. */
   async code(id: string, data: SandboxCodeRunRequest): Promise<SandboxExecResult> {
-    return this.http.request<SandboxExecResult>(
-      'POST',
-      `${BASE}/${encodeURIComponent(id)}/code`,
-      { body: data },
-    );
+    return this.http.request<SandboxExecResult>('POST', sandboxPath(id, '/code'), { body: data });
   }
 
   /**
@@ -127,7 +124,7 @@ export class SandboxResource {
   ): Promise<{ enabled: boolean; public: boolean }> {
     return this.http.request<{ enabled: boolean; public: boolean }>(
       'PATCH',
-      `${BASE}/${encodeURIComponent(id)}/preview`,
+      sandboxPath(id, '/preview'),
       { body: settings },
     );
   }
@@ -142,11 +139,9 @@ export class SandboxResource {
     port: number,
     options: { ttlSeconds?: number } = {},
   ): Promise<SandboxPreviewShareLink> {
-    return this.http.request<SandboxPreviewShareLink>(
-      'POST',
-      `${BASE}/${encodeURIComponent(id)}/preview-tokens`,
-      { body: { port, ttlSeconds: options.ttlSeconds } },
-    );
+    return this.http.request<SandboxPreviewShareLink>('POST', sandboxPath(id, '/preview-tokens'), {
+      body: { port, ttlSeconds: options.ttlSeconds },
+    });
   }
 
   /**
@@ -159,7 +154,7 @@ export class SandboxResource {
   async listeningPorts(id: string): Promise<SandboxListeningPort[]> {
     const res = await this.http.request<{ ports: SandboxListeningPort[] }>(
       'GET',
-      `${BASE}/${encodeURIComponent(id)}/preview-listening`,
+      sandboxPath(id, '/preview-listening'),
     );
     return res.ports ?? [];
   }
@@ -167,17 +162,17 @@ export class SandboxResource {
   /** Build the authenticated preview proxy path for a port (+ optional inner path). */
   previewUrl(id: string, port: number, path = '/'): string {
     const inner = path.startsWith('/') ? path : `/${path}`;
-    return `${BASE}/${encodeURIComponent(id)}/preview/${port}${inner}`;
+    return sandboxPath(id, `/preview/${port}${inner}`);
   }
 
   /** Start a stopped (persistent) sandbox. */
   async start(id: string): Promise<SandboxSummary> {
-    return this.http.request<SandboxSummary>('POST', `${BASE}/${encodeURIComponent(id)}/start`);
+    return this.http.request<SandboxSummary>('POST', sandboxPath(id, '/start'));
   }
 
   /** Stop a running sandbox (keeps it around if persistent). */
   async stop(id: string): Promise<SandboxSummary> {
-    return this.http.request<SandboxSummary>('POST', `${BASE}/${encodeURIComponent(id)}/stop`);
+    return this.http.request<SandboxSummary>('POST', sandboxPath(id, '/stop'));
   }
 
   /**
@@ -189,7 +184,7 @@ export class SandboxResource {
     id: string,
     files: Array<{ path: string; data: string; contentType?: string }>,
   ): Promise<{ uploaded: Array<{ path: string; name: string; size: number }> }> {
-    return this.http.request('POST', `${BASE}/${encodeURIComponent(id)}/files`, { body: { files } });
+    return this.http.request('POST', sandboxPath(id, '/files'), { body: { files } });
   }
 
   /** List files in the sandbox's attached volume (paths are volume-relative). */
@@ -197,40 +192,26 @@ export class SandboxResource {
     id: string,
     options: { cursor?: string; limit?: number } = {},
   ): Promise<{ items: Array<{ path: string; name: string; size: number; contentType?: string }>; nextCursor?: string }> {
-    return this.http.request('GET', `${BASE}/${encodeURIComponent(id)}/files`, {
+    return this.http.request('GET', sandboxPath(id, '/files'), {
       query: { cursor: options.cursor, limit: options.limit },
     });
   }
 
   /** Download a file from the sandbox's attached volume by its volume-relative path. */
   async downloadFile(id: string, path: string): Promise<{ data: Uint8Array; contentType: string }> {
-    return this.http.requestBinary('GET', `${BASE}/${encodeURIComponent(id)}/files/download`, {
-      query: { path },
-    });
+    return this.http.requestBinary('GET', sandboxPath(id, '/files/download'), { query: { path } });
   }
 
   /** Capture a snapshot of the sandbox's state (optionally export it). */
-  async snapshot(
-    id: string,
-    data: { name?: string; export?: boolean } = {},
-  ): Promise<SandboxSnapshotSummary> {
-    return this.http.request<SandboxSnapshotSummary>(
-      'POST',
-      `${BASE}/${encodeURIComponent(id)}/snapshot`,
-      { body: data },
-    );
+  async snapshot(id: string, data: SandboxSnapshotRequest = {}): Promise<SandboxSnapshotSummary> {
+    return this.http.request<SandboxSnapshotSummary>('POST', sandboxPath(id, '/snapshot'), {
+      body: data,
+    });
   }
 
   /** Fork a sandbox into a new independent copy. */
-  async fork(
-    id: string,
-    data: { name?: string; persist?: boolean } = {},
-  ): Promise<SandboxSummary> {
-    return this.http.request<SandboxSummary>(
-      'POST',
-      `${BASE}/${encodeURIComponent(id)}/fork`,
-      { body: data },
-    );
+  async fork(id: string, data: SandboxForkRequest = {}): Promise<SandboxSummary> {
+    return this.http.request<SandboxSummary>('POST', sandboxPath(id, '/fork'), { body: data });
   }
 
   /** List snapshots visible to the API token. */
@@ -245,12 +226,7 @@ export class SandboxResource {
   /** Resume a new sandbox from a snapshot. */
   async restoreSnapshot(
     snapshotId: string,
-    data: {
-      name?: string;
-      persist?: boolean;
-      blockNetwork?: boolean;
-      resources?: { cpuCores?: number; memoryMb?: number; diskMb?: number; pids?: number };
-    } = {},
+    data: SandboxRestoreRequest = {},
   ): Promise<SandboxSummary> {
     return this.http.request<SandboxSummary>(
       'POST',
@@ -292,7 +268,7 @@ export class SandboxFsResource {
   }
 
   private post<T>(id: string, sub: string, body: unknown): Promise<T> {
-    return this.http.request<T>('POST', `${BASE}/${encodeURIComponent(id)}/fs/${sub}`, { body });
+    return this.http.request<T>('POST', sandboxPath(id, `/fs/${sub}`), { body });
   }
 
   /** List directory entries. */
@@ -318,7 +294,7 @@ export class SandboxFsResource {
    * limit. Use `read()` for small text files you want as a string.
    */
   async download(id: string, path: string, options: SandboxDownloadOptions = {}): Promise<SandboxFileDownload> {
-    const res = await this.http.requestStream('POST', `${BASE}/${encodeURIComponent(id)}/fs/download`, {
+    const res = await this.http.requestStream('POST', sandboxPath(id, '/fs/download'), {
       body: { path },
       signal: options.signal,
     });
@@ -416,7 +392,7 @@ export class SandboxGitResource {
   }
 
   private post<T>(id: string, sub: string, body: unknown): Promise<T> {
-    return this.http.request<T>('POST', `${BASE}/${encodeURIComponent(id)}/git/${sub}`, { body });
+    return this.http.request<T>('POST', sandboxPath(id, `/git/${sub}`), { body });
   }
 
   async clone(
@@ -487,7 +463,7 @@ export class SandboxSessionsResource {
 
   /** Create a command session (groups background commands). */
   async create(id: string, sessionId?: string): Promise<{ sessionId: string }> {
-    return this.http.request('POST', `${BASE}/${encodeURIComponent(id)}/sessions`, {
+    return this.http.request('POST', sandboxPath(id, '/sessions'), {
       body: sessionId ? { sessionId } : {},
     });
   }
@@ -496,7 +472,7 @@ export class SandboxSessionsResource {
   async list(id: string): Promise<string[]> {
     const res = await this.http.request<{ sessions: string[] }>(
       'GET',
-      `${BASE}/${encodeURIComponent(id)}/sessions`,
+      sandboxPath(id, '/sessions'),
     );
     return res.sessions ?? [];
   }
@@ -505,7 +481,7 @@ export class SandboxSessionsResource {
   async delete(id: string, sessionId: string): Promise<{ ok: true }> {
     return this.http.request(
       'DELETE',
-      `${BASE}/${encodeURIComponent(id)}/sessions/${encodeURIComponent(sessionId)}`,
+      sandboxPath(id, `/sessions/${encodeURIComponent(sessionId)}`),
     );
   }
 
@@ -518,7 +494,7 @@ export class SandboxSessionsResource {
   ): Promise<{ commandId: string }> {
     return this.http.request(
       'POST',
-      `${BASE}/${encodeURIComponent(id)}/sessions/${encodeURIComponent(sessionId)}/exec`,
+      sandboxPath(id, `/sessions/${encodeURIComponent(sessionId)}/exec`),
       { body: { command, cwd } },
     );
   }
@@ -527,7 +503,7 @@ export class SandboxSessionsResource {
   async logs(id: string, sessionId: string, commandId: string): Promise<SandboxSessionCommandLogs> {
     return this.http.request(
       'GET',
-      `${BASE}/${encodeURIComponent(id)}/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(commandId)}/logs`,
+      sandboxPath(id, `/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(commandId)}/logs`),
     );
   }
 }
