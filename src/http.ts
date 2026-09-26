@@ -1,5 +1,13 @@
 import { CognipeerAPIError, CognipeerError } from './types';
 
+/** Per-call options accepted by every HttpClient method. */
+type RequestOptions = {
+  body?: unknown;
+  query?: Record<string, string | number | boolean | undefined>;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+};
+
 /** Status codes safe to retry regardless of HTTP method: the request was
  * rejected before any side effect (rate limit, gateway/upstream failure),
  * not "the server processed it and then died" (which 500 could mean). */
@@ -28,27 +36,27 @@ function parseRetryAfterMs(header: string | null): number | undefined {
 }
 
 /**
- * Combines up to two optional AbortSignals into one that aborts when EITHER
- * source does, carrying through whichever reason fired. `AbortSignal.any`
- * would do this natively but needs Node 20.3+; this package supports
- * Node >=18, so it is composed by hand instead. Call `cleanup` once the
- * operation the signal guards is done, successfully or not, so the listeners
- * attached to a long-lived caller-supplied signal don't accumulate.
+ * Combines the caller's optional AbortSignal with the client's own into one
+ * that aborts when EITHER source does, carrying through whichever reason
+ * fired. `AbortSignal.any` would do this natively but needs Node 20.3+; this
+ * package supports Node >=18, so it is composed by hand instead. Call
+ * `cleanup` once the operation the signal guards is done, successfully or
+ * not, so the listeners attached to a long-lived caller-supplied signal don't
+ * accumulate.
  */
 function combineSignals(
   a: AbortSignal | undefined,
-  b: AbortSignal | undefined,
+  b: AbortSignal,
 ): { signal: AbortSignal; cleanup: () => void } {
-  if (!a) return { signal: b as AbortSignal, cleanup: () => {} };
-  if (!b) return { signal: a, cleanup: () => {} };
+  if (!a) return { signal: b, cleanup: () => {} };
 
   const controller = new AbortController();
-  const onAbort = (source: AbortSignal) => () => controller.abort((source as { reason?: unknown }).reason);
+  const onAbort = (source: AbortSignal) => () => controller.abort(source.reason);
   const onAbortA = onAbort(a);
   const onAbortB = onAbort(b);
 
-  if (a.aborted) controller.abort((a as { reason?: unknown }).reason);
-  else if (b.aborted) controller.abort((b as { reason?: unknown }).reason);
+  if (a.aborted) controller.abort(a.reason);
+  else if (b.aborted) controller.abort(b.reason);
   else {
     a.addEventListener('abort', onAbortA, { once: true });
     b.addEventListener('abort', onAbortB, { once: true });
@@ -71,7 +79,7 @@ function combineSignals(
  */
 function serverSaysNotRetryable(error: CognipeerAPIError): boolean {
   const body = error.response as { error?: { retryable?: unknown } } | undefined;
-  return typeof body?.error === 'object' && body.error !== null && body.error.retryable === false;
+  return body?.error?.retryable === false;
 }
 
 /**
@@ -105,18 +113,8 @@ export class HttpClient {
   /**
    * Make a request to the API
    */
-  async request<T>(
-    method: string,
-    path: string,
-    options: {
-      body?: unknown;
-      query?: Record<string, string | number | boolean | undefined>;
-      headers?: Record<string, string>;
-      signal?: AbortSignal;
-    } = {}
-  ): Promise<T> {
-    const url = this.buildURL(path, options.query);
-    const headers = this.buildHeaders(options.headers);
+  async request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
+    const url = this.resolveURL(path, options.query);
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
@@ -128,22 +126,11 @@ export class HttpClient {
       const { signal, cleanup } = combineSignals(options.signal, controller.signal);
 
       try {
-        const response = await this.fetchImpl(url, {
-          method,
-          headers,
-          body: options.body ? JSON.stringify(options.body) : undefined,
-          signal,
-        });
-
-        if (!response.ok) {
-          await this.handleErrorResponse(response);
-        }
-
+        const response = await this.fetchOk(method, url, options, signal);
         // Timeout deliberately stays armed through this await, not just
         // through the fetch() above: a slow-streaming body could otherwise
         // hang past the configured timeout once headers had already arrived.
-        const data = await response.json();
-        return data as T;
+        return (await response.json()) as T;
       } catch (error) {
         lastError = error as Error;
 
@@ -170,7 +157,9 @@ export class HttpClient {
           // becoming unresponsive.
           throw error;
         }
-        await this.sleep(retryAfterMs ?? Math.pow(2, attempt) * 1000);
+        await new Promise((resolve) =>
+          setTimeout(resolve, retryAfterMs ?? Math.pow(2, attempt) * 1000)
+        );
       } finally {
         clearTimeout(timeoutId);
         cleanup();
@@ -186,15 +175,9 @@ export class HttpClient {
   async *stream<T>(
     method: string,
     path: string,
-    options: {
-      body?: unknown;
-      query?: Record<string, string | number | boolean | undefined>;
-      headers?: Record<string, string>;
-      signal?: AbortSignal;
-    } = {}
+    options: RequestOptions = {}
   ): AsyncGenerator<T, void, undefined> {
-    const url = this.buildURL(path, options.query);
-    const headers = this.buildHeaders(options.headers);
+    const url = this.resolveURL(path, options.query);
 
     // The client's default timeout previously applied to nothing in this
     // method at all -- only a caller-supplied signal did anything. Applied
@@ -206,31 +189,15 @@ export class HttpClient {
     const { signal, cleanup } = combineSignals(options.signal, idleController.signal);
     let idleTimer: ReturnType<typeof setTimeout> | undefined;
     const armIdleTimer = () => {
-      if (idleTimer) clearTimeout(idleTimer);
+      clearTimeout(idleTimer);
       idleTimer = setTimeout(() => idleController.abort(), this.timeout);
-    };
-    const disarmIdleTimer = () => {
-      if (idleTimer) {
-        clearTimeout(idleTimer);
-        idleTimer = undefined;
-      }
     };
 
     armIdleTimer();
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
     try {
-      const response = await this.fetchImpl(url, {
-        method,
-        headers,
-        body: options.body ? JSON.stringify(options.body) : undefined,
-        signal,
-      });
-
-      if (!response.ok) {
-        await this.handleErrorResponse(response);
-      }
-
+      const response = await this.fetchOk(method, url, options, signal);
       if (!response.body) {
         throw new CognipeerError('Response body is null');
       }
@@ -266,7 +233,7 @@ export class HttpClient {
         }
       }
     } finally {
-      disarmIdleTimer();
+      clearTimeout(idleTimer);
       cleanup();
       if (reader) {
         // Early exit (the caller broke out of a `for await` loop) used to
@@ -286,7 +253,17 @@ export class HttpClient {
     path: string,
     query?: Record<string, string | number | boolean | undefined>,
   ): string {
-    return this.buildURL(path, query);
+    const url = new URL(path.startsWith('/') ? path.slice(1) : path, this.baseURL);
+
+    if (query) {
+      Object.entries(query).forEach(([key, value]) => {
+        if (value !== undefined) {
+          url.searchParams.append(key, String(value));
+        }
+      });
+    }
+
+    return url.toString();
   }
 
   /**
@@ -296,35 +273,18 @@ export class HttpClient {
   async requestBinary(
     method: string,
     path: string,
-    options: {
-      body?: unknown;
-      query?: Record<string, string | number | boolean | undefined>;
-      headers?: Record<string, string>;
-      signal?: AbortSignal;
-    } = {},
+    options: RequestOptions = {},
   ): Promise<{ data: Uint8Array; contentType: string; requestId?: string }> {
-    const url = this.buildURL(path, options.query);
-    const headers = this.buildHeaders(options.headers);
+    const url = this.resolveURL(path, options.query);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
     const { signal, cleanup } = combineSignals(options.signal, controller.signal);
 
     try {
-      const response = await this.fetchImpl(url, {
-        method,
-        headers,
-        body: options.body ? JSON.stringify(options.body) : undefined,
-        signal,
-      });
-
-      if (!response.ok) {
-        await this.handleErrorResponse(response);
-      }
-
-      const buffer = await response.arrayBuffer();
+      const response = await this.fetchOk(method, url, options, signal);
       return {
-        data: new Uint8Array(buffer),
+        data: new Uint8Array(await response.arrayBuffer()),
         contentType: response.headers.get('content-type') || 'application/octet-stream',
         requestId: response.headers.get('x-request-id') || undefined,
       };
@@ -343,15 +303,9 @@ export class HttpClient {
   async requestStream(
     method: string,
     path: string,
-    options: {
-      body?: unknown;
-      query?: Record<string, string | number | boolean | undefined>;
-      headers?: Record<string, string>;
-      signal?: AbortSignal;
-    } = {},
+    options: RequestOptions = {},
   ): Promise<{ body: ReadableStream<Uint8Array>; headers: Headers; status: number }> {
-    const url = this.buildURL(path, options.query);
-    const headers = this.buildHeaders(options.headers);
+    const url = this.resolveURL(path, options.query);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -359,15 +313,7 @@ export class HttpClient {
 
     let response: Response;
     try {
-      response = await this.fetchImpl(url, {
-        method,
-        headers,
-        body: options.body ? JSON.stringify(options.body) : undefined,
-        signal,
-      });
-      if (!response.ok) {
-        await this.handleErrorResponse(response);
-      }
+      response = await this.fetchOk(method, url, options, signal);
     } catch (error) {
       cleanup();
       throw error;
@@ -398,35 +344,17 @@ export class HttpClient {
     method: string,
     path: string,
     form: FormData,
-    options: {
-      query?: Record<string, string | number | boolean | undefined>;
-      headers?: Record<string, string>;
-      signal?: AbortSignal;
-    } = {},
+    options: Omit<RequestOptions, 'body'> = {},
   ): Promise<T> {
-    const url = this.buildURL(path, options.query);
-    const headers = { ...this.buildHeaders(options.headers) };
-    // Let the runtime set the multipart boundary
-    delete headers['Content-Type'];
+    const url = this.resolveURL(path, options.query);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
     const { signal, cleanup } = combineSignals(options.signal, controller.signal);
 
     try {
-      const response = await this.fetchImpl(url, {
-        method,
-        headers,
-        body: form as unknown as ArrayBuffer,
-        signal,
-      });
-
-      if (!response.ok) {
-        await this.handleErrorResponse(response);
-      }
-
-      const data = await response.json();
-      return data as T;
+      const response = await this.fetchOk(method, url, options, signal, form);
+      return (await response.json()) as T;
     } finally {
       clearTimeout(timeoutId);
       cleanup();
@@ -434,20 +362,27 @@ export class HttpClient {
   }
 
   /**
-   * Build full URL with query parameters
+   * fetch() `url` with the auth headers and `options.body` JSON-encoded -- or,
+   * for multipart, `form` sent as-is with no Content-Type so the runtime sets
+   * the boundary. A non-2xx response throws a CognipeerAPIError.
    */
-  private buildURL(path: string, query?: Record<string, string | number | boolean | undefined>): string {
-    const url = new URL(path.startsWith('/') ? path.slice(1) : path, this.baseURL);
-
-    if (query) {
-      Object.entries(query).forEach(([key, value]) => {
-        if (value !== undefined) {
-          url.searchParams.append(key, String(value));
-        }
-      });
-    }
-
-    return url.toString();
+  private async fetchOk(
+    method: string,
+    url: string,
+    options: RequestOptions,
+    signal: AbortSignal,
+    form?: FormData,
+  ): Promise<Response> {
+    const headers = this.buildHeaders(options.headers);
+    if (form) delete headers['Content-Type'];
+    const response = await this.fetchImpl(url, {
+      method,
+      headers,
+      body: form ?? (options.body ? JSON.stringify(options.body) : undefined),
+      signal,
+    });
+    if (!response.ok) await this.handleErrorResponse(response);
+    return response;
   }
 
   /**
@@ -489,12 +424,5 @@ export class HttpClient {
 
     const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
     throw new CognipeerAPIError(errorMessage, response.status, errorType, responseData, retryAfterMs, errorCode);
-  }
-
-  /**
-   * Sleep helper for retries
-   */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

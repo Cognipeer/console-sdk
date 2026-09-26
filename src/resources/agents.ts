@@ -155,19 +155,13 @@ export class AgentsResource {
    */
   async chat(agentKey: string, params: AgentChatRequest): Promise<AgentChatResponse> {
     // Translate legacy format to Responses API format
-    const responsesReq: AgentResponseCreateRequest = {
+    const res = await this.responses.create({
       model: agentKey,
       input: params.message,
       ...(params.conversationId
         ? { previous_response_id: `resp_${params.conversationId}` }
         : {}),
-    };
-
-    const res = await this.http.request<AgentResponse>(
-      'POST',
-      `/api/client/v1/responses`,
-      { body: responsesReq },
-    );
+    });
 
     // Map back to legacy shape
     const text = res.output?.[0]?.content?.[0]?.text ?? '';
@@ -215,20 +209,7 @@ export class AgentResponsesResource {
    *   previous_response_id: res.id,
    * });
    * ```
-   */
-  async create(
-    params: AgentBackgroundResponseCreateRequest,
-    options?: AgentResponseCreateOptions,
-  ): Promise<AgentRun>;
-  async create(
-    params: AgentResponseCreateRequest & { background?: false },
-    options?: AgentResponseCreateOptions,
-  ): Promise<AgentResponse>;
-  async create(
-    params: AgentResponseCreateRequest,
-    options?: AgentResponseCreateOptions,
-  ): Promise<AgentResponse | AgentRun>;
-  /**
+   *
    * With `background: true` the turn is queued and an {@link AgentRun}
    * (`status: 'queued'`) is returned right away — poll it with
    * `client.agents.runs.wait(run.id)` or receive it at `callback_url`.
@@ -244,18 +225,26 @@ export class AgentResponsesResource {
    * ```
    */
   async create(
+    params: AgentBackgroundResponseCreateRequest,
+    options?: AgentResponseCreateOptions,
+  ): Promise<AgentRun>;
+  async create(
+    params: AgentResponseCreateRequest & { background?: false },
+    options?: AgentResponseCreateOptions,
+  ): Promise<AgentResponse>;
+  async create(
+    params: AgentResponseCreateRequest,
+    options?: AgentResponseCreateOptions,
+  ): Promise<AgentResponse | AgentRun>;
+  async create(
     params: AgentResponseCreateRequest,
     options: AgentResponseCreateOptions = {},
   ): Promise<AgentResponse | AgentRun> {
-    return this.http.request<AgentResponse | AgentRun>(
-      'POST',
-      `/api/client/v1/responses`,
-      {
-        body: params,
-        ...(options.idempotencyKey ? { headers: { 'Idempotency-Key': options.idempotencyKey } } : {}),
-        ...(options.signal ? { signal: options.signal } : {}),
-      },
-    );
+    return this.http.request<AgentResponse | AgentRun>('POST', '/api/client/v1/responses', {
+      body: params,
+      headers: options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
+      signal: options.signal,
+    });
   }
 }
 
@@ -285,7 +274,7 @@ export class AgentRunsResource {
     return this.http.request<AgentRun>(
       'GET',
       `/api/client/v1/agents/runs/${encodeURIComponent(runId)}`,
-      options.signal ? { signal: options.signal } : {},
+      { signal: options.signal },
     );
   }
 
@@ -319,7 +308,7 @@ export class AgentRunsResource {
     const deadline = timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
 
     for (;;) {
-      throwIfAborted(signal);
+      if (signal?.aborted) throw abortReason(signal);
       const run = await this.get(runId, { signal });
       if (isAgentRunTerminal(run.status)) return run;
 
@@ -334,15 +323,10 @@ export class AgentRunsResource {
 }
 
 function abortReason(signal: AbortSignal): unknown {
-  const reason = (signal as { reason?: unknown }).reason;
-  if (reason !== undefined) return reason;
+  if (signal.reason !== undefined) return signal.reason;
   const error = new Error('The operation was aborted');
   error.name = 'AbortError';
   return error;
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) throw abortReason(signal);
 }
 
 function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {

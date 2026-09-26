@@ -26,12 +26,7 @@ export interface VerifyAgentRunCallbackParams {
   nowSeconds?: number;
 }
 
-interface ParsedSignature {
-  timestamp: number;
-  signatures: string[];
-}
-
-function parseSignatureHeader(header: string): ParsedSignature | null {
+function parseSignatureHeader(header: string): { timestamp: number; signatures: string[] } | null {
   let timestamp: number | undefined;
   const signatures: string[] = [];
   for (const part of header.split(',')) {
@@ -86,10 +81,11 @@ export function verifyAgentRunCallback(params: VerifyAgentRunCallbackParams): bo
   const now = params.nowSeconds ?? Math.floor(Date.now() / 1000);
   if (Math.abs(now - parsed.timestamp) > toleranceSeconds) return false;
 
-  const hmac = createHmac('sha256', secret);
-  hmac.update(`${parsed.timestamp}.`);
-  hmac.update(typeof rawBody === 'string' ? Buffer.from(rawBody, 'utf8') : rawBody);
-  const expected = hmac.digest();
+  // A string body is hashed as UTF-8 (update()'s default encoding).
+  const expected = createHmac('sha256', secret)
+    .update(`${parsed.timestamp}.`)
+    .update(rawBody)
+    .digest();
 
   let matched = false;
   for (const candidate of parsed.signatures) {
