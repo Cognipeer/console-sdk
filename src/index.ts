@@ -17,6 +17,12 @@ export { ConsoleClient as CognipeerClient } from './client';
 // Types
 export * from './types';
 
+/**
+ * Guardrail verdict helper — the one correct enforcement test.
+ * `decision === 'block' && enforced === false` does NOT block.
+ */
+export { shouldBlock } from './resources/guardrails';
+
 // LangChain integrations
 export {
   CognipeerLangChainChatModel,
