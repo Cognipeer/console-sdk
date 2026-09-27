@@ -1,127 +1,57 @@
 import { describe, it, expect } from 'vitest';
 import { AegisResource, AegisShieldsResource } from './aegis';
-import { createMockHttp } from '../test/mockHttp';
-import type { AegisAuditEvent, AegisEvaluateRequest, AegisEvaluation, AegisShield } from '../types';
+import { CognipeerError } from '../types';
+import type { AegisEvaluateRequest } from '../types';
 
-describe('AegisResource', () => {
-  it('evaluates a call against a shield via POST /api/client/v1/aegis/evaluate', async () => {
-    const http = createMockHttp();
-    const response: AegisEvaluation = {
-      traceId: 'trace_1',
-      shieldId: 'default',
-      shieldMode: 'enforce',
-      decision: 'allow',
-      enforced: true,
-      riskScore: 0.05,
-      reasons: [],
-      policyVersion: 'v1',
-      findings: [],
-      mutations: [],
-    };
-    http.request.mockResolvedValue(response);
-    const resource = new AegisResource(http);
+// The Aegis enforcement plane has been removed from the Console
+// (/api/client/v1/aegis/* no longer exists) and replaced by the guardrail
+// hook plane. Every method here now rejects with a migration message instead
+// of issuing a request that would 404 — see `src/__tests__/guardrails.test.ts`
+// for the `client.guardrails` replacement surface these messages point to.
 
-    const params: AegisEvaluateRequest = {
-      stage: 'tool.pre',
-      actor: { id: 'user_1', roles: ['member'] },
-      resource: { type: 'tool', name: 'search', arguments: { query: 'weather' } },
-    };
-    const result = await resource.evaluate(params);
+const call: AegisEvaluateRequest = {
+  stage: 'tool.pre',
+  actor: { id: 'user_1', roles: ['member'] },
+  resource: { type: 'tool', name: 'search', arguments: { query: 'weather' } },
+};
 
-    expect(result).toBe(response);
-    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/aegis/evaluate', {
-      body: params,
-    });
+describe('AegisResource (deprecated)', () => {
+  it('evaluate() rejects instead of calling POST /api/client/v1/aegis/evaluate', async () => {
+    const resource = new AegisResource();
+
+    await expect(resource.evaluate(call)).rejects.toBeInstanceOf(CognipeerError);
+  });
+
+  it('names the guardrails.hooks.evaluate() replacement, the field renames, and the removal version', async () => {
+    const resource = new AegisResource();
+
+    await expect(resource.evaluate(call)).rejects.toThrow(/guardrails\.hooks\.evaluate/);
+    await expect(resource.evaluate(call)).rejects.toThrow(/guardrail_key/);
+    await expect(resource.evaluate(call)).rejects.toThrow(/tool_name/);
+    await expect(resource.evaluate(call)).rejects.toThrow(/shouldBlock/);
+    await expect(resource.evaluate(call)).rejects.toThrow(/next major/);
+  });
+
+  it('still constructs from an HttpClient, for 1.x callers that pass one', () => {
+    // Accepted and ignored — the resource issues no requests to use it with.
+    expect(() => new AegisResource(undefined)).not.toThrow();
   });
 });
 
-describe('AegisShieldsResource', () => {
-  it('lists shields via GET /api/client/v1/aegis/shields', async () => {
-    const http = createMockHttp();
-    const shields: AegisShield[] = [
-      {
-        id: 'default',
-        name: 'Default shield',
-        mode: 'enforce',
-        rules: {},
-        dlp: { redactSecrets: true, redactPii: true },
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-01T00:00:00.000Z',
-      },
-    ];
-    http.request.mockResolvedValue({ shields });
-    const resource = new AegisShieldsResource(http);
+describe('AegisShieldsResource (deprecated)', () => {
+  it('list() rejects instead of calling GET /api/client/v1/aegis/shields', async () => {
+    const resource = new AegisResource().shields;
 
-    const result = await resource.list();
-
-    expect(result).toBe(shields);
-    expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/aegis/shields');
+    await expect(resource.list()).rejects.toBeInstanceOf(CognipeerError);
+    await expect(resource.list()).rejects.toThrow(/client\.guardrails\.list\(\)/);
+    await expect(resource.list()).rejects.toThrow(/next major/);
   });
 
-  it('returns an empty array when the shields envelope has no shields', async () => {
-    const http = createMockHttp();
-    http.request.mockResolvedValue({});
-    const resource = new AegisShieldsResource(http);
+  it('audit() rejects for every shield id, with no client-API replacement', async () => {
+    const resource = new AegisShieldsResource();
 
-    const result = await resource.list();
-
-    expect(result).toEqual([]);
-  });
-
-  it('reads a shield audit trail with limit/decision filters via GET .../shields/{shieldId}/audit', async () => {
-    const http = createMockHttp();
-    const events: AegisAuditEvent[] = [
-      {
-        traceId: 'trace_1',
-        shieldId: 'default',
-        actorId: 'user_1',
-        stage: 'tool.pre',
-        resourceName: 'search',
-        decision: 'allow',
-        riskScore: 0.1,
-        reasons: [],
-        policyVersion: 'v1',
-        at: '2024-01-01T00:00:00.000Z',
-      },
-    ];
-    http.request.mockResolvedValue({ events });
-    const resource = new AegisShieldsResource(http);
-
-    const result = await resource.audit('default', { limit: 10, decision: 'allow' });
-
-    expect(result).toBe(events);
-    expect(http.request).toHaveBeenCalledWith(
-      'GET',
-      '/api/client/v1/aegis/shields/default/audit',
-      { query: { limit: 10, decision: 'allow' } },
-    );
-  });
-
-  it('defaults limit/decision to undefined when no options are given', async () => {
-    const http = createMockHttp();
-    http.request.mockResolvedValue({ events: [] });
-    const resource = new AegisShieldsResource(http);
-
-    await resource.audit('default');
-
-    expect(http.request).toHaveBeenCalledWith(
-      'GET',
-      '/api/client/v1/aegis/shields/default/audit',
-      { query: { limit: undefined, decision: undefined } },
-    );
-  });
-
-  it('encodes the shield id into the audit path', async () => {
-    const http = createMockHttp();
-    http.request.mockResolvedValue({ events: [] });
-    const resource = new AegisShieldsResource(http);
-
-    await resource.audit('shield/with space');
-
-    expect(http.request).toHaveBeenCalledWith(
-      'GET',
-      `/api/client/v1/aegis/shields/${encodeURIComponent('shield/with space')}/audit`,
-      { query: { limit: undefined, decision: undefined } },
-    );
+    await expect(resource.audit('default')).rejects.toBeInstanceOf(CognipeerError);
+    await expect(resource.audit('shield/with space', { limit: 10, decision: 'allow' }))
+      .rejects.toThrow(/no client-API equivalent/);
   });
 });

@@ -5,7 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-09-27
+
+### Why this is a MAJOR, not a minor
+
+Two surfaces that returned data now throw, and one Console API is gone:
+
+- `client.aegis.evaluate()`, `client.aegis.shields.list()` and
+  `client.aegis.shields.audit()` USED TO ISSUE REAL REQUESTS in 1.7.1. The
+  Aegis enforcement plane has been removed from the Console and
+  `/api/client/v1/aegis/*` no longer exists, so those calls would 404. They now
+  throw a `CognipeerError` naming the replacement instead of failing at the
+  wire. A method that used to return a value and now always throws is a
+  breaking change however it is packaged, so this is 2.0.0 rather than the
+  1.8.0 it was staged as.
+- `client.aegis` and the twelve `Aegis*` types still EXIST, so a 1.x build
+  keeps compiling and the migration message arrives at runtime where a
+  developer will read it. They are deleted in **3.0.0** — this release is the
+  one that announces it, not the one that does it.
+
+See `docs/api/aegis.md` for the full mapping. The short version: a shield is a
+guardrail, `shieldId` is `guardrail_key`, `evaluate({stage, resource})` is
+`guardrails.hooks.evaluate({hook, tool_name, tool_args})`, and the decision is
+read with `shouldBlock(verdict)` — never with `decision === 'block'`, which
+turns a monitoring policy into an enforcing one. `retrieval.pre` /
+`retrieval.post` and `shields.audit()` have no replacement at all.
 
 ### Added
 
@@ -30,6 +54,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`CognipeerAPIError.errorCode`** — the response body's `error.code`, when
   present (new optional trailing constructor argument).
 
+- **Guardrail hook plane** (`client.guardrails`) — the Console's guardrails now
+  run as six hooks (`prompt.pre`, `input.pre`, `output.pre`,
+  `output.stream.delta`, `tool.pre`, `tool.post`) over nine policy families
+  (pii, secrets, word_filter, regex, moderation, prompt_shield, custom,
+  tool_access, webhook). `prompt.pre` fires once per run on the incoming user
+  turn, where `input.pre` fires again before every model call — nothing inside
+  the Console emits it, so it exists for remote enforcement points like this
+  one:
+  - `client.guardrails.hooks.evaluate(...)` evaluates ONE hook against one or
+    more guardrail keys (their verdicts merge by max() over the action ladder).
+    The parameters are a union discriminated on `hook`, so a `tool.pre` call
+    does not compile without `tool_name` and a `tool.post` call does not compile
+    without `tool_result` — what the server answers with a 400.
+  - `client.guardrails.list(filters?)` — the guardrails this token can address
+    (its own project plus workspace-level ones), each with an `effectiveMode`
+    and a `hooksSummary` whose `servable` list says which hooks it will actually
+    evaluate. Credential-bearing policy fields are never served.
+  - `create`/`update` accept `hooks`, `hooksVersion` and `mode`; an omitted
+    `hooks` on update leaves the stored configuration untouched.
+  - `GuardrailPolicy` carries a per-policy `message` (what an end user is told
+    when THAT policy blocks, overriding the per-reason template — `regex`,
+    `custom` and `webhook` all share one reason class, so without it the three
+    cannot be worded separately) and `runIf` (when an LLM policy may spend a
+    model call).
+  - New types: `HookId`, `HookVerdict`, `HookSubject`, `SafetyAction`,
+    `SafetyFinding`, `Mutation`, `RenderedBlockMessage`, `GuardrailMode`,
+    `GuardrailHooksConfig` (with the nine per-family policy configs),
+    `GuardrailHookEvaluateParams`, `GuardrailHookEvaluateResponse`,
+    `GuardrailListQuery`, `GuardrailListItem`, `GuardrailHooksSummary`.
+- **`shouldBlock(verdict)`** — the one correct enforcement test, exported from
+  the package root. A verdict blocks only when `decision === 'block'` **and**
+  `enforced === true`; a guardrail in monitor mode reports what it would have
+  done without applying it, so `decision === 'block' && enforced === false`
+  must NOT block, and `passed` means "no blocking finding", not "the request was
+  not blocked". Accepts either shape the API returns — the camelCase
+  `HookVerdict` and the snake_case hook response spell `decision`/`enforced`
+  identically.
+- **`GuardrailEvaluateResponse.verdict`** — `client.guardrails.evaluate(...)` is
+  unchanged (same request, same keys, still always 200) and now additionally
+  carries the full hook verdict: spans, mutations, risk score, the rendered
+  block message and the dry-run `wouldBeDecision`. Note `blocked_message` /
+  `verdict.message` is an OBJECT, not a string: `body` is the text, and
+  `mode: 'replace'` means substitute it for the response rather than reject.
 - **Crawler sync runs** — `client.crawler.run(...)` / `crawlWithCrawler(...)`
   accept `mode: 'sync'` and then resolve with the finished job plus inline
   results (`CrawlRunSyncResponse`, markdown included). New single-URL
@@ -43,7 +110,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `WebSearchResponse`, `WebSearchResultItem`, `WebSearchProvider`,
   `WebSearchSafeSearch`.
 
-### Changed
+### Deprecated
+
+- **Aegis (`client.aegis`)** — the Aegis enforcement plane has been removed from
+  the Console; `/api/client/v1/aegis/*` no longer exists. `AegisResource`,
+  `AegisShieldsResource` and every `Aegis*` type stay exported so 1.x builds keep
+  compiling, but **every method now throws a `CognipeerError` naming its
+  replacement** instead of issuing a request that would fail as a confusing 404.
+  Migrate to `client.guardrails`:
+  - a shield is a guardrail — `aegis.shields.list()` → `guardrails.list()`, and
+    `shieldId` → `guardrail_key`;
+  - `aegis.evaluate({ stage, resource })` →
+    `guardrails.hooks.evaluate({ hook, tool_name, tool_args })`, with
+    `tool_result` on `tool.post`. The stage names carry over unchanged:
+    `tool.pre`, `tool.post`, `input.pre` and `output.pre` are hook ids as they
+    stand. `retrieval.pre` / `retrieval.post` have no hook and no replacement;
+  - `AegisEvaluation` → `GuardrailHookEvaluateResponse`; `decision` and
+    `enforced` keep their names, so read them with `shouldBlock(verdict)`;
+  - `aegis.shields.audit(...)` has no client-API equivalent — guardrail
+    decisions are evaluation logs read in the Console dashboard, correlated by
+    the `trace_id` / `policy_version` on each verdict.
+
+  `client.aegis` and the `Aegis*` types are **removed entirely in the next
+  major**. (`McpAegisConfig` on MCP server definitions follows its own
+  timeline: it is a persisted MCP field the Console still accepts, now
+  deprecated in favour of `McpGuardrailConfig` below.)
+
+- **`McpGuardrailConfig`** — the guardrail binding for an MCP server's tool
+  calls, replacing the deprecated `aegis` field on `McpServer`,
+  `McpServerCreateRequest` and `McpServerUpdateRequest`. Send
+  `guardrail: { guardrailKey, mode }`; `mode` keeps the MCP vocabulary
+  (`'off'`, not `'disabled'`) so the two fields stay drop-in interchangeable
+  during the release where both are written. An OMITTED `guardrailKey` selects
+  the tenant's default tool guardrail rather than meaning "no guardrail" — to
+  turn enforcement off, send `mode: 'off'`. `aegis` is still accepted and still
+  served; where both are sent, `guardrail` wins.
+- **`client.tools`** — the `/api/client/v1/tools*` endpoints it calls are no
+  longer served by the Console runtime; every method now 404s. Warns on
+  first use. Use `client.mcp` for tool execution/management, or
+  `client.agents`'s `toolBindings` for an agent's own tools. Will be removed
+  in a future major version.
+
+### Fixed
 
 - **HTTP retries honour `error.retryable: false`** — a `429`/`502`/`503`/`504`
   whose body says `retryable: false` is no longer retried. The Console sends
@@ -51,14 +159,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already have had side effects; blindly re-sending it would repeat them.
 - `npm run lint` passes again (`varsIgnorePattern: '^_'` for intentionally
   discarded destructured fields; one documented `no-this-alias` disable).
-
-### Deprecated
-
-- **`client.tools`** — the `/api/client/v1/tools*` endpoints it calls are no
-  longer served by the Console runtime; every method now 404s. Warns on
-  first use. Use `client.mcp` for tool execution/management, or
-  `client.agents`'s `toolBindings` for an agent's own tools. Will be removed
-  in a future major version.
 
 ## [1.7.0] - 2026-08-17
 
