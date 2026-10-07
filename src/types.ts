@@ -3250,6 +3250,123 @@ export interface BudgetStatus {
 // ============================================================================
 
 /**
+ * Wire audio formats, for input and output alike.
+ *
+ * - `pcm16` — raw signed 16-bit little-endian mono at `*_audio_sample_rate`
+ *   (default 24000). The default in both directions.
+ * - `g711_ulaw` / `g711_alaw` — 8 kHz G.711 (telephony).
+ *
+ * Input is streamed (binary frames or base64 appends) into the server's turn
+ * detector; output arrives as ~100 ms frames.
+ */
+export type RealtimeAudioFormat = 'pcm16' | 'g711_ulaw' | 'g711_alaw';
+
+/** Output audio formats (same set as input). */
+export type RealtimeOutputAudioFormat = RealtimeAudioFormat;
+
+/** Sample rates accepted for `pcm16` input/output. */
+export type RealtimeAudioSampleRate = 8000 | 16000 | 24000 | 48000;
+
+/**
+ * Server-side turn detection. `semantic_vad` = Silero VAD + Smart Turn
+ * (semantic end-of-turn); `server_vad` = VAD + fixed silence. `null` on the
+ * session means manual `input_audio_buffer.commit` (push-to-talk).
+ *
+ * Default: `semantic_vad`. All durations are milliseconds.
+ */
+export interface RealtimeTurnDetection {
+  type: 'semantic_vad' | 'server_vad';
+  /** VAD speech probability threshold, 0..1 (default 0.5). */
+  threshold?: number;
+  /** Audio kept before speech onset (default 300). */
+  prefix_padding_ms?: number;
+  /** Speech must last this long to count as speech start (default 150). */
+  min_speech_ms?: number;
+  /** `server_vad`: silence that ends the turn (default 600). `semantic_vad`: pause before the first semantic check (default 200). */
+  silence_duration_ms?: number;
+  /** `semantic_vad`: end the turn anyway after this much silence (default 1800; scaled by `eagerness`). */
+  max_turn_silence_ms?: number;
+  /** `semantic_vad`: Smart Turn end-of-turn probability threshold, 0..1 (default 0.5). */
+  semantic_threshold?: number;
+  /** `low` waits longer, `high` answers sooner. */
+  eagerness?: 'low' | 'medium' | 'high' | 'auto';
+  /** Continuous speech needed before a barge-in cancels the response (default 400). */
+  interrupt_min_ms?: number;
+  /** Hard cap on one utterance (default 30000) — the turn ends with reason `max_duration`. */
+  max_utterance_ms?: number;
+  /** Create a response automatically when a turn ends (default true). */
+  create_response?: boolean;
+  /** Let user speech (barge-in) cancel the in-flight response (default true). */
+  interrupt_response?: boolean;
+}
+
+/**
+ * Turn detection as the server echoes it (`session.created/updated`, preset
+ * views): every field is present, unset tuning values are `null` (server
+ * defaults apply).
+ */
+export interface RealtimeTurnDetectionView {
+  type: 'semantic_vad' | 'server_vad';
+  threshold: number | null;
+  prefix_padding_ms: number | null;
+  min_speech_ms: number | null;
+  silence_duration_ms: number | null;
+  max_turn_silence_ms: number | null;
+  semantic_threshold: number | null;
+  eagerness: 'low' | 'medium' | 'high' | 'auto' | null;
+  interrupt_min_ms: number | null;
+  max_utterance_ms: number | null;
+  create_response: boolean;
+  interrupt_response: boolean;
+}
+
+/** Speech-to-text settings for audio input. */
+export interface RealtimeInputAudioTranscription {
+  /** STT model key (same as `transcription_model`). */
+  model?: string;
+  /** ISO-639-1 language hint, e.g. `tr`. */
+  language?: string;
+  /** Vocabulary / style prompt passed to the STT model. */
+  prompt?: string | null;
+}
+
+/** Who speaks first when the session (or call) starts. */
+export type RealtimeFirstSpeaker = 'agent' | 'user';
+
+/**
+ * What the agent says first.
+ *
+ * - `none` — say nothing until the user speaks.
+ * - `static` — speak `text` verbatim (`{{variables}}` are filled in).
+ * - `generate` — the agent receives `instructions` as a hidden user turn
+ *   (plus the caller's first words when the user spoke first) and generates
+ *   the greeting itself.
+ */
+export interface RealtimeFirstMessage {
+  mode: 'none' | 'static' | 'generate';
+  /** `static`: the text to speak. */
+  text?: string;
+  /** `generate`: hidden instruction turn for the agent. */
+  instructions?: string;
+  /** Whether a barge-in may cut the greeting short (default true). */
+  interruptible?: boolean;
+}
+
+/** A first message as the server echoes it (all fields present). */
+export interface RealtimeFirstMessageView {
+  mode: 'none' | 'static' | 'generate';
+  text: string | null;
+  instructions: string | null;
+  interruptible: boolean;
+}
+
+/** Agent version an agent-backed session runs: `published` (default), `draft`, or a version number. */
+export type RealtimeAgentVersion = 'published' | 'draft' | number;
+
+/** `{{name}}` template variables — filled into instructions / first message and forwarded to agents. */
+export type RealtimeVariables = Record<string, string>;
+
+/**
  * Session config patch sent with `session.update`.
  *
  * The response generator (`model` / `agent_key`) is a session-start choice:
@@ -3261,19 +3378,49 @@ export interface RealtimeSessionUpdate {
   model?: string;
   /** Agent key responses are generated with (takes precedence over `model`). Locked after the first response. */
   agent_key?: string;
-  /** System prompt prepended to the conversation. */
+  /** Agent sessions: which agent version runs (default `published`, falling back to the draft when nothing is published). */
+  agent_version?: RealtimeAgentVersion;
+  /** System prompt prepended to the conversation. Supports `{{variables}}`. */
   instructions?: string;
   temperature?: number;
   max_output_tokens?: number;
-  /** STT model key used by `input_audio_buffer.commit`. */
+  /** STT model key used for audio turns. Same as `input_audio_transcription.model`. */
   transcription_model?: string;
-  /** MIME type of appended audio chunks (default audio/webm). */
-  input_audio_format?: string;
+  /** STT model, language and prompt. */
+  input_audio_transcription?: RealtimeInputAudioTranscription | null;
+  /** `batch` (speculative transcription on pauses, default) or `streaming` (when the STT provider supports it). */
+  stt_mode?: 'batch' | 'streaming';
+  /** Format of the input audio (default `pcm16`). */
+  input_audio_format?: RealtimeAudioFormat;
+  /** `pcm16` input sample rate (default 24000). */
+  input_audio_sample_rate?: RealtimeAudioSampleRate;
+  /** Output audio format (default `pcm16`). */
+  output_audio_format?: RealtimeOutputAudioFormat;
+  /** `pcm16` output sample rate (default 24000). */
+  output_audio_sample_rate?: RealtimeAudioSampleRate;
+  /**
+   * `json` (default): output audio arrives base64 in `response.audio.delta`.
+   * `binary`: output audio arrives as binary WebSocket frames (less overhead);
+   * the sentence text comes first as `response.audio_transcript.delta`.
+   */
+  audio_transport?: 'json' | 'binary';
+  /** Server turn detection (default `{ type: 'semantic_vad' }`); `null` = manual commit (push-to-talk). */
+  turn_detection?: RealtimeTurnDetection | null;
   /** TTS model key; when set, responses are also synthesized to audio. */
   tts_model?: string;
   /** TTS voice id. Optional — the provider falls back to its default voice. */
   voice?: string;
-  tts_format?: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
+  /** Who speaks first. `agent` starts the first message right after this update is applied. */
+  first_speaker?: RealtimeFirstSpeaker;
+  /** What the agent says first. */
+  first_message?: RealtimeFirstMessage | null;
+  /** `first_speaker: 'user'`: greet anyway after this much silence (ms). */
+  wait_for_user_ms?: number | null;
+  /**
+   * `{{name}}` template variables for `instructions` / `first_message`; also
+   * forwarded to agents as `runtime_context.metadata.variables`.
+   */
+  variables?: RealtimeVariables;
   /**
    * Agent sessions: filler line sent on `response.tool_call.started` (and
    * spoken, when TTS is configured) the first time the agent starts calling
@@ -3281,27 +3428,53 @@ export interface RealtimeSessionUpdate {
    */
   tool_status_message?: string;
   /**
+   * Agent sessions: play a soft, generated "waiting" sound through the normal
+   * audio output while the agent runs tools, until the answer audio is ready
+   * (default `false`). Independent of `tool_status_message` — with both set,
+   * the filler line is spoken first, then the sound plays.
+   */
+  tool_wait_audio?: boolean;
+  /**
    * Downstream auth/data for agent tool calls (see {@link RuntimeContext}).
    * Re-send to refresh short-lived tokens mid-session; `null` clears it.
    */
   runtime_context?: RuntimeContext | null;
 }
 
+/** Overrides for `response.create`. */
+export interface RealtimeResponseCreate {
+  /** Chat sessions: instructions for this response only. */
+  instructions?: string;
+  /** Text appended as a user item before responding (one round-trip instead of two). */
+  input?: string;
+  /** Run the first-message logic now (greeting on demand). */
+  first_message?: boolean;
+}
+
+// ── Server events ─────────────────────────────────────────────────────────
+
 /** Any event emitted by the realtime server. */
 export interface RealtimeServerEvent {
   type:
     | 'session.created'
     | 'session.updated'
+    | 'session.ended'
     | 'conversation.item.created'
+    | 'conversation.item.input_audio_transcription.delta'
+    | 'input_audio_buffer.speech_started'
+    | 'input_audio_buffer.speech_stopped'
     | 'input_audio_buffer.cleared'
     | 'input_audio_buffer.committed'
+    | 'output_audio_buffer.cleared'
     | 'response.created'
     | 'response.output_text.delta'
     | 'response.output_text.done'
     | 'response.tool_call.started'
     | 'response.tool_call.completed'
     | 'response.audio.delta'
+    | 'response.audio_transcript.delta'
     | 'response.audio.done'
+    | 'response.metrics'
     | 'response.done'
     | 'error'
     | string;
@@ -3309,9 +3482,384 @@ export interface RealtimeServerEvent {
   [key: string]: unknown;
 }
 
+/** Fields shared by every typed server event. */
+export interface RealtimeServerEventBase<T extends string> {
+  type: T;
+  event_id?: string;
+}
+
+/** The session as echoed by `session.created` / `session.updated` (effective config, every field present). */
+export interface RealtimeSessionView {
+  id: string;
+  model: string | null;
+  agent_key: string | null;
+  instructions: string | null;
+  temperature: number | null;
+  max_output_tokens: number | null;
+  transcription_model: string | null;
+  input_audio_format: RealtimeAudioFormat;
+  /** Input rate: the `pcm16` rate, 8000 for G.711. */
+  input_audio_sample_rate: number;
+  tts_model: string | null;
+  voice: string | null;
+  output_audio_format: RealtimeOutputAudioFormat;
+  /** Output rate: the `pcm16` rate, 8000 for G.711. */
+  output_audio_sample_rate: number;
+  /** `binary` only when the transport can send binary frames (the server may downgrade to `json`). */
+  audio_transport: 'json' | 'binary';
+  /** Effective turn detection; `null` = manual commit. */
+  turn_detection: RealtimeTurnDetectionView | null;
+  input_audio_transcription: { model: string; language: string | null; prompt: string | null } | null;
+  stt_mode: 'batch' | 'streaming';
+  first_speaker: RealtimeFirstSpeaker;
+  first_message: RealtimeFirstMessageView | null;
+  wait_for_user_ms: number | null;
+  /** Names of the `{{variables}}` set on the session. Values are never echoed back. */
+  variable_keys: string[];
+  /** Agent sessions only (`null` for chat-model sessions). */
+  agent_version: RealtimeAgentVersion | null;
+  /**
+   * Why server turn detection runs below full quality — e.g. energy VAD /
+   * silence-only endpointing while the ONNX models are still loading or
+   * unavailable — or `null`. Re-sent in `session.updated` whenever it changes.
+   */
+  degraded: string | null;
+  tool_status_message: string | null;
+  tool_wait_audio: boolean;
+  /** Header NAMES only — values never go back over the wire. */
+  runtime_context: { header_keys: string[]; connections: string[] } | null;
+}
+
+export interface RealtimeSessionCreatedEvent extends RealtimeServerEventBase<'session.created'> {
+  session: RealtimeSessionView;
+}
+
+export interface RealtimeSessionUpdatedEvent extends RealtimeServerEventBase<'session.updated'> {
+  session: RealtimeSessionView;
+}
+
+/** The server is ending the session (e.g. the phone call hung up); the socket closes next. */
+export interface RealtimeSessionEndedEvent extends RealtimeServerEventBase<'session.ended'> {
+  reason: 'call_ended' | (string & {});
+}
+
+export interface RealtimeConversationItemCreatedEvent extends RealtimeServerEventBase<'conversation.item.created'> {
+  item: { id: string; role: 'user' | 'system' | 'assistant'; content: string };
+}
+
+/** Partial transcript of the user's current turn (`stt_mode: 'streaming'` only). */
+export interface RealtimeInputTranscriptionDeltaEvent
+  extends RealtimeServerEventBase<'conversation.item.input_audio_transcription.delta'> {
+  item_id: string;
+  delta: string;
+}
+
+/** Server VAD heard the user start talking. While the agent speaks, duck playback — a sustained barge-in follows with `output_audio_buffer.cleared`. */
+export interface RealtimeSpeechStartedEvent extends RealtimeServerEventBase<'input_audio_buffer.speech_started'> {
+  /** Position in the input audio clock (ms since the session's first input sample). */
+  audio_start_ms: number;
+  item_id: string;
+}
+
+/** The user's turn ended: the end-of-turn decision is made and the transcript follows in `input_audio_buffer.committed`. Not sent for a pause inside a turn. */
+export interface RealtimeSpeechStoppedEvent extends RealtimeServerEventBase<'input_audio_buffer.speech_stopped'> {
+  audio_end_ms: number;
+  item_id: string;
+}
+
+export type RealtimeInputAudioBufferClearedEvent = RealtimeServerEventBase<'input_audio_buffer.cleared'>;
+
+/** Why a user turn ended. `manual` = `input_audio_buffer.commit`. */
+export type RealtimeTurnEndReason = 'semantic' | 'silence' | 'max_silence' | 'max_duration' | 'manual';
+
+/** A user turn was committed and transcribed. */
+export interface RealtimeInputAudioBufferCommittedEvent extends RealtimeServerEventBase<'input_audio_buffer.committed'> {
+  item_id?: string;
+  /**
+   * Set when the caller resumed speaking before hearing any answer to the
+   * previous turn: both utterances were transcribed together, and this
+   * transcript replaces that item's (drop it from your transcript view).
+   */
+  continues_item_id?: string | null;
+  transcript: string;
+  language: string | null;
+  /** Audio duration in seconds. */
+  duration: number | null;
+  /** Turn details. A manual commit carries `reason: 'manual'` with null metrics. */
+  turn: {
+    reason: RealtimeTurnEndReason;
+    /** Smart Turn's end-of-turn probability; null on manual commits and silence-only endpointing. */
+    endpoint_probability?: number | null;
+    /** Last speech → end-of-turn decision; null on manual commits. */
+    detection_ms?: number | null;
+  };
+}
+
+/** Flush queued playback NOW — the response was interrupted (barge-in). */
+export interface RealtimeOutputAudioBufferClearedEvent extends RealtimeServerEventBase<'output_audio_buffer.cleared'> {
+  response_id: string;
+}
+
+export interface RealtimeResponseCreatedEvent extends RealtimeServerEventBase<'response.created'> {
+  response: { id: string };
+}
+
+export interface RealtimeOutputTextDeltaEvent extends RealtimeServerEventBase<'response.output_text.delta'> {
+  response_id: string;
+  delta: string;
+}
+
+export interface RealtimeOutputTextDoneEvent extends RealtimeServerEventBase<'response.output_text.done'> {
+  response_id: string;
+  text: string;
+}
+
+export interface RealtimeToolCallStartedEvent extends RealtimeServerEventBase<'response.tool_call.started'> {
+  response_id: string;
+  tool: string;
+  call_id: string | null;
+  /** The session's `tool_status_message`, when set. */
+  message: string | null;
+}
+
+export interface RealtimeToolCallCompletedEvent extends RealtimeServerEventBase<'response.tool_call.completed'> {
+  response_id: string;
+  tool: string;
+  call_id: string | null;
+  status: 'success' | 'error' | (string & {});
+}
+
+/**
+ * One ~100 ms frame of response audio (base64) in the session's
+ * `output_audio_format`; `text` (the chunk being spoken) rides on the first
+ * frame of each chunk only. Prefer `connection.onAudio()`, which decodes this
+ * and binary frames alike.
+ */
+export interface RealtimeAudioDeltaEvent extends RealtimeServerEventBase<'response.audio.delta'> {
+  response_id: string;
+  audio: string;
+  format: RealtimeOutputAudioFormat;
+  sample_rate: number;
+  /** e.g. `audio/L16;rate=24000`, `audio/PCMU;rate=8000`. */
+  content_type: string;
+  text?: string;
+}
+
+/** The sentence being spoken (sent before its audio; with `audio_transport: 'binary'` it precedes the binary frames). */
+export interface RealtimeAudioTranscriptDeltaEvent extends RealtimeServerEventBase<'response.audio_transcript.delta'> {
+  response_id: string;
+  delta: string;
+}
+
+export interface RealtimeAudioDoneEvent extends RealtimeServerEventBase<'response.audio.done'> {
+  response_id: string;
+}
+
+/**
+ * Per-turn latency breakdown (milliseconds). Every field is optional: the ones measured from the
+ * user's speech (`turn_detection_ms`, `stt_*`, `e2e_ms`, `total_ms`) exist only when the response
+ * followed detected user speech — not for the agent's own greeting, typed text, or a response created
+ * after a push-to-talk commit — and `llm_*` are absent when no model ran (a `static` first message).
+ */
+export interface RealtimeResponseMetrics {
+  /** Last user speech → end-of-turn decision. */
+  turn_detection_ms?: number;
+  stt_ms?: number;
+  /** The speculative transcript (started on the pause) was reused. */
+  stt_speculative_hit?: boolean;
+  llm_first_token_ms?: number;
+  llm_total_ms?: number;
+  tts_first_byte_ms?: number;
+  /** User speech end (VAD) → first output audio byte sent. The headline latency. Only for turns that followed detected user speech. */
+  e2e_ms?: number;
+  /** User speech end (VAD) → response done. Only for turns that followed detected user speech. */
+  total_ms?: number;
+}
+
+export interface RealtimeResponseMetricsEvent extends RealtimeServerEventBase<'response.metrics'> {
+  response_id: string;
+  /** The user turn this response answers; null for text, greeting and other non-audio responses. */
+  item_id?: string | null;
+  metrics: RealtimeResponseMetrics;
+}
+
+export interface RealtimeResponseDoneEvent extends RealtimeServerEventBase<'response.done'> {
+  response_id: string;
+  status: 'completed' | 'cancelled' | 'failed' | 'blocked';
+  usage?: Record<string, number> | null;
+  error?: { message: string; code?: string; findings?: unknown };
+  /** Cancelled by a barge-in. */
+  interrupted?: boolean;
+  /** Audio the user actually heard before the interruption, when known. */
+  played_ms?: number;
+}
+
+/**
+ * Request-level error. `code` examples: `invalid_audio`, `generator_locked`, `config_missing`,
+ * `quota_exceeded`; `forbidden` — a `session.update` named another agent, model or agent version
+ * without the `agents` / `models` write permission (the session goes on); `event_too_large` — a
+ * non-audio event over 256 KB was dropped (the session goes on). While the session is being
+ * set up the same event carries the reason the connection is refused and is followed by a close:
+ * `unauthorized` (4401), `license_required` (4402), `server_busy` (1013).
+ */
+export interface RealtimeErrorEvent extends RealtimeServerEventBase<'error'> {
+  error: { message: string; code?: string };
+}
+
+/** Server event type → typed payload. `connection.on(type, cb)` infers from this map. */
+export interface RealtimeServerEventMap {
+  'session.created': RealtimeSessionCreatedEvent;
+  'session.updated': RealtimeSessionUpdatedEvent;
+  'session.ended': RealtimeSessionEndedEvent;
+  'conversation.item.created': RealtimeConversationItemCreatedEvent;
+  'conversation.item.input_audio_transcription.delta': RealtimeInputTranscriptionDeltaEvent;
+  'input_audio_buffer.speech_started': RealtimeSpeechStartedEvent;
+  'input_audio_buffer.speech_stopped': RealtimeSpeechStoppedEvent;
+  'input_audio_buffer.cleared': RealtimeInputAudioBufferClearedEvent;
+  'input_audio_buffer.committed': RealtimeInputAudioBufferCommittedEvent;
+  'output_audio_buffer.cleared': RealtimeOutputAudioBufferClearedEvent;
+  'response.created': RealtimeResponseCreatedEvent;
+  'response.output_text.delta': RealtimeOutputTextDeltaEvent;
+  'response.output_text.done': RealtimeOutputTextDoneEvent;
+  'response.tool_call.started': RealtimeToolCallStartedEvent;
+  'response.tool_call.completed': RealtimeToolCallCompletedEvent;
+  'response.audio.delta': RealtimeAudioDeltaEvent;
+  'response.audio_transcript.delta': RealtimeAudioTranscriptDeltaEvent;
+  'response.audio.done': RealtimeAudioDoneEvent;
+  'response.metrics': RealtimeResponseMetricsEvent;
+  'response.done': RealtimeResponseDoneEvent;
+  error: RealtimeErrorEvent;
+}
+
+/** Union of every typed server event. */
+export type RealtimeTypedServerEvent = RealtimeServerEventMap[keyof RealtimeServerEventMap];
+
+/**
+ * One decoded chunk of response audio, from either transport
+ * (`response.audio.delta` JSON or a binary frame).
+ */
+export interface RealtimeAudioChunk {
+  /** Response the audio belongs to (`null` if a binary frame arrived before any response id was seen). */
+  responseId: string | null;
+  /** Wire format of `bytes`. */
+  format: RealtimeOutputAudioFormat;
+  /** Samples per second of `bytes` / `pcm`. */
+  sampleRate: number;
+  /** MIME type of `bytes` (e.g. `audio/L16;rate=24000`). */
+  contentType: string;
+  /** Raw audio bytes as received. */
+  bytes: Uint8Array;
+  /** Decoded 16-bit PCM samples (G.711 is decoded too). */
+  pcm: Int16Array;
+  /** Sentence text, on the first chunk of each sentence. */
+  text?: string;
+  transport: 'json' | 'binary';
+}
+
+// ============================================================================
+// Realtime telephony (outbound calls)
+// ============================================================================
+
+/** Twilio call status, as reported by status callbacks. */
+export type RealtimeCallStatus =
+  | 'queued'
+  | 'ringing'
+  | 'in-progress'
+  | 'completed'
+  | 'busy'
+  | 'no-answer'
+  | 'failed'
+  | 'canceled'
+  | (string & {});
+
+export interface RealtimeCallCreateRequest {
+  /** Number to call, E.164 (`+905551234567`). */
+  to: string;
+  /** Realtime model (preset) key that runs the conversation. The preset needs STT, TTS and a telephony connection. */
+  model: string;
+  /** Caller id, E.164. Defaults to the telephony connection's number. */
+  from?: string;
+  /** `{{name}}` template variables for the preset's instructions / first message. */
+  variables?: RealtimeVariables;
+  /**
+   * Overrides the preset's first message for this call. `interruptible` is honoured — `false`
+   * protects a mandatory disclosure from barge-in — and a message that does not set it keeps the
+   * preset's value.
+   */
+  first_message?: RealtimeFirstMessage;
+  /** Outbound default: `user` (wait for "Hello?" / `wait_for_user_ms`, then greet). */
+  first_speaker?: RealtimeFirstSpeaker;
+  /** Twilio answering-machine detection: `true` = `Enable`, or a Twilio `MachineDetection` value. */
+  machine_detection?: boolean | 'Enable' | 'DetectMessageEnd';
+  /**
+   * Telephony connection key to dial out through. Default: the preset's
+   * `telephony.connection_key`, else the project's only active connection
+   * (400 when several exist and none is named).
+   */
+  connection?: string;
+  /**
+   * Seconds to let it ring before giving up (Twilio `Timeout`, 5–240; Twilio
+   * default 60). Capped below the 5-minute life of the call's stream token.
+   */
+  ring_timeout_sec?: number;
+}
+
+/**
+ * A telephony call and its realtime session — the same shape from
+ * `calls.create`, `calls.get` and `calls.hangup`.
+ */
+export interface RealtimeCall {
+  /** Call id (= `session_id`). */
+  id: string;
+  object: 'realtime.call';
+  /** Realtime session id — use it with `calls.get` / `calls.hangup` and the session logs. */
+  session_id: string;
+  /** Twilio Call SID (`CA…`), once Twilio accepted the call. */
+  call_sid: string | null;
+  status: RealtimeCallStatus;
+  direction: 'inbound' | 'outbound';
+  from: string | null;
+  to: string | null;
+  /** Twilio AMD result (`human`, `machine_start`, …) when machine detection ran. */
+  answered_by: string | null;
+  duration_sec: number | null;
+  /** Telephony connection the call went through. */
+  connection_key: string | null;
+  /** Realtime model (preset) key running the conversation. */
+  realtime_model: string | null;
+  /**
+   * Realtime session status: `pending` (media not connected yet), `active`, `ended`, `error`.
+   * `calls.create` answers `pending`, like a `calls.get` right after it.
+   */
+  session_status: 'pending' | 'active' | 'ended' | 'error' | (string & {}) | null;
+  /** ISO timestamps of the session. `calls.create` already carries `started_at` (the moment the call was placed). */
+  started_at: string | null;
+  ended_at: string | null;
+}
+
 // ============================================================================
 // Realtime models (named session presets)
 // ============================================================================
+
+/** Preset telephony settings as the server returns them (unset = `null`). */
+export interface RealtimeModelTelephonyView {
+  connection_key: string | null;
+  from_number: string | null;
+  inbound_enabled: boolean | null;
+  outbound_first_speaker: RealtimeFirstSpeaker | null;
+}
+
+/** Preset telephony settings. */
+export interface RealtimeModelTelephony {
+  /** Telephony (Twilio) connection key used for outbound calls / inbound routing. */
+  connection_key?: string | null;
+  /** Default caller id, E.164. */
+  from_number?: string | null;
+  /** Answer inbound calls to the connection's number with this preset. */
+  inbound_enabled?: boolean;
+  /** Who speaks first on outbound calls (default `user`). */
+  outbound_first_speaker?: RealtimeFirstSpeaker;
+}
 
 export interface RealtimeModel {
   id: string | null;
@@ -3329,15 +3877,31 @@ export interface RealtimeModel {
   temperature: number | null;
   max_output_tokens: number | null;
   stt_model_key: string | null;
-  input_audio_format: string | null;
   tts_model_key: string | null;
   voice: string | null;
-  tts_format: string | null;
-  turn_silence_ms: number | null;
-  turn_silence_threshold: number | null;
-  greeting: string | null;
   /** Agent presets: filler line announced/spoken while the agent calls tools. */
   tool_status_message: string | null;
+  /** Agent presets: soft hold sound while the agent runs tools (default `false`). */
+  tool_wait_audio: boolean;
+  /** `null` = not set (sessions default to `pcm16`). */
+  output_audio_format: RealtimeOutputAudioFormat | null;
+  /**
+   * Absent = not set on the preset (sessions default to `semantic_vad`);
+   * `null` = manual commit. Writing a retrieved preset back therefore never
+   * changes it.
+   */
+  turn_detection?: RealtimeTurnDetectionView | null;
+  stt_mode: 'batch' | 'streaming' | null;
+  stt_language: string | null;
+  /** STT vocabulary / spelling hints (brand and product names); `null` = none. */
+  stt_prompt: string | null;
+  first_speaker: RealtimeFirstSpeaker | null;
+  first_message: RealtimeFirstMessageView | null;
+  wait_for_user_ms: number | null;
+  interrupt_min_ms: number | null;
+  /** Agent presets: the stored version, `published` when none is stored; `null` for chat-model presets. */
+  agent_version: RealtimeAgentVersion | null;
+  telephony: RealtimeModelTelephonyView | null;
   metadata: Record<string, unknown>;
   created_at: string | null;
   updated_at: string | null;
@@ -3352,31 +3916,128 @@ export interface CreateRealtimeModelRequest {
   chat_model_key?: string;
   /** Agent responses are generated with (takes precedence over `chat_model_key`). */
   agent_key?: string;
+  /** Agent presets: which agent version runs (default `published`). */
+  agent_version?: RealtimeAgentVersion;
   instructions?: string;
   temperature?: number;
   max_output_tokens?: number;
   /** STT model key — required for voice input / telephony. */
   stt_model_key?: string;
-  input_audio_format?: string;
+  /** STT language hint, e.g. `tr`. */
+  stt_language?: string;
+  /**
+   * STT vocabulary / spelling hints — brand, product and person names the
+   * transcriber should spell correctly (e.g. `"Cognipeer, Pulse"`). Max 1000
+   * characters; sessions use it as `input_audio_transcription.prompt`.
+   */
+  stt_prompt?: string;
+  stt_mode?: 'batch' | 'streaming';
   /** TTS model key — required for spoken responses / telephony. */
   tts_model_key?: string;
   /** Optional — the TTS provider falls back to its default voice. */
   voice?: string;
-  tts_format?: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
-  /** Telephony turn detection: silence that ends a caller turn (ms). */
-  turn_silence_ms?: number;
-  /** Telephony turn detection: RMS silence threshold (0..1). */
-  turn_silence_threshold?: number;
-  /** Spoken when a telephony call connects. */
-  greeting?: string;
+  /** Default output format for sessions on this preset (default `pcm16`). */
+  output_audio_format?: RealtimeOutputAudioFormat;
+  turn_detection?: RealtimeTurnDetection | null;
+  /** Shortcut for `turn_detection.interrupt_min_ms`. */
+  interrupt_min_ms?: number;
+  first_speaker?: RealtimeFirstSpeaker;
+  first_message?: RealtimeFirstMessage;
+  wait_for_user_ms?: number;
+  telephony?: RealtimeModelTelephony;
   /** Agent presets: filler line announced/spoken while the agent calls tools. */
   tool_status_message?: string;
+  /** Agent presets: soft hold sound while the agent runs tools until the answer starts (default `false`). */
+  tool_wait_audio?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export type UpdateRealtimeModelRequest = Partial<Omit<CreateRealtimeModelRequest, 'key'>> & {
-  status?: 'active' | 'disabled';
-};
+/** Optional preset fields an update may clear by sending `null`. */
+export type RealtimeModelClearableField =
+  | 'description' | 'instructions' | 'temperature' | 'max_output_tokens' | 'stt_model_key'
+  | 'tts_model_key' | 'voice' | 'tool_status_message'
+  | 'stt_mode' | 'stt_language' | 'stt_prompt' | 'first_speaker' | 'first_message' | 'wait_for_user_ms'
+  | 'interrupt_min_ms' | 'agent_version' | 'output_audio_format' | 'telephony';
+
+/**
+ * `first_message` in an update. Merged into the stored message sub-field by
+ * sub-field: a key you leave out keeps its value and a `null` removes just
+ * that one (so the `null`s of a retrieved {@link RealtimeFirstMessageView}
+ * write back unchanged). `mode` is required in the merged result — send it
+ * when the preset has no first message yet. Send `first_message: null` to clear
+ * the whole message.
+ */
+export interface UpdateRealtimeFirstMessage {
+  mode?: RealtimeFirstMessage['mode'];
+  text?: string | null;
+  instructions?: string | null;
+  interruptible?: boolean | null;
+}
+
+/**
+ * `telephony` in an update. Merged into the stored settings sub-field by
+ * sub-field, like {@link UpdateRealtimeFirstMessage}: a key you leave out keeps
+ * its value and a `null` (or `''`) removes just that one. `telephony: null`
+ * clears all of it.
+ */
+export interface UpdateRealtimeModelTelephony {
+  connection_key?: string | null;
+  from_number?: string | null;
+  inbound_enabled?: boolean | null;
+  outbound_first_speaker?: RealtimeFirstSpeaker | null;
+}
+
+/**
+ * `turn_detection` in an update: the object you send replaces the preset's
+ * whole setting (nothing is merged with the stored one), and one without a
+ * `type` means `semantic_vad`.
+ */
+export type UpdateRealtimeTurnDetection =
+  Omit<RealtimeTurnDetection, 'type'> & { type?: RealtimeTurnDetection['type'] };
+
+/**
+ * Fields of a retrieved {@link RealtimeModel} that an update ignores (they are
+ * read-only), accepted so a retrieved preset can be sent back as it is:
+ * `models.update(id, { ...retrieved, name })`.
+ */
+export interface RealtimeModelReadOnlyFields {
+  id?: string | null;
+  object?: 'realtime.model';
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+/**
+ * Partial update: absent fields stay as they are; `null` clears an optional
+ * field (e.g. `{ voice: null }` → the TTS provider's default voice;
+ * `{ turn_detection: null }` → manual commit).
+ *
+ * - `first_message` / `telephony` are merged sub-field by sub-field (a `null`
+ *   sub-field removes that key); every other field is replaced as a whole —
+ *   `turn_detection` included: the object you send IS the new setting, and one
+ *   without a `type` means `semantic_vad`.
+ * - A retrieved preset writes back unchanged (`{ ...retrieved, name }`): the
+ *   view shapes (`null` sub-fields, a fully populated `turn_detection`) and the
+ *   read-only keys are accepted, and so is a `null` `chat_model_key` /
+ *   `agent_key` (a preset has one generator, so the other reads `null`): it is
+ *   ignored, as if the key were left out. Setting one generator replaces the
+ *   other.
+ */
+export type UpdateRealtimeModelRequest =
+  Partial<Omit<
+    CreateRealtimeModelRequest,
+    'key' | RealtimeModelClearableField | 'chat_model_key' | 'agent_key' | 'turn_detection'
+  >>
+  & { [K in Exclude<RealtimeModelClearableField, 'first_message' | 'telephony'>]?: CreateRealtimeModelRequest[K] | null }
+  & RealtimeModelReadOnlyFields
+  & {
+    status?: 'active' | 'disabled';
+    chat_model_key?: string | null;
+    agent_key?: string | null;
+    turn_detection?: UpdateRealtimeTurnDetection | RealtimeTurnDetectionView | null;
+    first_message?: UpdateRealtimeFirstMessage | null;
+    telephony?: UpdateRealtimeModelTelephony | null;
+  };
 
 // ============================================================================
 // Agent Sandbox Types (remote runtime sandboxes)

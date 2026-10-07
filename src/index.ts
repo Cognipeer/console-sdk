@@ -8,8 +8,26 @@
 
 // Main client
 export { ConsoleClient } from './client';
-export { RealtimeConnection, RealtimeResource, RealtimeModelsResource } from './resources/realtime';
-export type { RealtimeConnectOptions, WebSocketLike, WebSocketConstructorLike } from './resources/realtime';
+export {
+  RealtimeConnection,
+  RealtimeResource,
+  RealtimeModelsResource,
+  RealtimeCallsResource,
+  float32ToPcm16,
+  pcm16ToFloat32,
+} from './resources/realtime';
+export type {
+  RealtimeConnectOptions,
+  RealtimeAuthMode,
+  RealtimeAudioListener,
+  RealtimeCallGetOptions,
+  RealtimeCloseInfo,
+  RealtimeCloseListener,
+  RealtimeRespondResult,
+  RealtimeUrlOptions,
+  WebSocketLike,
+  WebSocketConstructorLike,
+} from './resources/realtime';
 
 /** @deprecated Use `ConsoleClient` instead. */
 export { ConsoleClient as CognipeerClient } from './client';
