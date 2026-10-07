@@ -1,6 +1,6 @@
 {
   "name": "@cognipeer/console-sdk",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "TypeScript SDK for Cognipeer Console - Multi-tenant AI services platform",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -72,7 +72,8 @@
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
     "vitepress": "^1.0.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "ws": "^8.21.3"
   },
   "dependencies": {
     "@langchain/core": "^1.1.4",

@@ -78,7 +78,7 @@ export class ConsoleClient {
   /** Budget (spend cap) management API */
   public budgets: BudgetsResource;
 
-  /** Realtime API (WebSocket streaming chat with optional voice) */
+  /** Realtime API (WebSocket voice/chat sessions, protocol v2) + telephony calls */
   public realtime: RealtimeResource;
 
   /** Embeddings API */

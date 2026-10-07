@@ -5,6 +5,138 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-10-07
+
+Realtime: the SDK now speaks the Console's realtime voice-engine protocol (v2) and the v1 surface
+is gone, so this release needs a Console with the realtime voice engine. Everything outside
+`client.realtime` is unchanged. The lists below are relative to 2.1.0.
+
+### Removed (breaking)
+
+- `realtime.twilioStreamUrl(model)` — the API-key Twilio route
+  (`/realtime/twilio?api_key=…&model=…`) is gone. Media-stream URLs
+  (`/realtime/twilio/stream/<token>`) are minted by the Console for inbound webhooks and
+  `calls.create()`.
+- `tts_format` on `RealtimeSessionUpdate`, `CreateRealtimeModelRequest` and `RealtimeModel` — use
+  `output_audio_format`.
+- Container audio. `input_audio_format` took a MIME type (`audio/webm`, `audio/wav`…) and TTS could
+  answer in `mp3`, `opus`, `aac`, `flac`, `wav` or `pcm`. Both directions are now raw
+  `'pcm16' | 'g711_ulaw' | 'g711_alaw'` (`RealtimeAudioFormat`, `RealtimeOutputAudioFormat`), and
+  `RealtimeSessionUpdate.input_audio_format` is typed accordingly.
+- Preset fields `input_audio_format`, `tts_format`, `turn_silence_ms`, `turn_silence_threshold` and
+  `greeting` (view, create and update). Turn taking is `turn_detection`; the greeting is
+  `first_message`.
+
+### Changed (breaking)
+
+- **`connect()` resolves when the Console has created the session** (`session.created`), not when
+  the socket opens. The server accepts the upgrade first and checks the key, the preset and the
+  agent afterwards, so 2.1.0 resolved a connection that was about to be closed (`4401`) for an
+  invalid or unscoped key, a disabled preset or an unknown agent. It now rejects with the server's
+  reason (or the close code), and gives up after `connect({ timeoutMs })` (default 30 s, `0` = wait
+  forever). The initial `session.update` is still sent when the socket opens; the server holds it
+  while it authenticates. `session.created` has been handled by the time `connect()` resolves —
+  read `connection.session` instead of listening for it — while what the server sends right behind
+  it (the echo of the initial `session.update`, a text greeting) is delivered to the listeners you
+  attach straight after `await connect()`.
+- **`connect()` sends the API key as an `Authorization: Bearer` header** when the WebSocket
+  implementation can set upgrade headers — the `ws` package (imported with `import` or `require`),
+  Node >= 22's global `WebSocket`, Bun — instead of always using `?api_key=`. Browsers keep the
+  query fallback. The Console only accepts `?api_key=` from tokens scoped to the realtime service,
+  so a tenant's full-scope token must go in the header. Override with
+  `connect({ auth: 'header' | 'query' })`; add upgrade headers with `connect({ headers })`.
+  A session needs **write** access to the realtime service, and a caller that picks its own
+  generator — `connect({ agent })`, a raw chat model key, or a `session.update` switching `model`,
+  `agent_key` or `agent_version` — also needs `agents` / `models` write: a token scoped to realtime
+  alone can run presets only.
+  `connect()` also attaches its listeners before the socket opens (no missed `session.created`),
+  sets `binaryType = 'arraybuffer'` on Blob-defaulting sockets, and rejects when the socket closes
+  before it opens.
+- **`respond()` answers its own message.** It sends one `response.create { input }` and follows the
+  first response created after the server echoes that user item, so a greeting (running, or
+  starting on connect right after the call) or a voice turn is ignored — 2.1.0 took the first
+  `response.output_text.done` / `response.done` of any response. It resolves
+  `{ text, audio?, responseId? }`; `audio` is the response's raw bytes (JSON and binary transport)
+  joined and base64-encoded once, where 2.1.0 concatenated the base64 text of each delta. It rejects
+  when the response fails or is blocked, on an error its own request raised (audio and speech errors
+  — `tts_failed`, `invalid_audio`, `transcription_failed`… — are ignored: a sentence whose speech
+  failed does not fail the response), when the socket closes or `close()` is called, and after
+  `timeoutMs`; a call on a closed connection no longer leaves its timer running.
+- `WebSocketLike.send` takes `string | ArrayBufferLike | ArrayBufferView` and `WebSocketLike` has an
+  optional `binaryType`: a custom implementation passed to `connect({ webSocket })` must accept
+  binary frames. `WebSocketConstructorLike` takes the optional second constructor argument.
+- Server defaults (documented): `pcm16` @ 24 kHz in and out (`audio/webm` in before),
+  `turn_detection: { type: 'semantic_vad' }` (`null` = push-to-talk), and agent sessions — presets
+  and `{ agent }` alike — run the **published** version (`{ agent }` sessions ran the draft).
+- Preset views: the voice-engine fields are always present (`null` when unset) except
+  `turn_detection`, which is absent when the preset does not set it (`null` only means manual
+  commit), so `models.update(id, { ...retrieved })` keeps server VAD. `agent_version` is `published`
+  for agent presets without a stored version.
+
+### Added
+
+- **Binary audio input** — `connection.sendAudio(audio)` sends raw `pcm16` / G.711 bytes as a binary
+  WebSocket frame (no base64). Accepts `Buffer`, `Uint8Array`, `ArrayBuffer` and any typed array;
+  `Int16Array` goes out as s16le, `Float32Array` (Web Audio samples) is converted to `pcm16`.
+  `appendAudio()` (base64 JSON) accepts the same inputs.
+- **Decoded audio output** — `connection.onAudio(cb)` delivers `RealtimeAudioChunk`s from both JSON
+  `response.audio.delta` and binary frames (`audio_transport: 'binary'`): raw `bytes`, decoded `pcm`
+  (`Int16Array`, G.711 included), `sampleRate`, `contentType`, response id and sentence text. Binary
+  frames are decoded with the format and rate their response started with.
+- **Typed session config** (`RealtimeSessionUpdate`): `input_audio_sample_rate`,
+  `output_audio_format`, `output_audio_sample_rate`, `audio_transport`, `turn_detection`
+  (`semantic_vad` / `server_vad`, thresholds, eagerness, interrupt settings),
+  `input_audio_transcription`, `stt_mode`, `first_speaker`, `first_message`, `wait_for_user_ms`,
+  `variables`, `agent_version`, `tool_wait_audio`.
+- **Typed server events** — `connection.on(type, cb)` infers the payload from
+  `RealtimeServerEventMap`, including `session.ended`, `input_audio_buffer.speech_started` /
+  `speech_stopped`, `output_audio_buffer.cleared`, `response.audio_transcript.delta`,
+  `response.metrics` (per-turn latency: turn detection, STT, LLM first token, TTS first byte, e2e —
+  every field optional: `e2e_ms` / `total_ms` exist only for a turn that followed detected user
+  speech, not for the agent's greeting, typed text or a push-to-talk commit, and `llm_*` are absent
+  for a static first message) and `conversation.item.input_audio_transcription.delta`.
+- **Connection lifecycle** — `connection.onClose(cb)` and `connection.closed` report how a
+  connection ended (`4401` unauthorized, `4402` license required — no active ENTERPRISE license —,
+  `1013` server busy — the node is at its live-session cap, try again shortly —, `1009` too much
+  data, `1011` server error, a network drop) instead of failing silently; `connect({ timeoutMs })`.
+  Before the session exists the server sends an `error` event with the matching code
+  (`unauthorized`, `license_required`, `server_busy`) and `connect()` rejects with it; on a running
+  session `forbidden` (a `session.update` switched agent, model or agent version without the
+  permission to) and `event_too_large` (a non-audio event over 256 KB) leave the socket open.
+  `forbidden` never fails a pending `respond()`.
+- **First message & variables** — `connect({ session, variables, firstSpeaker, firstMessage })`
+  sends them in one initial `session.update`; `connection.startFirstMessage()`,
+  `connection.setVariables()`, `createResponse({ input, first_message })`.
+- `connection.reportPlayback(responseId, playedMs)` (`output_audio_buffer.played`) and the
+  `connection.session` getter — `RealtimeSessionView` mirrors the server echo: `variable_keys`
+  (names only — values are never echoed), `degraded` (why server turn detection runs below full
+  quality; re-sent in `session.updated` when it changes), and the effective `turn_detection` /
+  `first_message` views with every field present.
+- **Telephony calls** — `client.realtime.calls.create({ to, model, connection?, ring_timeout_sec?,
+  machine_detection?, … })`, `.get(sessionId, { refresh? })` (`refresh: true` asks Twilio for the
+  live state, recovering a call whose status callback was lost) and `.hangup(sessionId)`
+  (`/api/client/v1/realtime/calls`), all returning the server's `RealtimeCall` view.
+  `calls.create` answers `session_status: 'pending'` with `started_at` set, and honours
+  `first_message.interruptible` (a per-call message that does not set it keeps the preset's value).
+- Presets (`RealtimeModel`, `CreateRealtimeModelRequest`): `turn_detection`, `stt_mode`,
+  `stt_language`, `stt_prompt` (STT vocabulary / spelling hints — brand and product names, max 1000
+  characters), `first_speaker`, `first_message`, `wait_for_user_ms`, `interrupt_min_ms`,
+  `agent_version`, `output_audio_format`, `tool_wait_audio` and `telephony`
+  (`RealtimeModelTelephonyView`). `UpdateRealtimeModelRequest` accepts `null` to clear an optional
+  field (`{ voice: null }`; `{ turn_detection: null }` = manual commit), and accepts what
+  `models.retrieve()` returns, so `models.update(id, { ...retrieved, name })` compiles and works
+  as is: the `null` sub-fields of the `first_message` / `telephony` views
+  (`UpdateRealtimeFirstMessage`, `UpdateRealtimeModelTelephony`), the `turn_detection` view, a `null`
+  `chat_model_key` / `agent_key` (ignored) and the read-only keys (`id`, `object`, `created_at`,
+  `updated_at`; ignored). `first_message` and `telephony` merge into the stored setting sub-field
+  by sub-field (a `null` removes one key); `turn_detection` replaces the whole setting (an object
+  without `type` = `semantic_vad`).
+- `url()` accepts `firstSpeaker`, `variables` and `includeApiKey`; `float32ToPcm16` /
+  `pcm16ToFloat32` helpers.
+- `docs/api/realtime.md` is now a full protocol reference (events, audio formats, turn detection,
+  first message, connecting and closing, telephony, latency metrics, Twilio setup and trial-account
+  notes).
+
 ## [2.1.0] - 2026-09-27
 
 ### Why this is a MAJOR, not a minor

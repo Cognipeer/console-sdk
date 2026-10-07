@@ -12,7 +12,7 @@ Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com
 - 📦 **Batch API** - OpenAI-compatible asynchronous bulk inference (chat + embeddings)
 - 🚦 **Moderations** - OpenAI-compatible content moderation backed by guardrails
 - 💰 **Spend & Budgets** - Cost reporting and enforced spend caps per tenant/token/model
-- 🎧 **Realtime** - WebSocket streaming chat with optional voice round-trip (STT/TTS)
+- 🎧 **Realtime** - Low-latency voice sessions over WebSocket (binary PCM/G.711 audio, server turn detection, barge-in, first message, latency metrics) and Twilio phone calls
 - 🧑‍✈️ **Agents** - Invoke Console-managed agents via the OpenAI Responses API
 - 📊 **Embeddings** - Text vectorization for semantic search
 - 🗄️ **Vector Operations** - Manage vector databases (Pinecone, Chroma, Qdrant, etc.)
@@ -223,13 +223,15 @@ See [Agents → Background runs](docs/api/agents.md#background-runs) for callbac
 
 #### Realtime
 - `client.realtime.models.list()` / `.create(data)` / `.retrieve(id)` / `.update(id, data)` / `.delete(id)` - Named realtime model presets (chat model or agent + STT + TTS; voice is optional and defaults to the provider voice)
-- `client.realtime.connect({ model })` - Open a WebSocket session; `model` is a realtime model key or raw chat model key. Pass `{ agent }` instead to have a Console agent generate the responses. The generator is fixed once the conversation starts
-- `client.realtime.twilioStreamUrl(modelKey)` - Twilio `<Stream>` URL for connecting phone calls
+- `client.realtime.connect({ model })` - Open a WebSocket session; `model` is a realtime model key or raw chat model key. Pass `{ agent }` instead to have a Console agent generate the responses. The generator is fixed once the conversation starts. Resolves once the server has created the session and rejects with the server's reason when the key is refused (`timeoutMs` bounds the wait)
+- `conn.sendAudio(bytes)` / `conn.onAudio(cb)` - Voice: raw `pcm16` (24 kHz default) / G.711 input as binary frames, server turn detection (`semantic_vad` default), decoded Int16 PCM output; typed events via `conn.on(type, cb)` (see [docs/api/realtime.md](docs/api/realtime.md))
+- `client.realtime.calls.create({ to, model })` / `.get(sessionId, { refresh? })` / `.hangup(sessionId)` - Outbound phone calls through the preset's Twilio connection (inbound calls: point the number at the Console's voice webhook; the server mints the media-stream URL)
 - `connection.updateSession(session)` - Set instructions, STT/TTS models, voice; `model`/`agent_key` only before the first response (`generator_locked` afterwards)
-- `connection.respond(text)` - Send a message and await the full response (text + optional audio)
+- `connection.respond(text)` - Send a message and await the full response (text + optional audio); rejects if the socket closes first
 - `connection.on('response.output_text.delta', cb)` - Stream deltas; use `'*'` for all events
-- `connection.appendAudio(bytes)` / `commitAudio()` - Voice input via STT
+- `connection.appendAudio(bytes)` / `commitAudio()` - Base64 audio input / manual end of turn (push-to-talk, `turn_detection: null`)
 - `connection.createResponse()` / `cancelResponse()` / `close()`
+- `connection.onClose(cb)` / `connection.closed` - Learn that the server closed the connection (`4401` unauthorized, `4402` license required, `1013` server busy, `1011` server error, a network drop…)
 
 #### Vectors
 - `client.vectors.providers.list(query?)` - List vector providers
