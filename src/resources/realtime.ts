@@ -19,6 +19,8 @@ import {
   RealtimeAudioChunk,
   RealtimeAudioFormat,
   RealtimeCall,
+  RealtimeSessionMessage,
+  RealtimeSessionMessageRequest,
   RealtimeCallCreateRequest,
   RealtimeFirstMessage,
   RealtimeFirstSpeaker,
@@ -798,6 +800,37 @@ export class RealtimeCallsResource {
   }
 }
 
+/**
+ * Running realtime sessions, seen from outside their socket. `sendMessage`
+ * reaches a live session — a finished background job telling the voice agent
+ * the result is ready, a webhook, an operator — without holding its websocket.
+ */
+export class RealtimeSessionsResource {
+  private http: HttpClient;
+
+  constructor(http: HttpClient) {
+    this.http = http;
+  }
+
+  /**
+   * Add a message to a live session's conversation as a user turn marked as an
+   * external notification, and (by default) have the assistant answer it.
+   *
+   * Resolves once the server accepted it (202). Rejects with 404 when the
+   * session is not running (ended, unknown, or another project's — the answer
+   * is the same), 429 when the session's rate limit (30 / minute) is reached,
+   * and 400 for an invalid body (only user messages are accepted).
+   */
+  async sendMessage(sessionId: string, data: RealtimeSessionMessageRequest): Promise<RealtimeSessionMessage> {
+    const { idempotencyKey, ...body } = data;
+    return this.http.request<RealtimeSessionMessage>(
+      'POST',
+      `/api/client/v1/realtime/sessions/${encodeURIComponent(sessionId)}/messages`,
+      { body, ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}) },
+    );
+  }
+}
+
 export class RealtimeResource {
   private baseURL: string;
   private apiKey: string;
@@ -808,11 +841,15 @@ export class RealtimeResource {
   /** Telephony calls (outbound dial, status, hang up). */
   public calls: RealtimeCallsResource;
 
+  /** Running sessions: send them messages from outside their socket. */
+  public sessions: RealtimeSessionsResource;
+
   constructor(baseURL: string, apiKey: string, http: HttpClient) {
     this.baseURL = baseURL;
     this.apiKey = apiKey;
     this.models = new RealtimeModelsResource(http);
     this.calls = new RealtimeCallsResource(http);
+    this.sessions = new RealtimeSessionsResource(http);
   }
 
   /** Build the websocket URL (useful for custom clients). */

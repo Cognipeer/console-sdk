@@ -592,6 +592,48 @@ with voicemail detection. Change the default per preset (`telephony.outbound_fir
 - **Expect higher latency.** The phone network adds roughly 150–300 ms compared with a WebSocket
   client, and G.711 is 8 kHz narrowband audio.
 
+## Messages from outside the session
+
+A voice agent often starts work it cannot wait for — a report, a deployment, a payment check. The
+session does not need to stay in your hands for the answer: when the work finishes, send the result
+into the running conversation from anywhere (a job, a webhook, an operator) with
+`realtime.sessions.sendMessage`. The assistant tells the caller.
+
+```typescript
+await client.realtime.sessions.sendMessage(sessionId, {
+  content: 'The quarterly report you asked for is ready: 14 pages, revenue up 8%.',
+  label: 'report-bot',          // shown to the assistant as "Notification from report-bot"
+  idempotencyKey: 'job-42',     // a retry adds the message once
+});
+```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `content` | — | The text, at most 4000 characters. |
+| `respond` | `true` | `false` adds the message silently; the assistant sees it on its next turn. |
+| `mode` | `'when_idle'` | `'when_idle'` queues the answer behind the one in flight (and drops it, keeping the text, if the caller speaks first); `'now'` interrupts the current answer. |
+| `label` | `external system` | Who is speaking. |
+| `idempotencyKey` | — | Same key within 10 minutes: nothing is added twice (`replayed: true`). |
+
+What to expect:
+
+- The message enters as a **user** turn marked as an external notification. `system` and
+  `assistant` messages cannot be injected, and the answer goes through the session's guardrails like
+  any other user turn.
+- The live monitor and the playground show it with an *external notification* badge. A websocket
+  client of the same session also receives `conversation.item.created` with `item.source ===
+  'external'`.
+- The call needs the `realtime` service permission and the session must belong to the key's project.
+  An unknown session, an ended one and another project's all answer **404**; a session that has
+  more than 30 accepted messages in a minute answers **429** with `Retry-After`.
+- A session lives on one server process. With several replicas the message is relayed to the one
+  that holds the session (this needs the same Redis the platform uses for queues or cache); without
+  Redis it is delivered only when the request reaches that process. A relayed request that nobody
+  answers within about 1.5 s is a 404.
+
+The same call exists in the dashboard: the playground and the live-session page have a *Send a
+message into this session* panel.
+
 ## Realtime model presets
 
 A realtime model bundles the generator (chat model or agent + version), STT, TTS, voice,
@@ -710,6 +752,7 @@ error its own request raised (for example `config_missing`), when the socket clo
 | `realtime.calls.create(body)` | `POST /api/client/v1/realtime/calls` | Place an outbound call |
 | `realtime.calls.get(sessionId, options?)` | `GET /api/client/v1/realtime/calls/:sessionId` | Call status (`{ refresh: true }` asks Twilio first) |
 | `realtime.calls.hangup(sessionId)` | `POST /api/client/v1/realtime/calls/:sessionId/hangup` | Hang up |
+| `realtime.sessions.sendMessage(sessionId, body)` | `POST /api/client/v1/realtime/sessions/:sessionId/messages` | Send a message into a running session |
 | `realtime.models.list()` | `GET /api/client/v1/realtime/models` | List presets |
 | `realtime.models.create(data)` | `POST /api/client/v1/realtime/models` | Create a preset |
 | `realtime.models.retrieve(id)` | `GET /api/client/v1/realtime/models/:id` | Fetch a preset |

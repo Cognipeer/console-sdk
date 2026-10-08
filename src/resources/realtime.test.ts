@@ -3,6 +3,7 @@ import {
   RealtimeResource,
   RealtimeModelsResource,
   RealtimeCallsResource,
+  RealtimeSessionsResource,
   RealtimeConnection,
   WebSocketLike,
   float32ToPcm16,
@@ -1708,5 +1709,33 @@ describe('PCM helpers', () => {
 
   it('pcm16ToFloat32 maps the full range to -1..1', () => {
     expect(Array.from(pcm16ToFloat32(new Int16Array([0, 32767, -32768, -16384])))).toEqual([0, 1, -1, -0.5]);
+  });
+});
+
+describe('RealtimeSessionsResource', () => {
+  it('sends a message into a running session; the idempotency key rides in a header, not the body', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({
+      object: 'realtime.session.message', id: 'item_1', session_id: 'rt_1', response_queued: true, replayed: false,
+    });
+    const resource = new RealtimeSessionsResource(http as unknown as HttpClient);
+    const result = await resource.sendMessage('rt 1', {
+      content: 'Your report is ready', mode: 'now', label: 'report-bot', idempotencyKey: 'job-42',
+    });
+    expect(result.response_queued).toBe(true);
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/realtime/sessions/rt%201/messages', {
+      body: { content: 'Your report is ready', mode: 'now', label: 'report-bot' },
+      headers: { 'Idempotency-Key': 'job-42' },
+    });
+  });
+
+  it('sends no headers without an idempotency key, and is reachable as client.realtime.sessions', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({});
+    const realtime = new RealtimeResource('https://x.test', 'key', http as unknown as HttpClient);
+    await realtime.sessions.sendMessage('rt_1', { content: 'hi', respond: false });
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/realtime/sessions/rt_1/messages', {
+      body: { content: 'hi', respond: false },
+    });
   });
 });
