@@ -13,6 +13,7 @@ export {
   RealtimeResource,
   RealtimeModelsResource,
   RealtimeCallsResource,
+  RealtimeSessionsResource,
   float32ToPcm16,
   pcm16ToFloat32,
 } from './resources/realtime';

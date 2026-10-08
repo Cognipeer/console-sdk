@@ -3804,6 +3804,38 @@ export interface RealtimeCallCreateRequest {
   ring_timeout_sec?: number;
 }
 
+/** A message sent into a running realtime session from outside its socket. */
+export interface RealtimeSessionMessageRequest {
+  /** The text (at most 4000 characters). */
+  content: string;
+  /**
+   * Whether the assistant answers it. Default `true`; `false` adds it to the
+   * conversation silently (the assistant sees it on its next turn).
+   */
+  respond?: boolean;
+  /**
+   * `'when_idle'` (default) queues the answer behind the one in flight; if the
+   * caller speaks first the answer is dropped, though the text stays in the
+   * conversation. `'now'` interrupts the current answer.
+   */
+  mode?: 'now' | 'when_idle';
+  /** Who is speaking, shown to the assistant ("Notification from <label>"). Default `external system`. */
+  label?: string;
+  /** Makes a retry safe: the same key within 10 minutes adds the message once. */
+  idempotencyKey?: string;
+}
+
+export interface RealtimeSessionMessage {
+  object: 'realtime.session.message';
+  /** Conversation item id of the added message. */
+  id: string;
+  session_id: string;
+  /** `true` when the assistant has been asked to answer it. */
+  response_queued: boolean;
+  /** `true` when `idempotencyKey` had been seen: nothing was added again. */
+  replayed: boolean;
+}
+
 /**
  * A telephony call and its realtime session — the same shape from
  * `calls.create`, `calls.get` and `calls.hangup`.
