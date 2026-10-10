@@ -1917,13 +1917,35 @@ export interface AgentChatResponse {
 /** Input item for the Responses API `input` field */
 export interface ResponseInputItem {
   role: 'user' | 'system' | 'assistant';
-  content: string | ResponseInputContent[];
+  content: string | Array<ResponseInputContent | ResponseInputFileContent | ResponseInputImageContent>;
 }
 
 /** Content part inside an input item */
 export interface ResponseInputContent {
   type: 'input_text';
   text: string;
+}
+
+/**
+ * A file previously uploaded to the conversation with
+ * `client.agents.sessions.files.upload()`.
+ *
+ * Requires a Console with agent runtime phase 1 (session files).
+ */
+export interface ResponseInputFileContent {
+  type: 'input_file';
+  file_id: string;
+}
+
+/**
+ * An image, by session file id or URL.
+ *
+ * Requires a Console with agent runtime phase 1 (session files).
+ */
+export interface ResponseInputImageContent {
+  type: 'input_image';
+  file_id?: string;
+  image_url?: string;
 }
 
 /** Request body for the Responses API */
@@ -1982,6 +2004,15 @@ export interface AgentResponseCreateRequest {
    * `verifyAgentRunCallback` from `@cognipeer/console-sdk/webhooks`.
    */
   callback_secret?: string;
+  /**
+   * Spend cap for the conversation this request creates (ignored when
+   * `previous_response_id` continues an existing one — use
+   * `client.agents.sessions.update()` then). Defaults to the agent's own
+   * session budget.
+   *
+   * Requires a Console with agent runtime phase 1 (session budget).
+   */
+  budget?: AgentSessionBudget;
 }
 
 /** Request body that starts a background agent run. */
@@ -2030,8 +2061,24 @@ export interface AgentResponse {
   model: string;
   /** Output messages from the agent */
   output: ResponseOutputMessage[];
-  /** Completion status */
-  status: 'completed' | 'failed';
+  /**
+   * Completion status. `incomplete`: a run limit or a cancellation ended the
+   * turn before a final answer (see `stop_reason`). `requires_action`: the
+   * turn is paused on an approval or a question — answer it with
+   * `client.agents.sessions.actions.resolve()`; `required_action` lists them.
+   */
+  status: 'completed' | 'failed' | 'incomplete' | 'requires_action';
+  /** Why a non-`completed` response ended early, OpenAI-style (e.g. `{ reason: 'max_cost' }`). */
+  incomplete_details?: { reason: string } | null;
+  /**
+   * How the agent turn ended: `completed` for a normal answer, `limit`,
+   * `cancelled`, or `requires_action` while it waits on a person.
+   */
+  stop_reason?: AgentResponseStopReason;
+  /** The runtime's own wording for a non-`completed` stop, e.g. which limit. */
+  stop_detail?: string;
+  /** Present when `status` is `requires_action`: the approvals / questions to resolve. */
+  required_action?: AgentRequiredAction;
   /** Token usage */
   usage: ResponseUsage;
   /** Unix timestamp (seconds) */
@@ -2042,12 +2089,37 @@ export interface AgentResponse {
   version: number | null;
 }
 
+/** `AgentResponse.stop_reason`. Open string: the server may add values. */
+export type AgentResponseStopReason =
+  | 'completed'
+  | 'limit'
+  | 'cancelled'
+  | 'requires_action'
+  | (string & {});
+
+/** `AgentResponse.required_action` while `status` is `requires_action`. */
+export interface AgentRequiredAction {
+  type: 'agent_actions';
+  actions: PendingAction[];
+}
+
 // ============================================================================
 // Agent Background Runs
 // ============================================================================
 
-/** Lifecycle of a background agent run. `succeeded`/`failed`/`canceled` are terminal. */
-export type AgentRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
+/**
+ * Lifecycle of a background agent run. `succeeded`/`failed`/`canceled` are
+ * terminal. `requires_action` is NOT terminal: the run paused on an approval or
+ * a question (its `result.required_action` lists them) and continues once they
+ * are resolved.
+ */
+export type AgentRunStatus =
+  | 'queued'
+  | 'running'
+  | 'requires_action'
+  | 'succeeded'
+  | 'failed'
+  | 'canceled';
 
 /** Statuses after which a run never changes again. */
 export const AGENT_RUN_TERMINAL_STATUSES: readonly AgentRunStatus[] = ['succeeded', 'failed', 'canceled'];
@@ -2055,6 +2127,20 @@ export const AGENT_RUN_TERMINAL_STATUSES: readonly AgentRunStatus[] = ['succeede
 /** True when `status` is `succeeded`, `failed` or `canceled`. */
 export function isAgentRunTerminal(status: AgentRunStatus | string): boolean {
   return (AGENT_RUN_TERMINAL_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Statuses at which `agents.runs.wait()` stops polling: the terminal ones, plus
+ * `requires_action` (the run is waiting on a person, so polling would never end).
+ */
+export const AGENT_RUN_SETTLED_STATUSES: readonly AgentRunStatus[] = [
+  ...AGENT_RUN_TERMINAL_STATUSES,
+  'requires_action',
+];
+
+/** True when `status` is terminal or `requires_action` — where `runs.wait()` returns. */
+export function isAgentRunSettled(status: AgentRunStatus | string): boolean {
+  return (AGENT_RUN_SETTLED_STATUSES as readonly string[]).includes(status);
 }
 
 /**
@@ -2085,10 +2171,19 @@ export interface AgentRun {
   id: string;
   object: 'agent.run';
   status: AgentRunStatus;
+  /**
+   * How the agent turn ended (`end_turn`, `limit`, `requires_action`,
+   * `cancelled`, `error`, ...). Null while the run is active and on runs that
+   * predate the field.
+   */
+  stop_reason?: AgentSessionStopReason | null;
   /** Agent key */
   agent?: string;
   conversation_id?: string;
-  /** The turn's Responses API result once `succeeded` (its `id` is `resp_<...>`). */
+  /**
+   * The turn's Responses API result once `succeeded` (its `id` is `resp_<...>`),
+   * or the `requires_action` response (with `required_action`) while `requires_action`.
+   */
   result?: AgentResponse | null;
   /** Set when `failed` or `canceled`. */
   error?: AgentRunError | null;
@@ -2102,7 +2197,7 @@ export interface AgentRun {
 export interface AgentRunWaitOptions {
   /** Delay between polls (default 1000 ms). */
   pollIntervalMs?: number;
-  /** Give up after this long and throw `AgentRunWaitTimeoutError`. Unset = wait until terminal. */
+  /** Give up after this long and throw `AgentRunWaitTimeoutError`. Unset = wait until terminal or `requires_action`. */
   timeoutMs?: number;
   /** Abort waiting (the run itself keeps going — use `runs.cancel()` to stop it). */
   signal?: AbortSignal;
@@ -2150,16 +2245,632 @@ export class AgentRunWaitTimeoutError extends CognipeerError {
  */
 export interface AgentRunCallbackEvent {
   id: string;
-  /** `agent_run.succeeded` | `agent_run.failed` | `agent_run.canceled` */
-  event: `agent_run.${'succeeded' | 'failed' | 'canceled'}` | (string & {});
+  /**
+   * `agent_run.succeeded` | `agent_run.failed` | `agent_run.canceled`, and
+   * `agent_run.requires_action` when the run paused on an approval or question.
+   */
+  event: `agent_run.${'succeeded' | 'failed' | 'canceled' | 'requires_action'}` | (string & {});
   createdAt: string;
   runId: string;
   tenantId?: string;
   projectId?: string;
   conversationId?: string;
-  /** `{ result }` on success, `{ errorReason, message? }` on failure, `{}` on cancel. */
+  /**
+   * `{ result }` on success and on `requires_action` (the result carries
+   * `required_action`), `{ errorReason, message? }` on failure, `{}` on cancel.
+   */
   data: Record<string, unknown>;
 }
+
+// ============================================================================
+// Agent Sessions: runtime state, pending actions, event log
+// ============================================================================
+//
+// A session is a conversation seen from the runtime side: whether a turn is
+// running, whether it paused for a person (tool approval / question), and an
+// append-only event log. `client.agents.sessions.*` reads and drives it.
+
+/**
+ * `AgentSession.runtime_status`. `budget_paused` only exists on a Console with
+ * agent runtime phase 1 (session budget). Open string: the server may add values.
+ */
+export type AgentSessionRuntimeStatus =
+  | 'idle'
+  | 'running'
+  | 'requires_action'
+  | 'budget_paused'
+  | (string & {});
+
+/**
+ * Why a session turn (or background run) stopped. `budget_reached` only exists
+ * on a Console with agent runtime phase 1 (session budget). Open string.
+ */
+export type AgentSessionStopReason =
+  | 'end_turn'
+  | 'requires_action'
+  | 'limit'
+  | 'cancelled'
+  | 'error'
+  | 'budget_reached'
+  | (string & {});
+
+/**
+ * Spend cap of one session. `onReach: 'pause'` keeps the session
+ * (`budget_paused`) so it can continue after the budget is raised; `'stop'`
+ * ends the turn and leaves the session idle.
+ *
+ * Requires a Console with agent runtime phase 1 (session budget).
+ */
+export interface AgentSessionBudget {
+  maxCostUsd: number;
+  onReach: 'pause' | 'stop';
+}
+
+/** One question of a `user_question` pending action. */
+export interface AgentUserQuestion {
+  question: string;
+  header?: string;
+  multiSelect?: boolean;
+  placeholder?: string;
+  required?: boolean;
+  options?: Array<{ label: string; value?: string; description?: string }>;
+}
+
+/** Status of a pending action. */
+export type PendingActionStatus = 'pending' | 'resolved' | 'expired' | 'cancelled';
+
+interface PendingActionBase {
+  /** Action id (`act_<id>`) — pass it to `sessions.actions.resolve()`. */
+  id: string;
+  status: PendingActionStatus;
+  /** ISO timestamp after which the request can no longer be answered. */
+  expiresAt?: string;
+  /** ISO timestamp. */
+  requestedAt: string;
+}
+
+/** The agent wants to run a tool and waits for an allow / deny. */
+export interface ToolApprovalPendingAction extends PendingActionBase {
+  kind: 'tool_approval';
+  toolName?: string;
+  /** The arguments the model passed (approvers may edit them: `approvedArgs`). */
+  args?: unknown;
+}
+
+/** The agent asked the user a question and waits for the answer. */
+export interface UserQuestionPendingAction extends PendingActionBase {
+  kind: 'user_question';
+  questions?: AgentUserQuestion[];
+  /** Whether an answer other than the listed options is accepted. */
+  allowFreeText?: boolean;
+}
+
+/** An approval or a question a paused turn is waiting on (public shape). */
+export type PendingAction = ToolApprovalPendingAction | UserQuestionPendingAction;
+
+/** Answer to a `tool_approval` action. */
+export interface ToolApprovalResolution {
+  decision: 'allow' | 'deny';
+  comment?: string;
+  /** Replacement arguments for an approval; must be a JSON object and valid for the tool. */
+  approvedArgs?: Record<string, unknown>;
+  /** Approve this tool for the rest of the session (only meaningful with `decision: 'allow'`). */
+  rememberForSession?: boolean;
+}
+
+/**
+ * Answer to a `user_question` action: `answers` keyed by the question text, a
+ * string or (for `multiSelect`) a list of strings — or `cancelled: true` to skip.
+ */
+export type UserQuestionResolution =
+  | { answers: Record<string, string | string[]>; cancelled?: false }
+  | { cancelled: true; answers?: Record<string, string | string[]> };
+
+/** Body of `sessions.actions.resolve()`. */
+export type ResolveActionBody = (ToolApprovalResolution | UserQuestionResolution) & {
+  /** Runtime context for the continuation (downstream headers / metadata). */
+  runtime_context?: RuntimeContext;
+};
+
+/** Options of `sessions.actions.resolve()`. */
+export interface ResolveActionOptions {
+  /**
+   * Continue the turn as a background run: the call returns the queued
+   * {@link AgentRun} (`202`) instead of waiting for the continuation.
+   */
+  background?: boolean;
+  signal?: AbortSignal;
+}
+
+/** `GET /agents/sessions/{id}` — the runtime state of a conversation. */
+export interface AgentSession {
+  /** The conversation id. */
+  id: string;
+  object: 'agent.session';
+  /** Agent key. */
+  agent: string;
+  runtime_status: AgentSessionRuntimeStatus;
+  /** How the last turn ended; null before the first one. */
+  stop_reason: AgentSessionStopReason | null;
+  /** Actions still waiting for an answer. */
+  pending_actions: PendingAction[];
+  /** Seq of the newest event in the log (0 = none); resume streams after it. */
+  last_event_seq: number;
+  /** Requires a Console with agent runtime phase 1 (session budget). */
+  budget?: AgentSessionBudget | null;
+  /** Priced spend so far. Requires a Console with agent runtime phase 1 (session budget). */
+  spent_usd?: number;
+}
+
+/**
+ * Body of `sessions.update()`.
+ *
+ * Requires a Console with agent runtime phase 1 (session budget).
+ */
+export interface AgentSessionUpdateRequest {
+  /** New budget, or `null` to remove it. Must exceed what the session already spent. */
+  budget?: AgentSessionBudget | null;
+  /**
+   * When the session is `budget_paused`, continue it without a new user
+   * message (as a background run). Default `true` on the server.
+   */
+  resume?: boolean;
+}
+
+// ── Session events ──────────────────────────────────────────────────
+
+/**
+ * Event types the Console documents. Open: unknown types arrive as
+ * {@link UnknownSessionEvent} and must be ignored, not rejected.
+ */
+export type KnownSessionEventType = KnownSessionEvent['type'];
+
+/** Fields every persisted event has. */
+interface SessionEventEnvelope<T extends string, D> {
+  /** Position in the conversation's log; strictly increasing. */
+  seq: number;
+  type: T;
+  data: D;
+  /** Background run the event belongs to, when there is one. */
+  run_id?: string;
+  /** ISO timestamp. */
+  created_at: string;
+}
+
+/** Event `data` larger than 16 KB is cut and marked `_truncated: true`. */
+type Truncatable = { _truncated?: boolean };
+
+export type SessionUserMessageEvent = SessionEventEnvelope<
+  'user.message',
+  { content: string } & Truncatable
+>;
+export type SessionStatusRunningEvent = SessionEventEnvelope<
+  'session.status_running',
+  { trigger: 'message' | 'resume' | 'timeout' | (string & {}) }
+>;
+export type SessionToolUseEvent = SessionEventEnvelope<
+  'agent.tool_use',
+  { toolCallId: string; name: string; args?: unknown; subagent?: string } & Truncatable
+>;
+export type SessionToolResultEvent = SessionEventEnvelope<
+  'agent.tool_result',
+  {
+    toolCallId: string;
+    name: string;
+    ok: boolean;
+    durationMs?: number;
+    error?: string;
+    subagent?: string;
+  } & Truncatable
+>;
+export type SessionCompactionEvent = SessionEventEnvelope<
+  'agent.compaction',
+  Record<string, unknown>
+>;
+export type SessionActionRequiredEvent = SessionEventEnvelope<
+  'action.required',
+  {
+    actionId: string;
+    kind: 'tool_approval' | 'user_question';
+    toolName?: string;
+    args?: unknown;
+    questions?: AgentUserQuestion[];
+    allowFreeText?: boolean;
+    expiresAt?: string;
+  } & Truncatable
+>;
+export type SessionActionResolvedEvent = SessionEventEnvelope<
+  'action.resolved',
+  {
+    actionId: string;
+    kind: 'tool_approval' | 'user_question';
+    decision?: 'allow' | 'deny';
+    cancelled?: boolean;
+    expired?: boolean;
+    resolvedBy: string;
+    channel: string;
+  }
+>;
+export type SessionAgentMessageEvent = SessionEventEnvelope<
+  'agent.message',
+  {
+    content: string;
+    messageIndex?: number;
+    /** Present when the turn did not end with a plain answer (`limit`, `requires_action`, ...). */
+    stopReason?: AgentSessionStopReason;
+    usage?: Record<string, unknown>;
+  } & Truncatable
+>;
+export type SessionStatusIdleEvent = SessionEventEnvelope<
+  'session.status_idle',
+  {
+    stopReason: AgentSessionStopReason;
+    pendingActionIds?: string[];
+    detail?: string;
+  }
+>;
+export type SessionErrorEvent = SessionEventEnvelope<
+  'session.error',
+  { message: string; code?: string }
+>;
+export type SessionWorkDoneEvent = SessionEventEnvelope<'session.work_done', Record<string, never>>;
+
+/**
+ * Per-turn spend. Requires a Console with agent runtime phase 1 (session budget).
+ */
+export type SessionUsageEvent = SessionEventEnvelope<
+  'session.usage',
+  { turnCostUsd: number; spentUsd: number; budget?: AgentSessionBudget | null }
+>;
+/**
+ * The session budget was reached. Requires a Console with agent runtime phase 1
+ * (session budget).
+ */
+export type SessionBudgetReachedEvent = SessionEventEnvelope<
+  'budget.reached',
+  { spentUsd: number; maxCostUsd: number }
+>;
+
+/** The persisted event types this SDK knows. */
+export type KnownSessionEvent =
+  | SessionUserMessageEvent
+  | SessionStatusRunningEvent
+  | SessionToolUseEvent
+  | SessionToolResultEvent
+  | SessionCompactionEvent
+  | SessionActionRequiredEvent
+  | SessionActionResolvedEvent
+  | SessionAgentMessageEvent
+  | SessionStatusIdleEvent
+  | SessionErrorEvent
+  | SessionWorkDoneEvent
+  | SessionUsageEvent
+  | SessionBudgetReachedEvent;
+
+/**
+ * A persisted event of a type this SDK version does not know. Ignore it (a newer
+ * Console may add event types). Note TypeScript cannot narrow `KnownSessionEvent`
+ * out of a `type ===` check against this union — use {@link isSessionEvent}.
+ */
+export interface UnknownSessionEvent {
+  seq: number;
+  type: string & {};
+  data: Record<string, unknown>;
+  run_id?: string;
+  created_at: string;
+}
+
+/** An event as stored in the log (`events.list`, and persisted frames of `events.stream`). */
+export type SessionEvent = KnownSessionEvent | UnknownSessionEvent;
+
+/**
+ * Live-only text delta of the answer in progress. Delivered by `events.stream`
+ * between persisted events, never stored, so it has no `seq` and a stream that
+ * reconnects does not replay it — the full text arrives as `agent.message`.
+ */
+export interface SessionMessageDeltaEvent {
+  seq?: undefined;
+  type: 'agent.message.delta';
+  data: { text: string };
+  run_id?: string;
+  created_at: string;
+}
+
+/** What `events.stream` yields. */
+export type SessionStreamEvent = SessionEvent | SessionMessageDeltaEvent;
+
+/** Type guard narrowing a session event to one documented type. */
+export function isSessionEvent<T extends KnownSessionEventType>(
+  event: SessionStreamEvent,
+  type: T,
+): event is Extract<KnownSessionEvent, { type: T }> {
+  return event.type === type;
+}
+
+/** Machine-readable `error.code` values of the session endpoints (see `sessions.actions.resolve`). */
+export const AgentActionErrorCodes = {
+  /** 404: the conversation does not exist in this project. */
+  SessionNotFound: 'session_not_found',
+  /** 404: no such action in this conversation. */
+  NotFound: 'action_not_found',
+  /** 409: somebody else answered it first, or it was cancelled; `error.response.error.actionStatus` says which. */
+  NotPending: 'action_not_pending',
+  /** 410: the request ran out of time (the agent's approval timeout). */
+  Expired: 'action_expired',
+  /** 403: the agent's `approvers` setting does not let this caller answer. */
+  Forbidden: 'action_forbidden',
+  /** 400: the body does not fit the action (bad decision, answers, `approvedArgs`...). */
+  InvalidResolution: 'invalid_resolution',
+  /**
+   * 409: a new user message arrived while actions are open and the agent rejects
+   * that; `error.response.error.pendingActionIds` lists them.
+   */
+  PendingAction: 'pending_action',
+} as const;
+
+export type AgentActionErrorCode = (typeof AgentActionErrorCodes)[keyof typeof AgentActionErrorCodes];
+
+/**
+ * True when `error` is a `CognipeerAPIError` carrying the given session error
+ * code. A `409 agent_run_conflict` (a run is already active on the
+ * conversation) is `isAgentRunErrorCode(error, AgentRunErrorCodes.Conflict)`.
+ */
+export function isAgentActionErrorCode(error: unknown, code: AgentActionErrorCode): error is CognipeerAPIError {
+  return error instanceof CognipeerAPIError && error.errorCode === code;
+}
+
+/** Query of `sessions.events.list()`. */
+export interface ListSessionEventsQuery {
+  /** Only events with `seq` greater than this (default 0 = from the start). */
+  after?: number;
+  /** Only these event types. */
+  types?: string[];
+  /** Page size (server default 100, max 1000). */
+  limit?: number;
+}
+
+/** Response of `sessions.events.list()`. */
+export interface SessionEventList {
+  object: 'list';
+  events: SessionEvent[];
+  /** Another page exists after `last_seq`. */
+  has_more: boolean;
+  /** Seq of the last event returned (or `after` when the page is empty). */
+  last_seq: number;
+}
+
+/** Options of `sessions.events.stream()`. */
+export interface SessionEventStreamOptions {
+  /** Resume after this seq (default 0 = replay the log, then follow). */
+  after?: number;
+  /** Only these event types. */
+  types?: string[];
+  /** Stops the stream; the iterator then throws the signal's abort reason. */
+  signal?: AbortSignal;
+  /**
+   * Consecutive reconnect attempts that get no data before the iterator gives
+   * up and throws (default 8). A connection that delivered anything resets the
+   * count. `Infinity` retries forever.
+   */
+  maxReconnects?: number;
+  /** First reconnect delay in ms; doubles per failed attempt (default 1000). */
+  reconnectDelayMs?: number;
+  /** Upper bound of the reconnect delay in ms (default 15000). */
+  maxReconnectDelayMs?: number;
+  /**
+   * Reconnect when no bytes (events or the server's 15 s `: ping`) arrive for
+   * this long, in ms (default 45000; `0` disables).
+   */
+  idleTimeoutMs?: number;
+}
+
+// ── Session files ───────────────────────────────────────────────────
+
+/**
+ * A file attached to a conversation. Requires a Console with agent runtime
+ * phase 1 (session files).
+ */
+export interface SessionFile {
+  id: string;
+  object: 'agent.session.file';
+  name: string;
+  mime_type: string;
+  /** Bytes. */
+  size: number;
+  /** Text conversion of the file for the agent (documents become markdown). */
+  status?: 'processing' | 'ready' | 'failed' | (string & {});
+  /** ISO timestamp. */
+  created_at?: string;
+  /** ISO timestamp after which the Console deletes the file. */
+  expires_at?: string | null;
+}
+
+/** Options of `sessions.files.upload()`. */
+export interface UploadSessionFileOptions {
+  /** File name; required for raw bytes, taken from a `File` when omitted. */
+  name?: string;
+  /** MIME type; taken from a `Blob`/`File` when omitted, else `application/octet-stream`. */
+  mimeType?: string;
+  signal?: AbortSignal;
+}
+
+// ============================================================================
+// Webhook subscriptions
+// ============================================================================
+//
+// Subscriptions the Console delivers events to (signed with the endpoint's
+// secret — verify with `verifyWebhook` from `@cognipeer/console-sdk/webhooks`).
+// Requires a Console with agent runtime phase 1 (webhooks).
+
+/** Event types a subscription can ask for. Open string: the server may add more. */
+export type WebhookEventType =
+  | 'session.idled'
+  | 'session.work_done'
+  | 'action.required'
+  | 'budget.reached'
+  | 'agent_run.succeeded'
+  | 'agent_run.failed'
+  | 'agent_run.canceled'
+  | 'agent_run.requires_action'
+  | 'schedule.fired'
+  | 'schedule.failed'
+  | 'webhook.test'
+  | (string & {});
+
+/** The event types above, for building pickers. */
+export const WEBHOOK_EVENT_TYPES = [
+  'session.idled',
+  'session.work_done',
+  'action.required',
+  'budget.reached',
+  'agent_run.succeeded',
+  'agent_run.failed',
+  'agent_run.canceled',
+  'agent_run.requires_action',
+  'schedule.fired',
+  'schedule.failed',
+  'webhook.test',
+] as const;
+
+/** A subscribed event: an exact type or a `prefix.*` pattern (e.g. `agent_run.*`). */
+export type WebhookEventPattern = WebhookEventType | `${string}.*`;
+
+/** Health of a subscription. The Console disables one that keeps failing (`disabledReason`). */
+export type WebhookEndpointStatus = 'active' | 'disabled';
+
+export interface WebhookEndpoint {
+  /** `whk_<id>` */
+  id: string;
+  url: string;
+  description?: string;
+  events: WebhookEventPattern[];
+  /** Project the subscription is limited to; null / absent = every project of the tenant. */
+  projectId?: string | null;
+  status: WebhookEndpointStatus;
+  /** Why the Console disabled it (redirect answer, blocked address, sustained failure...). */
+  disabledReason?: string | null;
+  /** ISO timestamp the endpoint started failing continuously; cleared by any 2xx. */
+  failingSince?: string | null;
+  createdBy?: string;
+  /** ISO timestamps. */
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Returned once, by `create()` and `rotateSecret()` — store it, it cannot be read again. */
+export interface WebhookEndpointWithSecret extends WebhookEndpoint {
+  secret: string;
+}
+
+export interface CreateWebhookRequest {
+  /** Public HTTPS URL; checked against the SSRF guard when saved. */
+  url: string;
+  events: WebhookEventPattern[];
+  description?: string;
+  /** Limit to one project; `null` = all projects (needs a tenant admin token). */
+  projectId?: string | null;
+}
+
+export interface UpdateWebhookRequest {
+  url?: string;
+  events?: WebhookEventPattern[];
+  description?: string;
+  /** `active` re-enables a disabled endpoint. */
+  status?: WebhookEndpointStatus;
+}
+
+export type WebhookDeliveryStatus = 'pending' | 'delivered' | 'failed';
+
+export interface WebhookDelivery {
+  /** `whd_<id>` */
+  id: string;
+  endpointId: string;
+  /** `evt_<id>` — the `webhook-id` header; dedupe on it, a delivery can repeat. */
+  eventId: string;
+  eventType: WebhookEventType;
+  /** The body that was (or will be) POSTed. */
+  payload?: WebhookEvent;
+  status: WebhookDeliveryStatus;
+  attempts: number;
+  /** ISO timestamp of the next retry while `pending`. */
+  nextAttemptAt?: string | null;
+  lastStatusCode?: number | null;
+  lastError?: string | null;
+  lastDurationMs?: number | null;
+  /** ISO timestamps. */
+  createdAt?: string;
+  deliveredAt?: string | null;
+}
+
+export interface ListWebhookDeliveriesQuery {
+  status?: WebhookDeliveryStatus;
+  limit?: number;
+}
+
+/** Fields every webhook body has. `data` holds ids and small fields only: fetch the rest by id. */
+interface WebhookEventEnvelope<T extends string, D> {
+  /** `evt_<id>` — equal to the `webhook-id` / `x-cognipeer-event-id` header. */
+  id: string;
+  type: T;
+  /** ISO timestamp. */
+  createdAt: string;
+  projectId?: string | null;
+  data: D;
+}
+
+export type WebhookSessionIdledEvent = WebhookEventEnvelope<
+  'session.idled',
+  { conversationId: string; agentKey: string; stopReason: AgentSessionStopReason }
+>;
+export type WebhookSessionWorkDoneEvent = WebhookEventEnvelope<
+  'session.work_done',
+  { conversationId: string; agentKey: string }
+>;
+export type WebhookActionRequiredEvent = WebhookEventEnvelope<
+  'action.required',
+  { conversationId: string; agentKey: string; actionId: string; kind: 'tool_approval' | 'user_question' }
+>;
+export type WebhookBudgetReachedEvent = WebhookEventEnvelope<
+  'budget.reached',
+  { conversationId: string; agentKey: string; spentUsd: number; maxCostUsd: number }
+>;
+export type WebhookAgentRunEvent = WebhookEventEnvelope<
+  | 'agent_run.succeeded'
+  | 'agent_run.failed'
+  | 'agent_run.canceled'
+  | 'agent_run.requires_action',
+  { runId: string; conversationId: string; agentKey: string }
+>;
+export type WebhookScheduleEvent = WebhookEventEnvelope<
+  'schedule.fired' | 'schedule.failed',
+  { scheduleId: string; agentKey: string; conversationId?: string; error?: string }
+>;
+export type WebhookTestEvent = WebhookEventEnvelope<'webhook.test', Record<string, never>>;
+
+/** The body of a webhook delivery, for the types this SDK knows. */
+export type KnownWebhookEvent =
+  | WebhookSessionIdledEvent
+  | WebhookSessionWorkDoneEvent
+  | WebhookActionRequiredEvent
+  | WebhookBudgetReachedEvent
+  | WebhookAgentRunEvent
+  | WebhookScheduleEvent
+  | WebhookTestEvent;
+
+/** Body of an event type this SDK version does not know — acknowledge (2xx) and ignore it. */
+export interface UnknownWebhookEvent {
+  id: string;
+  type: string & {};
+  createdAt: string;
+  projectId?: string | null;
+  data: Record<string, unknown>;
+}
+
+/**
+ * The JSON body of a delivery to a webhook subscription. (The older
+ * per-run `callback_url` bodies are {@link AgentRunCallbackEvent}.)
+ */
+export type WebhookEvent = KnownWebhookEvent | UnknownWebhookEvent;
 
 // ── Browser sessions, profiles & MCP ────────────────────────────────
 export type BrowserSessionStatus = 'pending' | 'running' | 'idle' | 'closed' | 'expired' | 'errored';

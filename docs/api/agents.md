@@ -198,8 +198,11 @@ await client.agents.runs.cancel('run_66f2...'); // request cancellation
 await client.agents.runs.wait('run_66f2...', { signal: controller.signal });
 ```
 
-- `wait()` resolves with the terminal run for `succeeded`, `failed` **and**
-  `canceled` — check `status`. It throws `AgentRunWaitTimeoutError` (with
+- `wait()` resolves with the run for `succeeded`, `failed` **and** `canceled`
+  — and for `requires_action`, where the run is paused on a tool approval or a
+  question and polling would never end (`run.result.required_action.actions`
+  lists what to answer with `client.agents.sessions.actions.resolve()`) —
+  check `status`. It throws `AgentRunWaitTimeoutError` (with
   `lastRun`) when `timeoutMs` elapses and the signal's reason when `signal`
   aborts. Neither stops the run; call `cancel()` for that.
 - `cancel()` is cooperative: the run it returns may still say `running` for
@@ -222,15 +225,17 @@ const next = await client.agents.responses.create({
 ### AgentRun Type
 
 ```typescript
-type AgentRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
+// `requires_action` is not terminal: the run continues once the actions are resolved.
+type AgentRunStatus = 'queued' | 'running' | 'requires_action' | 'succeeded' | 'failed' | 'canceled';
 
 interface AgentRun {
   id: string;                 // "run_..."
   object: 'agent.run';
   status: AgentRunStatus;
+  stop_reason?: string | null;  // 'end_turn' | 'limit' | 'requires_action' | 'cancelled' | 'error' | ...
   agent?: string;
   conversation_id?: string;
-  result?: AgentResponse | null;                  // when succeeded
+  result?: AgentResponse | null;                  // when succeeded, or the requires_action response
   error?: { type: string; message: string | null } | null; // when failed/canceled
   created_at: number;
   started_at?: number | null;
@@ -270,26 +275,33 @@ try {
 | `idempotency_key_conflict` | 409 | `Idempotency-Key` reused with a different request |
 | `idempotency_key_sync_not_supported` | 400 | `Idempotency-Key` sent without `background: true` |
 | `agent_run_already_terminal` | 409 | `cancel()` on a finished run |
+| `action_not_found` / `session_not_found` | 404 | No such action / conversation in this project |
+| `action_not_pending` | 409 | The action was already answered or cancelled |
+| `pending_action` | 409 | A new message was sent while approvals/questions are open |
+| `action_expired` | 410 | The approval request ran out of time |
+| `action_forbidden` | 403 | The agent's approvers setting does not allow this caller |
+| `invalid_resolution` | 400 | The answer does not fit the action |
 
 ### Verifying Callbacks (Node.js)
 
 When the run finishes, the Console POSTs JSON to `callback_url` with:
 
 - `X-Cognipeer-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(callback_secret, "<t>.<raw body>")>`
-- `X-Cognipeer-Event: agent_run.succeeded | agent_run.failed | agent_run.canceled`
+- `X-Cognipeer-Event: agent_run.succeeded | agent_run.failed | agent_run.canceled | agent_run.requires_action`
 - `X-Cognipeer-Event-Id` — stable per run + event; deliveries are retried, so dedupe on it
 
-`verifyAgentRunCallback` lives in the Node-only `@cognipeer/console-sdk/webhooks`
-entry point (it uses `node:crypto`, which the browser-safe main entry avoids).
-Always verify the **raw** request body:
+`verifyWebhook` (alias: `verifyAgentRunCallback`) lives in the Node-only
+`@cognipeer/console-sdk/webhooks` entry point (it uses `node:crypto`, which the
+browser-safe main entry avoids). Webhook subscriptions (`client.webhooks`) are
+signed with the same scheme. Always verify the **raw** request body:
 
 ```typescript
 import express from 'express';
-import { verifyAgentRunCallback } from '@cognipeer/console-sdk/webhooks';
+import { verifyWebhook } from '@cognipeer/console-sdk/webhooks';
 import type { AgentRunCallbackEvent } from '@cognipeer/console-sdk';
 
 app.post('/hooks/agent-run', express.raw({ type: 'application/json' }), (req, res) => {
-  const ok = verifyAgentRunCallback({
+  const ok = verifyWebhook({
     rawBody: req.body, // Buffer
     signatureHeader: req.get('X-Cognipeer-Signature'),
     secret: process.env.AGENT_CALLBACK_SECRET!,
@@ -302,6 +314,18 @@ app.post('/hooks/agent-run', express.raw({ type: 'application/json' }), (req, re
   res.sendStatus(204);
 });
 ```
+
+## Approvals, Sessions and Webhooks
+
+A turn can pause for a tool approval or a question (`status: 'requires_action'`
+with `required_action`, or a run in `requires_action`). `client.agents.sessions`
+reads the conversation's runtime state (`get`), answers actions
+(`actions.resolve`), pages or follows the event log (`events.list`,
+`events.stream`), and — with a Console that has the agent runtime phase 1 —
+changes the session budget (`update`) and handles session files (`files`).
+`client.webhooks` manages event subscriptions. See the
+[README](https://github.com/Cognipeer/console-sdk#approvals-and-questions-human-in-the-loop)
+for examples.
 
 ## Legacy Chat Method
 

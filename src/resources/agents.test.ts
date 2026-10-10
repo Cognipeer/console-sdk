@@ -484,6 +484,46 @@ describe('AgentRunsResource', () => {
     expect(http.request).toHaveBeenCalledTimes(1);
   });
 
+  it('wait() returns a run that reached requires_action instead of polling forever', async () => {
+    const http = createMockHttp();
+    const paused = makeRun({
+      status: 'requires_action',
+      stop_reason: 'requires_action',
+      result: {
+        id: 'resp_run_abc',
+        object: 'response',
+        model: 'support-bot',
+        output: [],
+        status: 'requires_action',
+        stop_reason: 'requires_action',
+        required_action: {
+          type: 'agent_actions',
+          actions: [
+            {
+              id: 'act_1',
+              kind: 'tool_approval',
+              toolName: 'sandbox_exec',
+              status: 'pending',
+              requestedAt: '2026-10-10T10:00:00.000Z',
+            },
+          ],
+        },
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        created_at: 1700000005,
+        previous_response_id: null,
+        version: null,
+      },
+    });
+    http.request.mockResolvedValueOnce(makeRun({ status: 'running' })).mockResolvedValueOnce(paused);
+    const resource = new AgentRunsResource(http);
+
+    const result = await resource.wait('run_abc', { pollIntervalMs: 0 });
+
+    expect(result).toBe(paused);
+    expect(result.result?.required_action?.actions[0].id).toBe('act_1');
+    expect(http.request).toHaveBeenCalledTimes(2);
+  });
+
   it('wait() throws AgentRunWaitTimeoutError carrying the last run once timeoutMs elapses', async () => {
     vi.useFakeTimers();
     const http = createMockHttp();

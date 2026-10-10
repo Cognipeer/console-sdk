@@ -1,4 +1,6 @@
+import { abortReason, sleep } from '../abort';
 import { HttpClient } from '../http';
+import { AgentSessionsResource } from './agentSessions';
 import {
   Agent,
   AgentBackgroundResponseCreateRequest,
@@ -14,7 +16,7 @@ import {
   AgentRunWaitTimeoutError,
   AgentUpdateRequest,
   AgentVersion,
-  isAgentRunTerminal,
+  isAgentRunSettled,
   ListAgentsQuery,
 } from '../types';
 
@@ -55,11 +57,13 @@ export class AgentsResource {
   private http: HttpClient;
   public readonly responses: AgentResponsesResource;
   public readonly runs: AgentRunsResource;
+  public readonly sessions: AgentSessionsResource;
 
   constructor(http: HttpClient) {
     this.http = http;
     this.responses = new AgentResponsesResource(http);
     this.runs = new AgentRunsResource(http);
+    this.sessions = new AgentSessionsResource(http);
   }
 
   /**
@@ -296,8 +300,12 @@ export class AgentRunsResource {
   }
 
   /**
-   * Poll until the run reaches `succeeded`, `failed` or `canceled` and return
-   * it. Does not throw on `failed`/`canceled` — check `run.status`.
+   * Poll until the run reaches `succeeded`, `failed` or `canceled` — or
+   * `requires_action`, where it waits on a person and polling would never end —
+   * and return it. Does not throw on `failed`/`canceled`/`requires_action`:
+   * check `run.status`. A `requires_action` run lists what to answer in
+   * `run.result.required_action.actions`; answer them with
+   * `client.agents.sessions.actions.resolve()`.
    *
    * Throws `AgentRunWaitTimeoutError` when `timeoutMs` elapses, and the
    * signal's abort reason when `signal` aborts. Neither stops the run itself.
@@ -310,7 +318,7 @@ export class AgentRunsResource {
     for (;;) {
       if (signal?.aborted) throw abortReason(signal);
       const run = await this.get(runId, { signal });
-      if (isAgentRunTerminal(run.status)) return run;
+      if (isAgentRunSettled(run.status)) return run;
 
       const now = Date.now();
       if (deadline !== undefined && now >= deadline) {
@@ -320,29 +328,4 @@ export class AgentRunsResource {
       await sleep(delay, signal);
     }
   }
-}
-
-function abortReason(signal: AbortSignal): unknown {
-  if (signal.reason !== undefined) return signal.reason;
-  const error = new Error('The operation was aborted');
-  error.name = 'AbortError';
-  return error;
-}
-
-function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(abortReason(signal));
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(abortReason(signal as AbortSignal));
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
 }

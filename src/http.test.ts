@@ -591,6 +591,37 @@ describe('HttpClient', () => {
     });
   });
 
+  describe('requestRaw()', () => {
+    it('sends the bytes as-is under the given Content-Type and parses the JSON reply', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 'file_1' }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+      const bytes = new Uint8Array([1, 2, 3]);
+
+      const result = await http.requestRaw('POST', '/v1/files', bytes, {
+        contentType: 'application/pdf',
+        query: { name: 'a b.pdf' },
+      });
+
+      expect(result).toEqual({ id: 'file_1' });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.test/v1/files?name=a+b.pdf');
+      expect(init.method).toBe('POST');
+      expect(init.body).toBe(bytes);
+      expect(init.headers['Content-Type']).toBe('application/pdf');
+      expect(init.headers.Authorization).toBe('Bearer key');
+    });
+
+    it('throws a CognipeerAPIError on a non-ok response and does not retry', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: { message: 'too large' } }, { status: 503 }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 3, fetchMock);
+
+      await expect(
+        http.requestRaw('POST', '/v1/files', new Uint8Array([1]), { contentType: 'text/plain' }),
+      ).rejects.toBeInstanceOf(CognipeerAPIError);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('resolveURL()', () => {
     it('builds an absolute URL with query parameters', () => {
       const http = new HttpClient('https://api.test', 'key', 5000, 0, vi.fn());

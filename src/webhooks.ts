@@ -10,7 +10,7 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-export interface VerifyAgentRunCallbackParams {
+export interface VerifyWebhookParams {
   /**
    * The request body EXACTLY as received (string or bytes) — not a re-serialized
    * `JSON.stringify(req.body)`, whose key order/whitespace may differ.
@@ -18,13 +18,20 @@ export interface VerifyAgentRunCallbackParams {
   rawBody: string | Uint8Array;
   /** Value of the `X-Cognipeer-Signature` header: `t=<unix seconds>,v1=<hex>`. */
   signatureHeader: string | null | undefined;
-  /** The `callback_secret` sent when the run was created. */
+  /**
+   * The signing secret: the webhook endpoint's `secret` (returned by
+   * `webhooks.create()` / `webhooks.rotateSecret()`), or the `callback_secret`
+   * sent when a background run was created.
+   */
   secret: string;
   /** Maximum age (either direction) of the signature timestamp. Default 300 s. */
   toleranceSeconds?: number;
   /** Override "now" (unix seconds). For tests. */
   nowSeconds?: number;
 }
+
+/** @deprecated Alias of {@link VerifyWebhookParams}, kept for existing imports. */
+export type VerifyAgentRunCallbackParams = VerifyWebhookParams;
 
 function parseSignatureHeader(header: string): { timestamp: number; signatures: string[] } | null {
   let timestamp: number | undefined;
@@ -46,31 +53,32 @@ function parseSignatureHeader(header: string): { timestamp: number; signatures: 
 }
 
 /**
- * Verify an agent-run callback (`X-Cognipeer-Signature`) — HMAC-SHA256 over
- * `${t}.${rawBody}` keyed with your `callback_secret`, compared in constant
- * time, with a replay window of `toleranceSeconds`.
+ * Verify a delivery signed by the Console — a webhook subscription event or an
+ * agent-run `callback_url` call. The `X-Cognipeer-Signature` header is
+ * HMAC-SHA256 over `${t}.${rawBody}` keyed with your secret; this compares it in
+ * constant time and rejects timestamps outside `toleranceSeconds` (replay window).
  *
  * Returns `true` only when the header is well-formed, the timestamp is within
  * tolerance and one of its `v1` signatures matches. Dedupe deliveries on the
- * `X-Cognipeer-Event-Id` header: a callback can be retried.
+ * `X-Cognipeer-Event-Id` (or `webhook-id`) header: a delivery can be retried.
  *
  * @example
  * ```typescript
- * import { verifyAgentRunCallback } from '@cognipeer/console-sdk/webhooks';
+ * import { verifyWebhook, type WebhookEvent } from '@cognipeer/console-sdk/webhooks';
  *
- * app.post('/hooks/agent-run', express.raw({ type: 'application/json' }), (req, res) => {
- *   const ok = verifyAgentRunCallback({
+ * app.post('/hooks/cognipeer', express.raw({ type: 'application/json' }), (req, res) => {
+ *   const ok = verifyWebhook({
  *     rawBody: req.body,
  *     signatureHeader: req.get('X-Cognipeer-Signature'),
- *     secret: process.env.AGENT_CALLBACK_SECRET!,
+ *     secret: process.env.COGNIPEER_WEBHOOK_SECRET!,
  *   });
  *   if (!ok) return res.sendStatus(400);
- *   const event = JSON.parse(req.body.toString('utf8'));
+ *   const event: WebhookEvent = JSON.parse(req.body.toString('utf8'));
  *   res.sendStatus(204);
  * });
  * ```
  */
-export function verifyAgentRunCallback(params: VerifyAgentRunCallbackParams): boolean {
+export function verifyWebhook(params: VerifyWebhookParams): boolean {
   const { rawBody, signatureHeader, secret } = params;
   const toleranceSeconds = params.toleranceSeconds ?? 300;
   if (!signatureHeader || !secret) return false;
@@ -96,4 +104,34 @@ export function verifyAgentRunCallback(params: VerifyAgentRunCallbackParams): bo
   return matched;
 }
 
-export type { AgentRunCallbackEvent } from './types';
+/**
+ * Verify an agent-run callback (`callback_url` + `callback_secret`). Same scheme
+ * as {@link verifyWebhook}, which is the name to use in new code.
+ *
+ * @example
+ * ```typescript
+ * import { verifyAgentRunCallback } from '@cognipeer/console-sdk/webhooks';
+ *
+ * app.post('/hooks/agent-run', express.raw({ type: 'application/json' }), (req, res) => {
+ *   const ok = verifyAgentRunCallback({
+ *     rawBody: req.body,
+ *     signatureHeader: req.get('X-Cognipeer-Signature'),
+ *     secret: process.env.AGENT_CALLBACK_SECRET!,
+ *   });
+ *   if (!ok) return res.sendStatus(400);
+ *   const event = JSON.parse(req.body.toString('utf8'));
+ *   res.sendStatus(204);
+ * });
+ * ```
+ */
+export function verifyAgentRunCallback(params: VerifyAgentRunCallbackParams): boolean {
+  return verifyWebhook(params);
+}
+
+export type {
+  AgentRunCallbackEvent,
+  WebhookEvent,
+  KnownWebhookEvent,
+  UnknownWebhookEvent,
+  WebhookEventType,
+} from './types';

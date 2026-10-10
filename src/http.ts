@@ -19,6 +19,9 @@ type RequestOptions = {
   acceptStatuses?: number[];
 };
 
+/** A request body fetch() sends as-is. */
+type RawBody = NonNullable<RequestInit['body']>;
+
 /** Status codes safe to retry regardless of HTTP method: the request was
  * rejected before any side effect (rate limit, gateway/upstream failure),
  * not "the server processed it and then died" (which 500 could mean). */
@@ -373,9 +376,43 @@ export class HttpClient {
   }
 
   /**
+   * Request whose body is sent as-is (raw bytes) under the given
+   * `Content-Type`, e.g. a file upload that is not JSON/multipart. The
+   * response is JSON. Not retried: the body may be a one-shot stream.
+   */
+  async requestRaw<T>(
+    method: string,
+    path: string,
+    body: Uint8Array | ArrayBuffer | Blob,
+    options: Omit<RequestOptions, 'body'> & { contentType: string },
+  ): Promise<T> {
+    const url = this.resolveURL(path, options.query);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const { signal, cleanup } = combineSignals(options.signal, controller.signal);
+
+    try {
+      const response = await this.fetchOk(
+        method,
+        url,
+        { ...options, headers: { ...options.headers, 'Content-Type': options.contentType } },
+        signal,
+        undefined,
+        body as RawBody,
+      );
+      return (await response.json()) as T;
+    } finally {
+      clearTimeout(timeoutId);
+      cleanup();
+    }
+  }
+
+  /**
    * fetch() `url` with the auth headers and `options.body` JSON-encoded -- or,
    * for multipart, `form` sent as-is with no Content-Type so the runtime sets
-   * the boundary. A non-2xx response throws a CognipeerAPIError.
+   * the boundary -- or, for `raw`, those bytes under the caller's Content-Type.
+   * A non-2xx response throws a CognipeerAPIError.
    */
   private async fetchOk(
     method: string,
@@ -383,13 +420,14 @@ export class HttpClient {
     options: RequestOptions,
     signal: AbortSignal,
     form?: FormData,
+    raw?: RawBody,
   ): Promise<Response> {
     const headers = this.buildHeaders(options.headers);
     if (form) delete headers['Content-Type'];
     const response = await this.fetchImpl(url, {
       method,
       headers,
-      body: form ?? (options.body ? JSON.stringify(options.body) : undefined),
+      body: form ?? raw ?? (options.body ? JSON.stringify(options.body) : undefined),
       signal,
     });
     if (!response.ok && !options.acceptStatuses?.includes(response.status)) {

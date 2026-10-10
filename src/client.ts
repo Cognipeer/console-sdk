@@ -29,6 +29,7 @@ import { AnalyticsResource } from './resources/analytics';
 import { AuditResource } from './resources/audit';
 import { MonitoringResource } from './resources/monitoring';
 import { PiiResource } from './resources/pii';
+import { WebhooksResource } from './resources/webhooks';
 
 /**
  * Default configuration values
@@ -176,6 +177,13 @@ export class ConsoleClient {
   public pii: PiiResource;
 
   /**
+   * Webhook subscriptions API (event deliveries to your URL, signed; verify with
+   * `verifyWebhook` from `@cognipeer/console-sdk/webhooks`). Needs a Console with
+   * agent runtime phase 1.
+   */
+  public webhooks: WebhooksResource;
+
+  /**
    * Create a new Console client
    * @param options - Client configuration
    */
@@ -224,6 +232,7 @@ export class ConsoleClient {
     this.audit = new AuditResource(this.http);
     this.monitoring = new MonitoringResource(this.http);
     this.pii = new PiiResource(this.http);
+    this.webhooks = new WebhooksResource(this.http);
   }
 
   /**

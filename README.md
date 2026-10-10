@@ -184,8 +184,14 @@ const client = new ConsoleClient({
 - `client.agents.responses.create({ ..., background: true, callback_url?, callback_secret? }, { idempotencyKey? })` - Start a background run; returns an `AgentRun` (`run_...`) immediately
 - `client.agents.runs.get(runId)` - Run status, with `result` once `succeeded` / `error` once `failed`/`canceled`
 - `client.agents.runs.cancel(runId)` - Cooperatively cancel a `queued`/`running` run
-- `client.agents.runs.wait(runId, { pollIntervalMs?, timeoutMs?, signal? })` - Poll until the run is terminal
-- `verifyAgentRunCallback({ rawBody, signatureHeader, secret })` from `@cognipeer/console-sdk/webhooks` (Node.js) - Verify a signed run callback
+- `client.agents.runs.wait(runId, { pollIntervalMs?, timeoutMs?, signal? })` - Poll until the run is terminal **or `requires_action`** (waiting on an approval/question)
+- `client.agents.sessions.get(conversationId)` - Runtime state: `runtime_status`, `stop_reason`, `pending_actions`, `last_event_seq`
+- `client.agents.sessions.actions.list(conversationId)` / `.resolve(conversationId, actionId, body, { background? })` - Pending approvals/questions and answering them
+- `client.agents.sessions.events.list(conversationId, { after?, types?, limit? })` / `.stream(conversationId, { after?, types?, signal? })` - The session event log: paged, or followed live with automatic `Last-Event-ID` reconnect
+- `client.agents.sessions.update(conversationId, { budget, resume })` - Raise, set or remove (`null`) the session spend budget *(requires Console with agent runtime phase 1)*
+- `client.agents.sessions.files.upload/list/delete(conversationId, …)` - Files the agent can read in the conversation *(requires Console with agent runtime phase 1)*
+- `client.webhooks.create/list/get/update/delete/rotateSecret/test/deliveries/redeliver` - Webhook subscriptions *(requires Console with agent runtime phase 1)*
+- `verifyWebhook({ rawBody, signatureHeader, secret })` from `@cognipeer/console-sdk/webhooks` (Node.js) - Verify a signed webhook delivery (`verifyAgentRunCallback` is the same check, kept for existing code)
 
 ```typescript
 const run = await client.agents.responses.create(
@@ -197,6 +203,132 @@ if (done.status === 'succeeded') console.log(done.result?.output[0]?.content[0]?
 ```
 
 See [Agents → Background runs](docs/api/agents.md#background-runs) for callbacks and error codes.
+
+##### Approvals and questions (human in the loop)
+
+An agent can pause a turn to ask for a tool approval or to ask the user a question. The turn then
+comes back with `status: 'requires_action'` (Responses API) or a run in `requires_action`, listing
+what to answer. Answer with `sessions.actions.resolve()`; the turn continues from where it stopped.
+
+```typescript
+const res = await client.agents.responses.create({ model: 'ops-agent', input: 'Clean up staging' });
+
+if (res.status === 'requires_action') {
+  const conversationId = res.id.replace(/^resp_/, '');
+  for (const action of res.required_action!.actions) {
+    if (action.kind === 'tool_approval') {
+      console.log('Agent wants to run', action.toolName, action.args);
+      // `approvedArgs` replaces the arguments; `rememberForSession` stops asking for this tool.
+      const next = await client.agents.sessions.actions.resolve(conversationId, action.id, {
+        decision: 'allow',
+        rememberForSession: true,
+      });
+      // `next` is the continuation (Responses shape) - `requires_action` again if more is pending.
+    } else {
+      await client.agents.sessions.actions.resolve(conversationId, action.id, {
+        answers: { [action.questions![0].question]: 'staging' }, // or { cancelled: true } to skip
+      });
+    }
+  }
+}
+```
+
+- `resolve(..., { background: true })` queues the continuation and returns an `AgentRun` (`202`).
+- For a background run, `runs.wait()` returns when the run is `requires_action`; read
+  `run.result.required_action.actions` and `run.stop_reason`. The `agent_run.requires_action`
+  callback/webhook event fires at the same moment.
+- Errors (`CognipeerAPIError`): `403 action_forbidden` (not an allowed approver), `404`
+  `action_not_found`, `409 action_not_pending` (answered by someone else), `410 action_expired`,
+  `400 invalid_resolution`. Test with `isAgentActionErrorCode(error, AgentActionErrorCodes.Expired)`.
+- A new user message while an action is pending is rejected with `409 pending_action`
+  (`AgentActionErrorCodes.PendingAction`, ids in `error.response.error.pendingActionIds`) unless the
+  agent is configured to cancel pending requests.
+
+##### Session events and live follow
+
+Every session has an append-only event log (`user.message`, `agent.tool_use`, `agent.tool_result`,
+`action.required`, `action.resolved`, `agent.message`, `session.status_idle`, `session.work_done`,
+`session.error`, ...). Read it with `events.list()` or follow it:
+
+```typescript
+import { isSessionEvent } from '@cognipeer/console-sdk';
+
+const session = await client.agents.sessions.get(conversationId);
+const controller = new AbortController();
+
+for await (const event of client.agents.sessions.events.stream(conversationId, {
+  after: session.last_event_seq, // omit to replay the whole log first
+  signal: controller.signal,
+})) {
+  if (event.type === 'agent.message.delta') process.stdout.write(event.data.text); // live only
+  if (isSessionEvent(event, 'action.required')) notifyApprover(event.data.actionId);
+  if (isSessionEvent(event, 'session.status_idle')) break; // the stream itself never ends on idle
+}
+```
+
+`stream()` reconnects by itself (network drop, idle stall, the server's hourly cap) using
+`Last-Event-ID`, never repeats or skips a persisted event, gives up after `maxReconnects` (default 8)
+silent attempts, and throws the abort reason when `signal` aborts. `agent.message.delta` text chunks
+are live-only (they have no `seq` and are not replayed); the full text is in `agent.message`.
+Unknown event types arrive as plain `{ type, data }` objects: ignore them.
+
+##### Session budget and files (requires Console with agent runtime phase 1)
+
+```typescript
+// Raise the cap of a budget_paused session; it continues as a background run.
+const run = await client.agents.sessions.update(conversationId, {
+  budget: { maxCostUsd: 10, onReach: 'pause' },
+});
+if (run.object === 'agent.run') await client.agents.runs.wait(run.id);
+// budget: null removes the cap; resume: false changes it without continuing.
+
+// Attach a file for the agent to read.
+const file = await client.agents.sessions.files.upload(conversationId, bytes, {
+  name: 'report.pdf',
+  mimeType: 'application/pdf',
+});
+const res = await client.agents.responses.create({
+  model: 'research-agent',
+  previous_response_id: `resp_${conversationId}`,
+  input: [{ role: 'user', content: [
+    { type: 'input_text', text: 'Summarise this' },
+    { type: 'input_file', file_id: file.id },
+  ] }],
+});
+```
+
+##### Webhook subscriptions (requires Console with agent runtime phase 1)
+
+```typescript
+const hook = await client.webhooks.create({
+  url: 'https://example.com/hooks/cognipeer',
+  events: ['action.required', 'session.idled', 'agent_run.*'], // `prefix.*` patterns allowed
+});
+saveSecret(hook.secret); // returned only by create() and rotateSecret()
+await client.webhooks.test(hook.id);
+const failed = await client.webhooks.deliveries(hook.id, { status: 'failed' });
+await client.webhooks.redeliver(failed[0].id);
+```
+
+Verify every delivery on the raw body and dedupe on the `webhook-id` header (a delivery is retried
+until your endpoint answers 2xx; the Console disables an endpoint that redirects, resolves to a
+blocked address or keeps failing):
+
+```typescript
+import { verifyWebhook, type WebhookEvent } from '@cognipeer/console-sdk/webhooks';
+
+app.post('/hooks/cognipeer', express.raw({ type: 'application/json' }), (req, res) => {
+  const ok = verifyWebhook({
+    rawBody: req.body,
+    signatureHeader: req.get('X-Cognipeer-Signature'),
+    secret: process.env.COGNIPEER_WEBHOOK_SECRET!,
+  });
+  if (!ok) return res.sendStatus(400);
+  const event: WebhookEvent = JSON.parse(req.body.toString('utf8'));
+  // event.type: 'session.idled' | 'action.required' | 'agent_run.requires_action' | ...
+  res.sendStatus(204);
+});
+```
 
 #### Embeddings
 - `client.embeddings.create(params)` - Create embeddings

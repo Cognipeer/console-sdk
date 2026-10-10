@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-10-10
+
+Agent sessions: approvals and questions (human in the loop), the session event log, and webhook
+subscriptions. Additive: nothing in 3.0.0 changes behaviour, except that `agents.runs.wait()` now
+also returns a run that is `requires_action` (see Changed). The approvals/events/actions calls need
+a Console with the agent runtime phase 1 release; the pieces marked **budget**, **webhooks** and
+**files** are written against its documented contract and need that release too.
+
+### Added
+
+- **`client.agents.sessions`**
+  - `get(conversationId)` — runtime state: `runtime_status`, `stop_reason`, `pending_actions`,
+    `last_event_seq`.
+  - `actions.list(conversationId)` (the pending actions, read from `get()`) and
+    `actions.resolve(conversationId, actionId, body, { background?, signal? })` — answer a tool
+    approval (`{ decision, comment?, approvedArgs?, rememberForSession? }`) or a question
+    (`{ answers }` / `{ cancelled: true }`). Returns the continuation in the Responses shape, or the
+    queued `AgentRun` with `background: true`.
+  - `events.list(conversationId, { after?, types?, limit? })` and `events.stream(conversationId,
+    { after?, types?, signal?, maxReconnects?, reconnectDelayMs?, maxReconnectDelayMs?,
+    idleTimeoutMs? })` — an async iterator over the SSE log that reconnects with `Last-Event-ID`
+    (bounded retries, idle-stall detection, no repeated or skipped persisted events), yields live
+    `agent.message.delta` chunks, and throws the abort reason when `signal` aborts.
+  - **budget** `update(conversationId, { budget, resume })` — set, raise or remove (`null`) a
+    session spend budget; may answer with the queued `AgentRun` that continues a `budget_paused`
+    session. `budget` is also accepted by `responses.create()` when it starts a conversation.
+  - **files** `files.upload / list / delete` — files the agent can read; `upload` sends the raw
+    bytes (`Content-Type: <mime>`, `?name=`). `input_file` / `input_image` parts are accepted in
+    `ResponseInputItem.content`.
+- **webhooks** `client.webhooks` — `create`, `list`, `get`, `update`, `delete`, `rotateSecret`,
+  `test`, `deliveries`, `redeliver`. The signing secret is returned by `create` and `rotateSecret`
+  only.
+- **`verifyWebhook`** in `@cognipeer/console-sdk/webhooks` — the generic check for any signed
+  delivery (`X-Cognipeer-Signature: t=…,v1=…`, same scheme as agent-run callbacks), with the
+  `WebhookEvent` types. `verifyAgentRunCallback` and `VerifyAgentRunCallbackParams` still work
+  (`verifyAgentRunCallback` now delegates to `verifyWebhook`).
+- Types: `PendingAction` (`tool_approval` / `user_question`), `ToolApprovalResolution`,
+  `UserQuestionResolution`, `ResolveActionBody`, `AgentSession`, `SessionEvent` (the documented
+  event types plus an unknown-type fallback), `SessionStreamEvent`, `isSessionEvent()`,
+  `AgentSessionBudget`, `SessionFile`, `WebhookEndpoint`, `WebhookDelivery`, `WebhookEvent`,
+  `WEBHOOK_EVENT_TYPES`, `AgentActionErrorCodes` / `isAgentActionErrorCode()`, `isAgentRunSettled()`.
+- `AgentResponse.status` gains `incomplete` and `requires_action`, with `required_action`
+  (`{ type: 'agent_actions', actions }`), `stop_reason`, `stop_detail` and `incomplete_details`.
+  `AgentRunStatus` gains `requires_action` and `AgentRun` gains `stop_reason`; callbacks gain the
+  `agent_run.requires_action` event.
+- `HttpClient.requestRaw()` — a request whose body is sent as raw bytes under a caller-chosen
+  `Content-Type`.
+
+### Changed
+
+- `agents.runs.wait()` returns when the run reaches `requires_action` (it is waiting on a person,
+  so polling would never end), in addition to `succeeded` / `failed` / `canceled`. Check
+  `run.status`. `isAgentRunTerminal()` is unchanged: `requires_action` is not terminal.
+- Type widening: `AgentResponse.status` is no longer limited to `'completed' | 'failed'`; an
+  exhaustive `switch` over it needs the new cases.
+
 ## [3.0.0] - 2026-10-07
 
 Realtime: the SDK now speaks the Console's realtime voice-engine protocol (v2) and the v1 surface
