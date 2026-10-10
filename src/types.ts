@@ -46,8 +46,10 @@ export class CognipeerAPIError extends CognipeerError {
     /** Parsed `Retry-After` response header, in milliseconds, when present. */
     public retryAfterMs?: number,
     /**
-     * Machine-readable `error.code` from the response body, when the server
-     * sends one (e.g. `agent_run_conflict`, `agent_run_concurrency_limit`).
+     * Machine-readable code from the response body, when the server sends one:
+     * `error.code` (e.g. `agent_run_conflict`, `agent_run_concurrency_limit`) or,
+     * when `error` is just the message string, the top-level `code`
+     * (`{ error: 'Webhook not found', code: 'not_found' }`).
      * More specific than `errorType`: several codes can share one type
      * (`agent_run_concurrency_limit` is a `rate_limit_error`).
      */
@@ -1908,6 +1910,14 @@ export interface AgentChatResponse {
   content: string;
   conversationId: string;
   agentKey: string;
+  /**
+   * Only present when the turn did not complete: `requires_action` (the agent is
+   * paused on an approval or a question, `content` is empty), `incomplete` or
+   * `failed`. A completed turn has no `status`.
+   */
+  status?: Exclude<AgentResponse['status'], 'completed'>;
+  /** The approvals / questions to resolve while `status` is `requires_action`. */
+  pendingActions?: PendingAction[];
 }
 
 // ============================================================================
@@ -2182,9 +2192,10 @@ export interface AgentRunError {
 /**
  * A background agent run (`object: 'agent.run'`).
  *
- * The `202` returned by `responses.create({ background: true })` carries only
- * `id`, `object`, `status` and `created_at`; `runs.get()`/`runs.wait()` return
- * the full shape.
+ * The `202` returned by `responses.create({ background: true })` is already the
+ * full run (`stop_reason`, `agent`, `conversation_id`, `callback`... with
+ * `result: null` and `error: null` until it finishes); `runs.get()` and
+ * `runs.wait()` return the same shape.
  */
 export interface AgentRun {
   /** Run id, `run_<id>`. Also accepted as `previous_response_id`. */
@@ -2381,7 +2392,10 @@ export interface ToolApprovalPendingAction extends PendingActionBase {
   args?: unknown;
 }
 
-/** The agent asked the user a question and waits for the answer. */
+/**
+ * The agent asked the user a question and waits for the answer. Unlike a tool
+ * approval it has no `tool_name`.
+ */
 export interface UserQuestionPendingAction extends PendingActionBase {
   kind: 'user_question';
   questions?: AgentUserQuestion[];
@@ -2852,8 +2866,9 @@ export interface CreateWebhookRequest {
   /** Max 500 chars. */
   description?: string;
   /**
-   * Omitted = the token's project. `null` (or `"*"`) = every project of the
-   * tenant, another project's id = that project; both need a tenant owner/admin.
+   * Omitted = the token's project, which is the only one a client token can
+   * create for: `null`, `"*"` or another project's id is refused with 403
+   * (`A webhook can only be created for your own project`), tenant owner or not.
    */
   projectId?: string | null;
 }

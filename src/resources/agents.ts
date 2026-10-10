@@ -155,7 +155,9 @@ export class AgentsResource {
    * @deprecated Use `client.agents.responses.create()` instead for OpenAI Responses API compatibility
    * @param agentKey - The agent key
    * @param params - Chat request parameters
-   * @returns Chat response with content and conversation ID
+   * @returns Chat response with content and conversation ID. When the agent paused
+   * for an approval or a question, `content` is empty and `status` / `pendingActions`
+   * say so: resolve them with `client.agents.sessions.actions.resolve()`.
    */
   async chat(agentKey: string, params: AgentChatRequest): Promise<AgentChatResponse> {
     // Translate legacy format to Responses API format
@@ -174,6 +176,13 @@ export class AgentsResource {
       content: text,
       conversationId: convId,
       agentKey,
+      // Only a turn that did not complete says why its content is empty
+      ...(res.status && res.status !== 'completed'
+        ? {
+            status: res.status,
+            ...(res.required_action ? { pendingActions: res.required_action.actions } : {}),
+          }
+        : {}),
     };
   }
 }

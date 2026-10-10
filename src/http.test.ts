@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { HttpClient } from './http';
 import { CognipeerAPIError, CognipeerError } from './types';
+import { SDK_VERSION } from './version';
 
 function jsonResponse(
   body: unknown,
@@ -94,6 +96,16 @@ describe('HttpClient', () => {
         Authorization: 'Bearer sk-test-key',
       });
       expect(init.headers['User-Agent']).toContain('@cognipeer/console-sdk');
+    });
+
+    it('sends the package version in the User-Agent', async () => {
+      const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+      expect(SDK_VERSION).toBe(pkg.version);
+
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
+      await new HttpClient('https://api.test', 'key', 5000, 0, fetchMock).request('GET', '/v1/things');
+
+      expect(fetchMock.mock.calls[0][1].headers['User-Agent']).toBe(`@cognipeer/console-sdk/${pkg.version}`);
     });
 
     it('merges custom headers over the defaults', async () => {
@@ -356,6 +368,37 @@ describe('HttpClient', () => {
         errorCode: 'agent_run_conflict',
         message: 'busy',
       });
+    });
+
+    it('reads a top-level code beside a string error (webhook routes) into errorCode', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: 'The endpoint is disabled; enable it first', code: 'endpoint_disabled' }, { status: 409 }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+
+      await expect(http.request('POST', '/v1/deliveries/d/redeliver', { body: {} })).rejects.toMatchObject({
+        statusCode: 409,
+        errorCode: 'endpoint_disabled',
+        message: 'The endpoint is disabled; enable it first',
+      });
+    });
+
+    it('prefers error.code over a top-level code, and ignores a non-string one', async () => {
+      const http = new HttpClient(
+        'https://api.test',
+        'key',
+        5000,
+        0,
+        vi
+          .fn()
+          .mockResolvedValueOnce(jsonResponse({ error: { type: 't', code: 'inner', message: 'm' }, code: 'outer' }, { status: 409 }))
+          .mockResolvedValueOnce(jsonResponse({ error: 'plain', code: 42 }, { status: 400 })),
+      );
+
+      await expect(http.request('GET', '/v1/a')).rejects.toMatchObject({ errorCode: 'inner' });
+      const second = await http.request('GET', '/v1/b').catch((e: CognipeerAPIError) => e);
+      expect(second).toBeInstanceOf(CognipeerAPIError);
+      expect((second as CognipeerAPIError).errorCode).toBeUndefined();
     });
 
     it('does not retry a 504 whose body says retryable: false (sync agent timeout)', async () => {

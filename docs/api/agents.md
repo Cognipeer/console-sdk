@@ -243,8 +243,9 @@ interface AgentRun {
 }
 ```
 
-The `202` from `create({ background: true })` carries only `id`, `object`,
-`status` and `created_at`; `runs.get()` returns the full shape.
+The `202` from `create({ background: true })` is already the full run (`stop_reason`,
+`agent`, `conversation_id`, `callback`... with `result: null` and `error: null` until
+it finishes); `runs.get()` returns the same shape.
 
 ### Error Codes
 
@@ -343,6 +344,10 @@ const result = await client.agents.chat('support-bot', {
   message: 'Hello',
 });
 ```
+
+An agent that pauses for an approval or a question answers with an empty `content`;
+the result then also carries `status: 'requires_action'` and `pendingActions` (resolve
+them with `client.agents.sessions.actions.resolve()`). A completed turn has neither.
 
 ## See Also
 

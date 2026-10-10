@@ -65,6 +65,21 @@ actions, event `data`, budgets and error fields; webhooks: camelCase, wrapped in
   `run.status`. `isAgentRunTerminal()` is unchanged: `requires_action` is not terminal.
 - Type widening: `AgentResponse.status` is no longer limited to `'completed' | 'failed'`; an
   exhaustive `switch` over it needs the new cases.
+- `agents.chat()` (legacy) adds `status` and `pendingActions` to its result when the turn did not
+  complete, so a paused agent (`requires_action`, empty `content`) is no longer indistinguishable
+  from an empty answer. A completed turn keeps the exact old shape.
+
+### Fixed
+
+- `CognipeerAPIError.errorCode` is read from the top-level `code` when `error` is just the message
+  string (`{ error: 'Webhook not found', code: 'not_found' }`, the shape of the webhook routes), so
+  `not_found`, `forbidden`, `limit_reached`, `endpoint_disabled` and `delivery_pending` are no longer
+  lost. `error.code` still wins when both are present.
+- The `User-Agent` header carried a stale `@cognipeer/console-sdk/1.1.0`; it now sends the package
+  version (it shows in the Console's audit log).
+- Stale doc comments: the `202` of `responses.create({ background: true })` is the full `AgentRun`
+  (not just `id` / `object` / `status` / `created_at`); `CreateWebhookRequest.projectId` — a client
+  token can only create a webhook for its own project; `UserQuestionPendingAction` has no `tool_name`.
 
 ## [3.0.0] - 2026-10-07
 

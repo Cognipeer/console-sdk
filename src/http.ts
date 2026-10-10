@@ -1,4 +1,5 @@
 import { CognipeerAPIError, CognipeerError } from './types';
+import { SDK_VERSION } from './version';
 
 /** Per-call options accepted by every HttpClient method. */
 type RequestOptions = {
@@ -443,7 +444,7 @@ export class HttpClient {
     return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.apiKey}`,
-      'User-Agent': '@cognipeer/console-sdk/1.1.0',
+      'User-Agent': `@cognipeer/console-sdk/${SDK_VERSION}`,
       ...customHeaders,
     };
   }
@@ -460,7 +461,10 @@ export class HttpClient {
     try {
       responseData = await response.json();
       if (typeof responseData === 'object' && responseData !== null) {
-        const errorObj = responseData as { error?: string | { message?: string; type?: string; code?: unknown } };
+        const errorObj = responseData as {
+          error?: string | { message?: string; type?: string; code?: unknown };
+          code?: unknown;
+        };
         if (typeof errorObj.error === 'string') {
           errorMessage = errorObj.error;
         } else if (errorObj.error && typeof errorObj.error === 'object') {
@@ -468,6 +472,8 @@ export class HttpClient {
           errorType = errorObj.error.type;
           if (typeof errorObj.error.code === 'string') errorCode = errorObj.error.code;
         }
+        // `{ error: '<message>', code }` (webhooks, resource-management routes) keeps the code beside the message
+        if (errorCode === undefined && typeof errorObj.code === 'string') errorCode = errorObj.code;
       }
     } catch {
       // If JSON parsing fails, use default error message

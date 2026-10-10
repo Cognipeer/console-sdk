@@ -27,7 +27,8 @@ function webhookPath(webhookId: string, suffix = ''): string {
  * names (`projectId`, `createdAt`, `endpointId`...), as on the other
  * resource-management routes. Errors come as `{ error: '<message>', code }`
  * (`code`: `forbidden`, `not_found`, `limit_reached`, `endpoint_disabled`,
- * `delivery_pending`, ...); the message is on `CognipeerAPIError.message`.
+ * `delivery_pending`, ...); the message is on `CognipeerAPIError.message` and
+ * the code on `CognipeerAPIError.errorCode`.
  *
  * Managing endpoints takes a token whose owner is a project admin (or a tenant
  * owner/admin); everyone else gets 403. A token only manages its own project's

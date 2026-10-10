@@ -257,6 +257,59 @@ describe('AgentsResource', () => {
     });
   });
 
+  it('tells a paused agent from an empty answer in the legacy chat shape', async () => {
+    const http = createMockHttp();
+    const action = { id: 'act_1', status: 'pending' as const, kind: 'tool_approval' as const, tool_name: 'echo_note', args: { note: 'x' } };
+    http.request.mockResolvedValue({
+      id: 'resp_paused1',
+      object: 'response',
+      model: 'ops-agent',
+      output: [],
+      status: 'requires_action',
+      stop_reason: 'requires_action',
+      required_action: { type: 'agent_actions', actions: [action] },
+      usage: { input_tokens: 5, output_tokens: 0, total_tokens: 5 },
+      created_at: 1700000003,
+      previous_response_id: null,
+      version: null,
+    } satisfies AgentResponse);
+    const resource = new AgentsResource(http);
+
+    const result = await resource.chat('ops-agent', { message: 'Clean up' });
+
+    expect(result).toEqual({
+      content: '',
+      conversationId: 'paused1',
+      agentKey: 'ops-agent',
+      status: 'requires_action',
+      pendingActions: [action],
+    });
+  });
+
+  it('marks an incomplete turn without inventing pending actions', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({
+      id: 'resp_inc1',
+      object: 'response',
+      model: 'support-bot',
+      output: [],
+      status: 'incomplete',
+      incomplete_details: { reason: 'max_cost' },
+      usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 },
+      created_at: 1700000004,
+      previous_response_id: null,
+      version: null,
+    } satisfies AgentResponse);
+    const resource = new AgentsResource(http);
+
+    expect(await resource.chat('support-bot', { message: 'Hi' })).toEqual({
+      content: '',
+      conversationId: 'inc1',
+      agentKey: 'support-bot',
+      status: 'incomplete',
+    });
+  });
+
   it('returns the response id unchanged as conversationId when it lacks the resp_ prefix', async () => {
     const http = createMockHttp();
     const apiResponse: AgentResponse = {
