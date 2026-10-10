@@ -289,7 +289,7 @@ export class HttpClient {
     method: string,
     path: string,
     options: RequestOptions = {},
-  ): Promise<{ data: Uint8Array; contentType: string; requestId?: string }> {
+  ): Promise<{ data: Uint8Array; contentType: string; requestId?: string; headers: Headers }> {
     const url = this.resolveURL(path, options.query);
 
     const controller = new AbortController();
@@ -302,6 +302,8 @@ export class HttpClient {
         data: new Uint8Array(await response.arrayBuffer()),
         contentType: response.headers.get('content-type') || 'application/octet-stream',
         requestId: response.headers.get('x-request-id') || undefined,
+        // For routes whose metadata rides in headers (Content-Disposition's file name...).
+        headers: response.headers,
       };
     } finally {
       clearTimeout(timeoutId);

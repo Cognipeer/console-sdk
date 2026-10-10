@@ -100,6 +100,35 @@ describe('agent action error helpers', () => {
   });
 });
 
+describe('session and storage error codes', () => {
+  it('names the codes the sessions API, the Responses route and the file routes answer', () => {
+    expect(AgentActionErrorCodes).toMatchObject({
+      SessionNotFound: 'session_not_found',
+      SessionConflict: 'session_conflict',
+      StorageUnavailable: 'storage_unavailable',
+      StorageNotConfigured: 'storage_not_configured',
+      AttachmentsDisabled: 'attachments_disabled',
+      BucketInUse: 'bucket_in_use',
+    });
+  });
+
+  it('every code is unique', () => {
+    const codes = Object.values(AgentActionErrorCodes);
+    expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it('isAgentActionErrorCode reads the code of a storage refusal, from the nested or the top-level shape', () => {
+    const nested = new CognipeerAPIError('bucket is disabled', 409, 'invalid_request_error', undefined, undefined, 'storage_unavailable');
+    const conflict = new CognipeerAPIError('different sessions', 400, 'invalid_request_error', undefined, undefined, 'session_conflict');
+    const inUse = new CognipeerAPIError('bucket in use', 409, 'bucket_in_use', { error: 'x', code: 'bucket_in_use', agents: [] }, undefined, 'bucket_in_use');
+
+    expect(isAgentActionErrorCode(nested, AgentActionErrorCodes.StorageUnavailable)).toBe(true);
+    expect(isAgentActionErrorCode(nested, AgentActionErrorCodes.StorageNotConfigured)).toBe(false);
+    expect(isAgentActionErrorCode(conflict, AgentActionErrorCodes.SessionConflict)).toBe(true);
+    expect(isAgentActionErrorCode(inUse, AgentActionErrorCodes.BucketInUse)).toBe(true);
+  });
+});
+
 describe('isSessionEvent', () => {
   const event: SessionStreamEvent = {
     seq: 3,

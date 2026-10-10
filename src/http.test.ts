@@ -543,6 +543,19 @@ describe('HttpClient', () => {
       expect(result.requestId).toBe('req_123');
     });
 
+    it('hands back the response headers (for routes that put metadata there)', async () => {
+      const response = new Response(new Uint8Array([1]), {
+        status: 200,
+        headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="a.pdf"' },
+      });
+      const fetchMock = vi.fn().mockResolvedValue(response);
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+
+      const result = await http.requestBinary('GET', '/v1/download');
+
+      expect(result.headers.get('content-disposition')).toBe('attachment; filename="a.pdf"');
+    });
+
     it('defaults the content type when the header is missing', async () => {
       const response = new Response(new Uint8Array([9]), { status: 200 });
       const fetchMock = vi.fn().mockResolvedValue(response);

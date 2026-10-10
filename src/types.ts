@@ -300,6 +300,20 @@ export interface FileObject {
   size: number;
   metadata?: Record<string, unknown>;
   markdownContent?: string | null;
+  /**
+   * Set on a file uploaded to an agent session (stored in the bucket the agent's
+   * `attachments.bucketKey` names); absent on every other file. Manage those through
+   * `client.agents.sessions.files`.
+   */
+  purpose?: 'conversation';
+  /** The session the file belongs to (`purpose: 'conversation'`). */
+  conversationId?: string;
+  /** The agent that session belongs to (`purpose: 'conversation'`). */
+  agentKey?: string;
+  /** When the Console deletes the file (session files only; null = kept). ISO timestamp. */
+  expiresAt?: string | null;
+  /** Who uploaded it (session files). */
+  uploadedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -317,6 +331,26 @@ export interface ListFilesQuery {
   search?: string;
   limit?: number;
   cursor?: string;
+  /**
+   * List one folder of the bucket: a path such as `agent-sessions/support-bot/` (a
+   * trailing `/` is added when missing; `''` is the bucket root). The answer then
+   * carries the folder's files and its sub-folders in `folders`. With `search`, every
+   * match under the prefix, however deep.
+   */
+  prefix?: string;
+  /** `conversation`: only files attached to agent sessions; `other`: only the rest. */
+  purpose?: 'conversation' | 'other';
+}
+
+/** `client.files.list()` answer. */
+export interface ListFilesResponse {
+  files: FileObject[];
+  count: number;
+  nextCursor?: string | null;
+  /** Sub-folders of `prefix` (full paths ending in `/`); only when `prefix` was given. */
+  folders?: string[];
+  /** The folder listed, normalised; only when `prefix` was given. */
+  prefix?: string;
 }
 
 // ============================================================================
@@ -1895,6 +1929,40 @@ export interface Agent {
   /** Total number of versions published */
   latestVersion?: number;
   createdAt?: string;
+  /**
+   * What a client needs before it offers an attach button. Only on the
+   * single-agent lookup (`agents.get()`), not in `agents.list()`; absent on a
+   * Console that predates session files.
+   */
+  attachments?: AgentAttachmentsInfo;
+}
+
+/**
+ * `Agent.attachments`: whether the agent takes files right now, its limits, and
+ * whether its model reads images. The limits are the agent's `attachments`
+ * settings (Configure → Files); the Console enforces them on every upload.
+ */
+export interface AgentAttachmentsInfo {
+  /**
+   * Files are switched on for the agent AND its bucket can take a file now. When
+   * false, `sessions.files.upload()` answers 403 `attachments_disabled` (files off,
+   * or on with no bucket chosen) or 409 `storage_unavailable` (the bucket cannot
+   * take a file at the moment).
+   */
+  enabled: boolean;
+  /** Files one session holds (0 while files are off). */
+  max_files: number;
+  /** Largest file in MB (0 while files are off). */
+  max_file_size_mb: number;
+  /** Accepted MIME types (`image/*` style wildcards allowed); empty = any. */
+  allowed_mime_types: string[];
+  /**
+   * The agent's model accepts image input. When false, an attached image is
+   * replaced by a note saying so (the model never sees it). A chat model with no
+   * stored setting is taken to accept images when its id belongs to a known
+   * vision family.
+   */
+  accepts_images: boolean;
 }
 
 export interface ListAgentsQuery {
@@ -1938,9 +2006,10 @@ export interface ResponseInputContent {
 
 /**
  * A file for the turn: one already uploaded to the conversation with
- * `client.agents.sessions.files.upload()` (`file_id`, which needs
- * `previous_response_id` to name that conversation), or inline `file_data`
- * (base64 or a `data:` URL; the Console stores it as a session file).
+ * `client.agents.sessions.files.upload()` (`file_id`, which needs the request to
+ * name that conversation: `session_id`, `conversation` or `previous_response_id`),
+ * or inline `file_data` (base64 or a `data:` URL; the Console stores it as a
+ * session file).
  */
 export interface ResponseInputFileContent {
   type: 'input_file';
@@ -1952,8 +2021,9 @@ export interface ResponseInputFileContent {
 }
 
 /**
- * An image: a session file (`file_id`, with `previous_response_id`), a `data:`
- * URL, or an `http(s)` URL the Console fetches (public hosts only).
+ * An image: a session file (`file_id`, with `session_id` / `conversation` /
+ * `previous_response_id`), a `data:` URL, or an `http(s)` URL the Console
+ * fetches (public hosts only).
  */
 export interface ResponseInputImageContent {
   type: 'input_image';
@@ -1988,6 +2058,20 @@ export interface AgentResponseCreateRequest {
   input: string | ResponseInputItem[];
   /** ID of the previous response to continue the conversation */
   previous_response_id?: string;
+  /**
+   * Continue this session: one created with `client.agents.sessions.create()`
+   * (with files already uploaded to it, if any) or any session id. The same
+   * session `previous_response_id` (`resp_<id>`) and `conversation` name; give
+   * one, or several that agree. Naming different sessions is a
+   * `400 session_conflict`, and a session of another agent or project a
+   * `404 session_not_found`. `file_id` input parts may name a file of this
+   * session.
+   */
+  session_id?: string | null;
+  /**
+   * OpenAI-style alias of `session_id`: a session id, or `{ id }`. Same rules.
+   */
+  conversation?: string | { id: string } | null;
   /** System prompt override */
   instructions?: string;
   /** Request a specific published version of the agent */
@@ -2019,8 +2103,9 @@ export interface AgentResponseCreateRequest {
   callback_secret?: string;
   /**
    * Spend cap for the conversation this request creates (ignored when
-   * `previous_response_id` continues an existing one — use
-   * `client.agents.sessions.update()` then). Defaults to the agent's own
+   * `previous_response_id`, `session_id` or `conversation` continues an
+   * existing one — use `client.agents.sessions.update()` then, or give the
+   * budget to `client.agents.sessions.create()`). Defaults to the agent's own
    * session budget.
    *
    * Requires a Console with agent runtime phase 1 (session budget).
@@ -2441,13 +2526,26 @@ export interface ResolveActionOptions {
   signal?: AbortSignal;
 }
 
-/** `GET /agents/sessions/{id}` — the runtime state of a conversation. */
+/**
+ * `GET /agents/sessions/{id}` and `POST /agents/sessions` — a conversation with
+ * an agent and its runtime state.
+ */
 export interface AgentSession {
-  /** The conversation id. */
+  /** The conversation id (the `<id>` of `resp_<id>`); pass it as `session_id`. */
   id: string;
   object: 'agent.session';
   /** Agent key. */
   agent: string;
+  /** The session's title; the first message names a session that has none. */
+  title: string | null;
+  /** ISO timestamps. */
+  created_at: string | null;
+  updated_at: string | null;
+  /**
+   * The string pairs the client gave to `sessions.create({ metadata })` (`{}` for
+   * a session it did not create that way). Never read by the agent.
+   */
+  metadata: Record<string, string>;
   runtime_status: AgentSessionRuntimeStatus;
   /** How the last turn ended; null before the first one. */
   stop_reason: AgentSessionStopReason | null;
@@ -2477,6 +2575,76 @@ export interface AgentSessionUpdateRequest {
   resume?: boolean;
   /** Runtime context for the continuation (when it resumes). */
   runtime_context?: RuntimeContext;
+}
+
+/** Body of `sessions.create()`. */
+export interface AgentSessionCreateRequest {
+  /** Key of an active agent of the token's project. */
+  agent: string;
+  /** Optional title (at most 200 characters). Default: the first message names the session. */
+  title?: string;
+  /**
+   * Up to 16 string pairs (keys 1-64 characters, values up to 512), returned as the
+   * session's `metadata`. Handy for your own ids (`{ ticket: 'T-1042' }`); the agent
+   * never reads it. Anything else is `400 invalid_metadata`.
+   */
+  metadata?: Record<string, string>;
+  /**
+   * Spend cap for the session (`null` = none, overriding the agent's default;
+   * omitted = the agent's default). An agent whose admin set a session budget binds
+   * API callers to it (403 `budget_override_forbidden`).
+   */
+  budget?: AgentSessionBudget | null;
+  /** Context entered once for the whole session, merged under every turn's own. */
+  runtime_context?: RuntimeContext;
+}
+
+/**
+ * Runtime states `sessions.list({ status })` filters by (`idle` includes a
+ * session that has not run yet).
+ */
+export type AgentSessionStatusFilter = 'idle' | 'running' | 'requires_action' | 'budget_paused';
+
+/**
+ * A session as a list shows it: {@link AgentSession} without its
+ * `pending_actions` (open one session with `sessions.get()` to see them) and with
+ * `message_count`.
+ */
+export interface AgentSessionSummary extends Omit<AgentSession, 'pending_actions'> {
+  /** How many messages the session holds. */
+  message_count: number;
+}
+
+/** Query of `sessions.list()`. */
+export interface ListAgentSessionsQuery {
+  /** Only this agent's sessions (its key). */
+  agent?: string;
+  /** Only sessions in this runtime state. */
+  status?: AgentSessionStatusFilter;
+  /** Page size, 1 to 100 (server default 20). Anything else is `400 invalid_limit`. */
+  limit?: number;
+  /**
+   * The `next_cursor` of the previous page. The cursor marks the last row you read,
+   * so sessions created while you page never shift a row into or out of a page you
+   * already have. Not one the Console issued: `400 invalid_cursor`.
+   */
+  after?: string;
+}
+
+/** `GET /agents/sessions` as the Console answers it: one page, newest created first. */
+export interface AgentSessionList {
+  object: 'list';
+  data: AgentSessionSummary[];
+  has_more: boolean;
+  /** Pass as `after` for the next page; null on the last page. */
+  next_cursor: string | null;
+}
+
+/** `DELETE /agents/sessions/{id}` answer. */
+export interface AgentSessionDeleted {
+  id: string;
+  object: 'agent.session';
+  deleted: true;
 }
 
 // ── Session events ──────────────────────────────────────────────────
@@ -2648,10 +2816,47 @@ export function isSessionEvent<T extends KnownSessionEventType>(
   return event.type === type;
 }
 
-/** Machine-readable `error.code` values of the session endpoints (see `sessions.actions.resolve`). */
+/**
+ * Machine-readable `error.code` values of the session endpoints (see
+ * `sessions.actions.resolve`, `sessions.create`, `sessions.files.upload`, and
+ * `responses.create({ session_id })`).
+ */
 export const AgentActionErrorCodes = {
-  /** 404: the conversation does not exist in this project. */
+  /**
+   * 404: the conversation does not exist in this project, or `session_id` /
+   * `conversation` names a session of another agent or project.
+   */
   SessionNotFound: 'session_not_found',
+  /**
+   * 400: `session_id`, `conversation` and `previous_response_id` of one
+   * `responses.create()` name different sessions. Give one of them.
+   */
+  SessionConflict: 'session_conflict',
+  /**
+   * 409: the bucket the agent keeps its session files in cannot take a file now
+   * (deleted, disabled, or its provider is gone, inactive or not assigned to the
+   * project). The message names the bucket; an administrator fixes the bucket or
+   * picks another one in the agent's Files settings.
+   */
+  StorageUnavailable: 'storage_unavailable',
+  /**
+   * 409: the agent has files switched on but no bucket to keep them in (older
+   * data). An administrator picks a bucket in the agent's Files settings.
+   */
+  StorageNotConfigured: 'storage_not_configured',
+  /**
+   * 403: the agent takes no files: they are off for it, or on with no bucket chosen
+   * (`Files are not set up for this agent.`). Raised by `sessions.files.upload()` and
+   * by a `responses.create()` that carries `input_file` / `input_image` parts.
+   * `agents.get(key).attachments.enabled` says in advance.
+   */
+  AttachmentsDisabled: 'attachments_disabled',
+  /**
+   * 409 from the Files management API (not from any call of this SDK): a bucket
+   * cannot be deleted or disabled while an agent keeps session files in it. The
+   * body lists those agents (`error.response.agents`: `[{ key, name }]`).
+   */
+  BucketInUse: 'bucket_in_use',
   /** 404: no such action in this conversation. */
   NotFound: 'action_not_found',
   /** 409: somebody else answered it first, or it was cancelled; `error.response.error.action_status` says which. */
@@ -2756,9 +2961,23 @@ export interface SessionFile {
   conversion_status: 'pending' | 'succeeded' | 'failed' | 'skipped' | (string & {});
   /** Why the conversion failed, when it did. */
   conversion_error?: string;
+  /**
+   * The Document Store bucket the file is stored in: the agent's
+   * `attachments.bucketKey` when it was uploaded. Changing the agent's bucket
+   * later affects new files only; this stays the bucket the file lives in.
+   */
+  bucket_key: string;
+  /**
+   * The object's path inside that bucket, `<folder>/<agentKey>/<sessionId>/<unique name>`
+   * (the agent's `attachments.folder` is the first part). With `bucket_key` it
+   * says where the file sits in the Document Store: list the session's folder with
+   * `client.files.list(bucket_key, { prefix })`. Read the file itself with
+   * `sessions.files.content()`.
+   */
+  path: string;
   /** ISO timestamp. */
   created_at?: string;
-  /** ISO timestamp after which the Console deletes the file; absent = kept. */
+  /** ISO timestamp after which the Console deletes the file (the agent's `retentionDays`); absent = kept. */
   expires_at?: string;
 }
 
@@ -2773,6 +2992,34 @@ export interface SessionFileDeleted {
   id: string;
   object: 'agent.session.file';
   deleted: true;
+}
+
+/** Options of `sessions.files.content()` / `contentStream()`. */
+export interface SessionFileContentOptions {
+  /**
+   * `original` (default): the bytes as uploaded. `markdown`: the text the agent
+   * reads, for a file that has one (`conversion_status: 'succeeded'`); 404 otherwise.
+   */
+  variant?: 'original' | 'markdown';
+  signal?: AbortSignal;
+}
+
+/** A downloaded session file: `sessions.files.content()`. */
+export interface SessionFileContent {
+  data: Uint8Array;
+  /** The response `Content-Type` (`application/octet-stream` when the Console sent none). */
+  contentType: string;
+  /** The file name from `Content-Disposition`, when the Console sent one. */
+  fileName?: string;
+}
+
+/** A session file as a stream: `sessions.files.contentStream()`. Cancel the body if you stop reading early. */
+export interface SessionFileContentStream {
+  body: ReadableStream<Uint8Array>;
+  contentType: string;
+  fileName?: string;
+  /** From `Content-Length`, when the Console sent one. */
+  size?: number;
 }
 
 /** Options of `sessions.files.upload()`. */
@@ -2795,7 +3042,9 @@ export interface UploadSessionFileOptions {
 //
 // Subscriptions the Console delivers events to (signed with the endpoint's
 // secret — verify with `verifyWebhook` from `@cognipeer/console-sdk/webhooks`).
-// Requires a Console with agent runtime phase 1 (webhooks).
+// Requires a Console with agent runtime phase 1 (webhooks). Managing them is an
+// administration permission (`webhooks.read` / `webhooks.admin`) of the Console's
+// permission engine; see `WebhooksResource`.
 
 /** Event types a subscription can ask for. Open string: the server may add more. */
 export type WebhookEventType =
@@ -2836,6 +3085,12 @@ export type WebhookEndpointStatus = 'active' | 'disabled';
 export interface WebhookEndpoint {
   /** The endpoint id. */
   id: string;
+  /**
+   * The delivery URL. A caller who holds `webhooks.read` but not `webhooks.admin` sees
+   * it with the userinfo and the query string removed (`https://host/path?…`), because
+   * they often carry credentials. Only `webhooks.admin` sees the full URL, so never write
+   * a URL you read as a read-only caller back with `update()` (which needs admin anyway).
+   */
   url: string;
   /** null when none was given. */
   description: string | null;

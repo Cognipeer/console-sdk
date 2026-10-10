@@ -62,6 +62,29 @@ describe('FilesResource', () => {
     );
   });
 
+  it('lists one folder (prefix) and only session files (purpose), keeping folders and prefix', async () => {
+    const http = createMockHttp();
+    const response = {
+      files: [] as FileObject[],
+      count: 0,
+      nextCursor: null,
+      folders: ['agent-sessions/support-bot/conv_1/'],
+      prefix: 'agent-sessions/support-bot/',
+    };
+    http.request.mockResolvedValue(response);
+
+    const result = await new FilesResource(http).list('docs', {
+      prefix: 'agent-sessions/support-bot/',
+      purpose: 'conversation',
+    });
+
+    expect(result.folders).toEqual(['agent-sessions/support-bot/conv_1/']);
+    expect(result.prefix).toBe('agent-sessions/support-bot/');
+    expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/files/buckets/docs/objects', {
+      query: { prefix: 'agent-sessions/support-bot/', purpose: 'conversation' },
+    });
+  });
+
   it('passes an undefined query through to list when omitted', async () => {
     const http = createMockHttp();
     http.request.mockResolvedValue({ files: [], count: 0 });

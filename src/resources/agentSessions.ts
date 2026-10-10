@@ -1,4 +1,5 @@
 import { abortReason, sleep } from '../abort';
+import { fileNameFromContentDisposition } from '../contentDisposition';
 import { HttpClient } from '../http';
 import { SseParser, SseMessage } from '../sse';
 import {
@@ -6,9 +7,14 @@ import {
   AgentResponse,
   AgentRun,
   AgentSession,
+  AgentSessionCreateRequest,
+  AgentSessionDeleted,
+  AgentSessionList,
+  AgentSessionSummary,
   AgentSessionUpdateRequest,
   CognipeerAPIError,
   CognipeerError,
+  ListAgentSessionsQuery,
   ListSessionEventsQuery,
   PendingAction,
   ResolveActionBody,
@@ -16,6 +22,9 @@ import {
   SessionEventList,
   SessionEventStreamOptions,
   SessionFile,
+  SessionFileContent,
+  SessionFileContentOptions,
+  SessionFileContentStream,
   SessionFileDeleted,
   SessionFileList,
   SessionStreamEvent,
@@ -31,12 +40,84 @@ function sessionPath(conversationId: string, suffix = ''): string {
   return `${SESSIONS_PATH}/${encodeURIComponent(conversationId)}${suffix}`;
 }
 
+function filePath(conversationId: string, fileId: string, suffix = ''): string {
+  return sessionPath(conversationId, `/files/${encodeURIComponent(fileId)}${suffix}`);
+}
+
 /**
- * Sessions sub-resource: the runtime state of a conversation, its event log,
- * its pending approvals / questions and its files.
+ * One page of {@link AgentSessionsResource.list}, newest created first. Also an
+ * async iterable: `for await (const session of page)` walks this page and every
+ * page after it.
+ *
+ * It is not a thenable, so `await sessions.list()` resolves to the page itself.
+ * `JSON.stringify(page)` gives the Console's list body (`object`, `data`,
+ * `has_more`, `next_cursor`).
+ */
+export class AgentSessionPage implements AsyncIterable<AgentSessionSummary> {
+  readonly object = 'list' as const;
+  /** The sessions of this page, without their transcripts or pending actions. */
+  readonly data: AgentSessionSummary[];
+  /** Another page exists after this one. */
+  readonly has_more: boolean;
+  /** Pass as `after` for the next page; null on the last page. */
+  readonly next_cursor: string | null;
+  readonly #fetchNext: (cursor: string) => Promise<AgentSessionPage>;
+
+  /** @internal Built by `sessions.list()`. */
+  constructor(list: AgentSessionList, fetchNext: (cursor: string) => Promise<AgentSessionPage>) {
+    this.data = list.data ?? [];
+    this.has_more = list.has_more === true;
+    this.next_cursor = typeof list.next_cursor === 'string' && list.next_cursor !== '' ? list.next_cursor : null;
+    this.#fetchNext = fetchNext;
+  }
+
+  /** Whether {@link getNextPage} has a page to fetch. */
+  hasNextPage(): boolean {
+    return this.has_more && this.next_cursor !== null;
+  }
+
+  /** The page after this one (same filters), or null on the last page. */
+  async getNextPage(): Promise<AgentSessionPage | null> {
+    if (!this.hasNextPage()) return null;
+    return this.#fetchNext(this.next_cursor as string);
+  }
+
+  /** Every session of this page, then of the pages after it (fetched lazily, one at a time). */
+  async *[Symbol.asyncIterator](): AsyncGenerator<AgentSessionSummary, void, undefined> {
+    yield* this.data;
+    for (let next = await this.getNextPage(); next; next = await next.getNextPage()) {
+      yield* next.data;
+    }
+  }
+
+  toJSON(): AgentSessionList {
+    return { object: this.object, data: this.data, has_more: this.has_more, next_cursor: this.next_cursor };
+  }
+}
+
+/**
+ * What `sessions.list()` returns: awaitable for the first page, and an async
+ * iterable over every session.
+ */
+export type AgentSessionListCall = Promise<AgentSessionPage> & AsyncIterable<AgentSessionSummary>;
+
+/**
+ * Sessions sub-resource: start a session, list and delete them, and reach the
+ * runtime state of a conversation, its event log, its pending approvals /
+ * questions and its files.
  *
  * @example
  * ```typescript
+ * // Start a session, hand it a file, then ask about it.
+ * const session = await client.agents.sessions.create({ agent: 'support-bot', metadata: { ticket: 'T-1042' } });
+ * await client.agents.sessions.files.upload(session.id, bytes, { name: 'invoice.pdf', mimeType: 'application/pdf' });
+ * const reply = await client.agents.responses.create({
+ *   model: 'support-bot',
+ *   session_id: session.id,
+ *   input: 'What is the total on this invoice?',
+ * });
+ *
+ * // A turn that paused for an approval.
  * const res = await client.agents.responses.create({ model: 'ops-agent', input: 'Clean up the staging DB' });
  * if (res.status === 'requires_action') {
  *   const [action] = res.required_action!.actions;
@@ -56,6 +137,76 @@ export class AgentSessionsResource {
     this.events = new AgentSessionEventsResource(http);
     this.actions = new AgentSessionActionsResource(http);
     this.files = new AgentSessionFilesResource(http);
+  }
+
+  /**
+   * Start a session for an agent without sending a message (201). Nothing runs and
+   * nothing is spent: use it to upload files before the first message
+   * (`sessions.files.upload`), to give the session a budget or `metadata`, then send
+   * the first message with `responses.create({ session_id })`.
+   *
+   * The session belongs to the token's owner and is marked as coming from the API.
+   * The same agent and budget rules as the first turn of a Responses call apply.
+   *
+   * Rejects with `CognipeerAPIError`: 400 (`agent` missing, `agent_not_active`,
+   * `invalid_metadata`, `invalid_budget`), 403 `budget_override_forbidden` (the agent's
+   * own session budget binds API callers and this one would raise or remove it), 404
+   * `agent_not_found`.
+   */
+  async create(body: AgentSessionCreateRequest, options: { signal?: AbortSignal } = {}): Promise<AgentSession> {
+    return this.http.request<AgentSession>('POST', SESSIONS_PATH, { body, signal: options.signal });
+  }
+
+  /**
+   * The sessions of the token's project, newest created first (rows without their
+   * transcript: `message_count`, no `pending_actions`; `get()` has those).
+   *
+   * Await it for one page (`data`, `has_more`, `next_cursor`, and `getNextPage()`),
+   * or iterate it for every session, fetching pages as you go:
+   *
+   * ```typescript
+   * const page = await client.agents.sessions.list({ agent: 'support-bot', limit: 50 });
+   * for (const s of page.data) console.log(s.id, s.runtime_status);
+   * const more = await page.getNextPage(); // null on the last page
+   *
+   * for await (const s of client.agents.sessions.list({ status: 'requires_action' })) {
+   *   console.log(s.id, s.agent);
+   * }
+   * ```
+   *
+   * The cursor marks the last row you read, so sessions created while you page never
+   * shift a row into or out of a page you already have. Rejects with
+   * `CognipeerAPIError` 400 `invalid_limit` / `invalid_status` / `invalid_cursor`. The
+   * `signal` applies to every page request.
+   */
+  list(query: ListAgentSessionsQuery = {}, options: { signal?: AbortSignal } = {}): AgentSessionListCall {
+    const fetchPage = async (after: string | undefined): Promise<AgentSessionPage> => {
+      const list = await this.http.request<AgentSessionList>('GET', SESSIONS_PATH, {
+        query: { agent: query.agent, status: query.status, limit: query.limit, after },
+        signal: options.signal,
+      });
+      return new AgentSessionPage(list, fetchPage);
+    };
+    const first = fetchPage(query.after);
+    return Object.assign(first, {
+      async *[Symbol.asyncIterator](): AsyncGenerator<AgentSessionSummary, void, undefined> {
+        yield* await first;
+      },
+    });
+  }
+
+  /**
+   * Delete a session with its files (object, converted text and record), its event
+   * log and any open approvals or questions.
+   *
+   * Rejects with `CognipeerAPIError`: 404 `session_not_found`, 409
+   * `agent_run_conflict` (a run is queued or running on it: cancel it with
+   * `agents.runs.cancel()` first).
+   */
+  async delete(conversationId: string, options: { signal?: AbortSignal } = {}): Promise<AgentSessionDeleted> {
+    return this.http.request<AgentSessionDeleted>('DELETE', sessionPath(conversationId), {
+      signal: options.signal,
+    });
   }
 
   /**
@@ -444,7 +595,13 @@ export class AgentSessionActionsResource {
 /**
  * Files attached to a conversation. The agent reads them in later turns; hand
  * one to a turn with an `input_file` / `input_image` part (`{ file_id }`) on a
- * request that continues the conversation (`previous_response_id`).
+ * request that continues the conversation (`session_id`, `conversation` or
+ * `previous_response_id`). A file nobody has sent yet goes with the session's next
+ * message anyway (unless the agent's *attach new uploads* setting is off).
+ *
+ * Whether an agent takes files, and where it keeps them (the bucket and folder of
+ * its Files settings), is the Console's setting: `agents.get(key).attachments`
+ * says whether and how much; each file says where it is (`bucket_key`, `path`).
  */
 export class AgentSessionFilesResource {
   private http: HttpClient;
@@ -463,7 +620,10 @@ export class AgentSessionFilesResource {
    * Rejects with `CognipeerAPIError` when the file exceeds the agent's
    * `maxFileSizeMb` / `maxFiles` (`file_too_large`, `too_many_files`), its type
    * is not allowed (`unsupported_file_type`), the agent takes no attachments
-   * (`attachments_disabled`, 403) or the tenant is over quota (`quota_exceeded`).
+   * (`attachments_disabled`, 403: files are off for it, or on with no bucket chosen),
+   * the bucket it keeps files in cannot take one now (`storage_unavailable`, 409,
+   * naming the bucket; `storage_not_configured` for files on with no bucket in older
+   * data) or the tenant is over quota (`quota_exceeded`). See `AgentActionErrorCodes`.
    */
   async upload(
     conversationId: string,
@@ -496,16 +656,66 @@ export class AgentSessionFilesResource {
     return response.data;
   }
 
+  /**
+   * Download a file's bytes (`GET …/files/{fileId}/content`), buffered like
+   * `client.files.download()`: the original as uploaded, or with
+   * `variant: 'markdown'` the text the agent reads. Returns the bytes, the
+   * `Content-Type` and the file name from `Content-Disposition`.
+   *
+   * 404 `file_not_found` when the file is not on this conversation (or was deleted
+   * or expired), or has no `markdown` variant (its `conversion_status` is not
+   * `succeeded`). For a large file use {@link contentStream}.
+   */
+  async content(
+    conversationId: string,
+    fileId: string,
+    options: SessionFileContentOptions = {},
+  ): Promise<SessionFileContent> {
+    const response = await this.http.requestBinary('GET', filePath(conversationId, fileId, '/content'), {
+      query: { variant: options.variant },
+      signal: options.signal,
+    });
+    const fileName = fileNameFromContentDisposition(response.headers?.get('content-disposition'));
+    return {
+      data: response.data,
+      contentType: response.contentType,
+      ...(fileName ? { fileName } : {}),
+    };
+  }
+
+  /**
+   * Like {@link content}, but hands the body back as a stream instead of buffering
+   * it: pipe it to disk or to your own response. The client timeout covers the wait
+   * for the response headers only (a transfer that keeps producing bytes is not cut
+   * off); `signal` can abort it at any point. Cancel `body` if you stop reading early.
+   */
+  async contentStream(
+    conversationId: string,
+    fileId: string,
+    options: SessionFileContentOptions = {},
+  ): Promise<SessionFileContentStream> {
+    const { body, headers } = await this.http.requestStream('GET', filePath(conversationId, fileId, '/content'), {
+      query: { variant: options.variant },
+      signal: options.signal,
+    });
+    const fileName = fileNameFromContentDisposition(headers.get('content-disposition'));
+    const length = Number(headers.get('content-length'));
+    return {
+      body,
+      contentType: headers.get('content-type') || 'application/octet-stream',
+      ...(fileName ? { fileName } : {}),
+      ...(headers.get('content-length') && Number.isFinite(length) ? { size: length } : {}),
+    };
+  }
+
   /** Delete a file (object, converted text and record); 404 `file_not_found` when it is not on this conversation. */
   async delete(
     conversationId: string,
     fileId: string,
     options: { signal?: AbortSignal } = {},
   ): Promise<SessionFileDeleted> {
-    return this.http.request<SessionFileDeleted>(
-      'DELETE',
-      sessionPath(conversationId, `/files/${encodeURIComponent(fileId)}`),
-      { signal: options.signal },
-    );
+    return this.http.request<SessionFileDeleted>('DELETE', filePath(conversationId, fileId), {
+      signal: options.signal,
+    });
   }
 }

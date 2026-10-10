@@ -3,6 +3,7 @@ import {
   AgentSessionActionsResource,
   AgentSessionEventsResource,
   AgentSessionFilesResource,
+  AgentSessionPage,
   AgentSessionsResource,
 } from './agentSessions';
 import { AgentsResource } from './agents';
@@ -17,6 +18,8 @@ import type {
   AgentResponse,
   AgentRun,
   AgentSession,
+  AgentSessionList,
+  AgentSessionSummary,
   PendingAction,
   SessionEventList,
   SessionFile,
@@ -41,6 +44,10 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
     id: 'conv_1',
     object: 'agent.session',
     agent: 'ops-agent',
+    title: 'Clean up staging',
+    created_at: '2026-10-10T09:00:00.000Z',
+    updated_at: '2026-10-10T10:00:00.000Z',
+    metadata: {},
     runtime_status: 'requires_action',
     stop_reason: 'requires_action',
     pending_actions: [approval],
@@ -127,6 +134,292 @@ describe('AgentSessionsResource', () => {
 
     expect(result.object).toBe('agent.session');
     expect(http.request).toHaveBeenCalledWith('PATCH', SESSION_PATH, { body: { budget: null, resume: false } });
+  });
+});
+
+describe('AgentSessionsResource.create', () => {
+  it('starts a session via POST /api/client/v1/agents/sessions', async () => {
+    const http = createMockHttp();
+    const created = makeSession({
+      runtime_status: 'idle',
+      stop_reason: null,
+      pending_actions: [],
+      last_event_seq: 0,
+      metadata: { ticket: 'T-1042' },
+      budget: { max_cost_usd: 2, on_reach: 'pause' },
+    });
+    http.request.mockResolvedValue(created);
+    const controller = new AbortController();
+
+    const result = await new AgentSessionsResource(http).create(
+      {
+        agent: 'ops-agent',
+        title: 'Clean up staging',
+        metadata: { ticket: 'T-1042' },
+        budget: { max_cost_usd: 2 },
+        runtime_context: { headers: { 'x-tenant': 'acme' } },
+      },
+      { signal: controller.signal },
+    );
+
+    expect(result).toBe(created);
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/agents/sessions', {
+      body: {
+        agent: 'ops-agent',
+        title: 'Clean up staging',
+        metadata: { ticket: 'T-1042' },
+        budget: { max_cost_usd: 2 },
+        runtime_context: { headers: { 'x-tenant': 'acme' } },
+      },
+      signal: controller.signal,
+    });
+  });
+
+  it('sends budget: null (no budget, overriding the agent default) as is', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue(makeSession({ runtime_status: 'idle' }));
+
+    await new AgentSessionsResource(http).create({ agent: 'ops-agent', budget: null });
+
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/agents/sessions', {
+      body: { agent: 'ops-agent', budget: null },
+    });
+  });
+
+  it('surfaces the create error codes', async () => {
+    const http = createMockHttp();
+    http.request.mockRejectedValue(
+      new CognipeerAPIError('Agent not found', 404, 'not_found_error', {}, undefined, 'agent_not_found'),
+    );
+
+    const error = await new AgentSessionsResource(http).create({ agent: 'ghost' }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(CognipeerAPIError);
+    expect((error as CognipeerAPIError).errorCode).toBe('agent_not_found');
+    expect((error as CognipeerAPIError).statusCode).toBe(404);
+  });
+});
+
+function makeSummary(id: string, overrides: Partial<AgentSessionSummary> = {}): AgentSessionSummary {
+  return {
+    id,
+    object: 'agent.session',
+    agent: 'support-bot',
+    title: null,
+    created_at: '2026-10-10T09:00:00.000Z',
+    updated_at: '2026-10-10T09:00:00.000Z',
+    metadata: {},
+    message_count: 0,
+    runtime_status: 'idle',
+    stop_reason: null,
+    last_event_seq: 0,
+    budget: null,
+    spent_usd: 0,
+    ...overrides,
+  };
+}
+
+function makeList(ids: string[], nextCursor: string | null): AgentSessionList {
+  return {
+    object: 'list',
+    data: ids.map((id) => makeSummary(id)),
+    has_more: nextCursor !== null,
+    next_cursor: nextCursor,
+  };
+}
+
+describe('AgentSessionsResource.list', () => {
+  const PATH = '/api/client/v1/agents/sessions';
+
+  it('awaits to one page: filters go in the query, the Console list fields are kept', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue(makeList(['s2', 's1'], 'cur_1'));
+    const controller = new AbortController();
+
+    const page = await new AgentSessionsResource(http).list(
+      { agent: 'support-bot', status: 'requires_action', limit: 2, after: 'cur_0' },
+      { signal: controller.signal },
+    );
+
+    expect(page).toBeInstanceOf(AgentSessionPage);
+    expect(page.object).toBe('list');
+    expect(page.data.map((s) => s.id)).toEqual(['s2', 's1']);
+    expect(page.has_more).toBe(true);
+    expect(page.next_cursor).toBe('cur_1');
+    expect(page.hasNextPage()).toBe(true);
+    expect(http.request).toHaveBeenCalledTimes(1);
+    expect(http.request).toHaveBeenCalledWith('GET', PATH, {
+      query: { agent: 'support-bot', status: 'requires_action', limit: 2, after: 'cur_0' },
+      signal: controller.signal,
+    });
+  });
+
+  it('sends no filters by default (the HTTP client drops unset query values)', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue(makeList([], null));
+
+    const page = await new AgentSessionsResource(http).list();
+
+    expect(page.data).toEqual([]);
+    expect(page.hasNextPage()).toBe(false);
+    const [, , options] = http.request.mock.calls[0];
+    expect(Object.values(options.query).every((value) => value === undefined)).toBe(true);
+  });
+
+  it('is not a thenable page: awaiting it yields the page, and the page serialises as the Console list', async () => {
+    const http = createMockHttp();
+    const body = makeList(['s1'], null);
+    http.request.mockResolvedValue(body);
+
+    const page = await new AgentSessionsResource(http).list();
+
+    expect((page as unknown as { then?: unknown }).then).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(page))).toEqual(body);
+  });
+
+  it('getNextPage() fetches the next page with the same filters and the cursor; null on the last page', async () => {
+    const http = createMockHttp();
+    http.request
+      .mockResolvedValueOnce(makeList(['s3', 's2'], 'cur_2'))
+      .mockResolvedValueOnce(makeList(['s1'], null));
+    const controller = new AbortController();
+
+    const first = await new AgentSessionsResource(http).list(
+      { agent: 'support-bot', limit: 2 },
+      { signal: controller.signal },
+    );
+    const second = await first.getNextPage();
+
+    expect(second?.data.map((s) => s.id)).toEqual(['s1']);
+    expect(http.request).toHaveBeenLastCalledWith('GET', PATH, {
+      query: { agent: 'support-bot', status: undefined, limit: 2, after: 'cur_2' },
+      signal: controller.signal,
+    });
+    expect(second?.hasNextPage()).toBe(false);
+    expect(await second?.getNextPage()).toBeNull();
+    expect(http.request).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not chase a page the Console says is the last (has_more without a cursor stops too)', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ object: 'list', data: [makeSummary('s1')], has_more: true, next_cursor: null });
+
+    const page = await new AgentSessionsResource(http).list();
+
+    expect(page.hasNextPage()).toBe(false);
+    expect(await page.getNextPage()).toBeNull();
+    expect(http.request).toHaveBeenCalledTimes(1);
+  });
+
+  it('iterates every session across pages, fetching lazily', async () => {
+    const http = createMockHttp();
+    http.request
+      .mockResolvedValueOnce(makeList(['s5', 's4'], 'cur_a'))
+      .mockResolvedValueOnce(makeList(['s3', 's2'], 'cur_b'))
+      .mockResolvedValueOnce(makeList(['s1'], null));
+
+    const seen: string[] = [];
+    for await (const session of new AgentSessionsResource(http).list({ limit: 2 })) {
+      seen.push(session.id);
+      if (seen.length === 2) expect(http.request).toHaveBeenCalledTimes(1);
+    }
+
+    expect(seen).toEqual(['s5', 's4', 's3', 's2', 's1']);
+    expect(http.request.mock.calls.map((call) => call[2].query.after)).toEqual([undefined, 'cur_a', 'cur_b']);
+  });
+
+  it('stops fetching when the loop breaks', async () => {
+    const http = createMockHttp();
+    http.request
+      .mockResolvedValueOnce(makeList(['s3', 's2'], 'cur_a'))
+      .mockResolvedValueOnce(makeList(['s1'], null));
+
+    for await (const session of new AgentSessionsResource(http).list({ limit: 2 })) {
+      if (session.id === 's2') break;
+    }
+
+    expect(http.request).toHaveBeenCalledTimes(1);
+  });
+
+  it('a page is itself iterable from that page on', async () => {
+    const http = createMockHttp();
+    http.request
+      .mockResolvedValueOnce(makeList(['s3'], 'cur_a'))
+      .mockResolvedValueOnce(makeList(['s2', 's1'], null));
+
+    const page = await new AgentSessionsResource(http).list({ limit: 1 });
+    const ids: string[] = [];
+    for await (const session of page) ids.push(session.id);
+
+    expect(ids).toEqual(['s3', 's2', 's1']);
+  });
+
+  it('iterates from the `after` cursor it was given', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue(makeList(['s1'], null));
+
+    const ids: string[] = [];
+    for await (const session of new AgentSessionsResource(http).list({ after: 'cur_9' })) ids.push(session.id);
+
+    expect(ids).toEqual(['s1']);
+    expect(http.request.mock.calls[0][2].query.after).toBe('cur_9');
+  });
+
+  it('rejects the awaited call and the iteration with the Console error', async () => {
+    const http = createMockHttp();
+    const failure = new CognipeerAPIError('after is not a cursor', 400, 'invalid_request_error', {}, undefined, 'invalid_cursor');
+    http.request.mockRejectedValue(failure);
+    const resource = new AgentSessionsResource(http);
+
+    await expect(resource.list({ after: 'junk' })).rejects.toBe(failure);
+    await expect(
+      (async () => {
+        for await (const session of resource.list({ after: 'junk' })) void session;
+      })(),
+    ).rejects.toBe(failure);
+  });
+
+  it('a failure while paging surfaces mid-iteration', async () => {
+    const http = createMockHttp();
+    const failure = new CognipeerAPIError('boom', 500);
+    http.request.mockResolvedValueOnce(makeList(['s2'], 'cur_a')).mockRejectedValueOnce(failure);
+
+    const seen: string[] = [];
+    await expect(
+      (async () => {
+        for await (const session of new AgentSessionsResource(http).list()) seen.push(session.id);
+      })(),
+    ).rejects.toBe(failure);
+    expect(seen).toEqual(['s2']);
+  });
+});
+
+describe('AgentSessionsResource.delete', () => {
+  it('deletes via DELETE /api/client/v1/agents/sessions/{id}', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ id: 'conv_1', object: 'agent.session', deleted: true });
+    const controller = new AbortController();
+
+    const result = await new AgentSessionsResource(http).delete('conv_1', { signal: controller.signal });
+
+    expect(result).toEqual({ id: 'conv_1', object: 'agent.session', deleted: true });
+    expect(http.request).toHaveBeenCalledWith('DELETE', SESSION_PATH, { signal: controller.signal });
+  });
+
+  it('encodes the id and surfaces a 409 while a run is active', async () => {
+    const http = createMockHttp();
+    http.request.mockRejectedValue(
+      new CognipeerAPIError('An active run exists', 409, 'agent_run_conflict', {}, undefined, 'agent_run_conflict'),
+    );
+
+    const error = await new AgentSessionsResource(http).delete('conv/1 x').catch((e: unknown) => e);
+
+    expect(http.request).toHaveBeenCalledWith(
+      'DELETE',
+      `/api/client/v1/agents/sessions/${encodeURIComponent('conv/1 x')}`,
+      {},
+    );
+    expect((error as CognipeerAPIError).errorCode).toBe('agent_run_conflict');
   });
 });
 
@@ -658,6 +951,8 @@ describe('AgentSessionFilesResource', () => {
     mime_type: 'application/pdf',
     size: 5,
     conversion_status: 'succeeded',
+    bucket_key: 'session-docs',
+    path: 'agent-sessions/ops-agent/conv_1/report.pdf',
     created_at: '2026-10-10T10:00:00.000Z',
   };
 
@@ -737,6 +1032,16 @@ describe('AgentSessionFilesResource', () => {
     expect(http.request).toHaveBeenCalledWith('GET', `${SESSION_PATH}/files`, {});
   });
 
+  it('keeps where a listed file is stored (bucket_key, path)', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ object: 'list', data: [stored] });
+
+    const [file] = await new AgentSessionFilesResource(http).list('conv_1');
+
+    expect(file.bucket_key).toBe('session-docs');
+    expect(file.path).toBe('agent-sessions/ops-agent/conv_1/report.pdf');
+  });
+
   it('deletes a file via DELETE .../files/{fileId}', async () => {
     const http = createMockHttp();
     http.request.mockResolvedValue({ id: 'file_1', object: 'agent.session.file', deleted: true });
@@ -745,6 +1050,127 @@ describe('AgentSessionFilesResource', () => {
 
     expect(result).toEqual({ id: 'file_1', object: 'agent.session.file', deleted: true });
     expect(http.request).toHaveBeenCalledWith('DELETE', `${SESSION_PATH}/files/file_1`, {});
+  });
+
+  it('surfaces the storage and attachment error codes of an upload', async () => {
+    const http = createMockHttp();
+    const resource = new AgentSessionFilesResource(http);
+    const codes = [
+      ['storage_unavailable', 409, AgentActionErrorCodes.StorageUnavailable],
+      ['storage_not_configured', 409, AgentActionErrorCodes.StorageNotConfigured],
+      ['attachments_disabled', 403, AgentActionErrorCodes.AttachmentsDisabled],
+    ] as const;
+
+    for (const [code, status, constant] of codes) {
+      http.requestRaw.mockRejectedValueOnce(new CognipeerAPIError('refused', status, 'invalid_request_error', {}, undefined, code));
+      const error = await resource.upload('conv_1', new Uint8Array([1]), { name: 'a.txt' }).catch((e: unknown) => e);
+      expect(constant).toBe(code);
+      expect(isAgentActionErrorCode(error, constant)).toBe(true);
+    }
+  });
+
+  describe('content', () => {
+    it('downloads the original via GET .../files/{fileId}/content and reads the name from Content-Disposition', async () => {
+      const http = createMockHttp();
+      const bytes = new Uint8Array([37, 80, 68, 70]);
+      http.requestBinary.mockResolvedValue({
+        data: bytes,
+        contentType: 'application/pdf',
+        headers: new Headers({ 'content-disposition': 'attachment; filename="report.pdf"' }),
+      });
+      const controller = new AbortController();
+
+      const result = await new AgentSessionFilesResource(http).content('conv_1', 'file_1', { signal: controller.signal });
+
+      expect(result).toEqual({ data: bytes, contentType: 'application/pdf', fileName: 'report.pdf' });
+      expect(http.requestBinary).toHaveBeenCalledWith('GET', `${SESSION_PATH}/files/file_1/content`, {
+        query: { variant: undefined },
+        signal: controller.signal,
+      });
+    });
+
+    it('asks for the markdown variant, encodes ids, and leaves fileName out when there is no header', async () => {
+      const http = createMockHttp();
+      http.requestBinary.mockResolvedValue({
+        data: new Uint8Array([35]),
+        contentType: 'text/markdown; charset=utf-8',
+        headers: new Headers(),
+      });
+
+      const result = await new AgentSessionFilesResource(http).content('conv/1', 'file 1', { variant: 'markdown' });
+
+      expect(result).toEqual({ data: new Uint8Array([35]), contentType: 'text/markdown; charset=utf-8' });
+      expect(http.requestBinary).toHaveBeenCalledWith(
+        'GET',
+        `/api/client/v1/agents/sessions/${encodeURIComponent('conv/1')}/files/${encodeURIComponent('file 1')}/content`,
+        { query: { variant: 'markdown' }, signal: undefined },
+      );
+    });
+
+    it('tolerates a transport that returns no headers', async () => {
+      const http = createMockHttp();
+      http.requestBinary.mockResolvedValue({ data: new Uint8Array([1]), contentType: 'image/png' });
+
+      expect(await new AgentSessionFilesResource(http).content('conv_1', 'file_1')).toEqual({
+        data: new Uint8Array([1]),
+        contentType: 'image/png',
+      });
+    });
+
+    it('rejects with the Console error when the file is not on this session', async () => {
+      const http = createMockHttp();
+      http.requestBinary.mockRejectedValue(
+        new CognipeerAPIError('File not found', 404, 'not_found_error', {}, undefined, 'file_not_found'),
+      );
+
+      const error = await new AgentSessionFilesResource(http).content('conv_1', 'gone').catch((e: unknown) => e);
+
+      expect((error as CognipeerAPIError).errorCode).toBe('file_not_found');
+    });
+  });
+
+  describe('contentStream', () => {
+    it('hands back the body as a stream with type, name and size', async () => {
+      const http = createMockHttp();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3]));
+          controller.close();
+        },
+      });
+      http.requestStream.mockResolvedValue({
+        body,
+        status: 200,
+        headers: new Headers({
+          'content-type': 'image/png',
+          'content-length': '3',
+          'content-disposition': "inline; filename*=UTF-8''r%C3%A9sum%C3%A9.png",
+        }),
+      });
+      const controller = new AbortController();
+
+      const result = await new AgentSessionFilesResource(http).contentStream('conv_1', 'file_1', {
+        variant: 'original',
+        signal: controller.signal,
+      });
+
+      expect(result.body).toBe(body);
+      expect(result).toMatchObject({ contentType: 'image/png', fileName: 'résumé.png', size: 3 });
+      expect(http.requestStream).toHaveBeenCalledWith('GET', `${SESSION_PATH}/files/file_1/content`, {
+        query: { variant: 'original' },
+        signal: controller.signal,
+      });
+    });
+
+    it('defaults the type and omits name and size the Console did not send', async () => {
+      const http = createMockHttp();
+      const body = new ReadableStream<Uint8Array>();
+      http.requestStream.mockResolvedValue({ body, status: 200, headers: new Headers() });
+
+      const result = await new AgentSessionFilesResource(http).contentStream('conv_1', 'file_1');
+
+      expect(result).toEqual({ body, contentType: 'application/octet-stream' });
+    });
   });
 });
 
@@ -782,5 +1208,78 @@ describe('events.stream over the real HttpClient', () => {
     const [secondUrl, secondInit] = fetchMock.mock.calls[1];
     expect(secondUrl).toContain('after=4');
     expect(secondInit.headers['Last-Event-ID']).toBe('4');
+  });
+});
+
+describe('sessions over the real HttpClient', () => {
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+  it('create() POSTs the JSON body with auth, and list() pages through next_cursor in the query', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json(makeSession({ id: 'conv_9', runtime_status: 'idle' }), 201))
+      .mockResolvedValueOnce(json(makeList(['s2'], 'cur 1/=')))
+      .mockResolvedValueOnce(json(makeList(['s1'], null)));
+    const http = new HttpClient('https://api.test', 'sk-test', 5000, 0, fetchMock);
+    const sessions = new AgentSessionsResource(http);
+
+    const created = await sessions.create({ agent: 'support-bot', metadata: { ticket: 'T-1' } });
+    const ids: string[] = [];
+    for await (const session of sessions.list({ agent: 'support-bot', status: 'idle', limit: 1 })) ids.push(session.id);
+
+    expect(created.id).toBe('conv_9');
+    expect(ids).toEqual(['s2', 's1']);
+    const [createUrl, createInit] = fetchMock.mock.calls[0];
+    expect(createUrl).toBe('https://api.test/api/client/v1/agents/sessions');
+    expect(createInit.method).toBe('POST');
+    expect(createInit.headers.Authorization).toBe('Bearer sk-test');
+    expect(JSON.parse(createInit.body)).toEqual({ agent: 'support-bot', metadata: { ticket: 'T-1' } });
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.test/api/client/v1/agents/sessions?agent=support-bot&status=idle&limit=1');
+    expect(fetchMock.mock.calls[2][0]).toBe(
+      `https://api.test/api/client/v1/agents/sessions?agent=support-bot&status=idle&limit=1&after=${encodeURIComponent('cur 1/=').replace(/%20/g, '+')}`,
+    );
+  });
+
+  it('delete() sends DELETE; a 409 arrives as a CognipeerAPIError with the code', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ id: 'conv_1', object: 'agent.session', deleted: true }))
+      .mockResolvedValueOnce(
+        json({ error: { type: 'agent_run_conflict', code: 'agent_run_conflict', message: 'An active run exists' } }, 409),
+      );
+    const http = new HttpClient('https://api.test', 'sk-test', 5000, 0, fetchMock);
+    const sessions = new AgentSessionsResource(http);
+
+    expect(await sessions.delete('conv_1')).toEqual({ id: 'conv_1', object: 'agent.session', deleted: true });
+    expect(fetchMock.mock.calls[0][1].method).toBe('DELETE');
+
+    const error = await sessions.delete('conv_2').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(CognipeerAPIError);
+    expect((error as CognipeerAPIError).statusCode).toBe(409);
+    expect((error as CognipeerAPIError).errorCode).toBe('agent_run_conflict');
+  });
+
+  it('files.content() returns the bytes and the name; contentStream() the stream', async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const reply = () =>
+      new Response(bytes, {
+        status: 200,
+        headers: { 'content-type': 'image/png', 'content-disposition': 'inline; filename="chart.png"', 'content-length': '4' },
+      });
+    const fetchMock = vi.fn().mockImplementation(async () => reply());
+    const http = new HttpClient('https://api.test', 'sk-test', 5000, 0, fetchMock);
+    const files = new AgentSessionFilesResource(http);
+
+    const whole = await files.content('conv_1', 'file_1', { variant: 'markdown' });
+    const streamed = await files.contentStream('conv_1', 'file_1');
+    const read = new Uint8Array(await new Response(streamed.body).arrayBuffer());
+
+    expect(whole).toMatchObject({ contentType: 'image/png', fileName: 'chart.png' });
+    expect(Array.from(whole.data)).toEqual([1, 2, 3, 4]);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.test/api/client/v1/agents/sessions/conv_1/files/file_1/content?variant=markdown');
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.test/api/client/v1/agents/sessions/conv_1/files/file_1/content');
+    expect(streamed).toMatchObject({ contentType: 'image/png', fileName: 'chart.png', size: 4 });
+    expect(Array.from(read)).toEqual([1, 2, 3, 4]);
   });
 });

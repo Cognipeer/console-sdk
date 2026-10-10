@@ -5,12 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.1.0] - 2026-10-10
+## [3.1.0] - 2026-10-11
 
-Agent sessions: approvals and questions (human in the loop), the session event log, and webhook
+Agent sessions: starting, listing and deleting sessions, continuing one by id, files that live in a
+Document Store bucket, approvals and questions (human in the loop), the session event log, and webhook
 subscriptions. Additive: nothing in 3.0.0 changes behaviour, except that `agents.runs.wait()` now
 also returns a run that is `requires_action` (see Changed). The approvals/events/actions calls need
-a Console with the agent runtime phase 1 release. Every request and response shape was checked
+a Console with the agent runtime phase 1 release; the sessions and session-file calls below need the
+Console release that ships the sessions API and session files on buckets. Every request and response shape was checked
 against that Console's `/api/client/v1` routes (agent family: snake_case, including pending
 actions, event `data`, budgets and error fields; webhooks: camelCase, wrapped in
 `{ endpoint }` / `{ endpoints }` / `{ delivery }` / `{ deliveries, hasMore }`).
@@ -18,8 +20,21 @@ actions, event `data`, budgets and error fields; webhooks: camelCase, wrapped in
 ### Added
 
 - **`client.agents.sessions`**
+  - `create({ agent, title?, metadata?, budget?, runtime_context? })` — start a session without
+    sending a message (201; `runtime_status: 'idle'`, no messages; nothing runs and nothing is
+    spent). Upload files to it first, then send the first message with `session_id`. The same agent
+    and budget rules as a first Responses turn (`400 agent_not_active` / `invalid_metadata` /
+    `invalid_budget`, `403 budget_override_forbidden`, `404 agent_not_found`).
+  - `list({ agent?, status?, limit?, after? })` — the project's sessions, newest first, as a page
+    **and** an async iterator: `await list()` resolves to an `AgentSessionPage` (`data`,
+    `has_more`, `next_cursor`, `hasNextPage()`, `getNextPage()`), `for await (const s of list())`
+    walks every page lazily. Rows are summaries (`message_count`, no transcript or
+    `pending_actions`). `400 invalid_limit` / `invalid_status` / `invalid_cursor`.
+  - `delete(conversationId)` — delete a session with its files, events and open actions
+    (`{ id, object: 'agent.session', deleted: true }`; `409 agent_run_conflict` while a run is active).
   - `get(conversationId)` — runtime state: `runtime_status`, `stop_reason`, `pending_actions`,
-    `last_event_seq`.
+    `last_event_seq`; also `title`, `created_at`, `updated_at` and `metadata` (the pairs given to
+    `create()`).
   - `actions.list(conversationId)` (the pending actions, read from `get()`) and
     `actions.resolve(conversationId, actionId, body, { background?, signal? })` — answer a tool
     approval (`{ decision, comment?, approved_args?, remember_for_session? }`) or a question
@@ -37,11 +52,49 @@ actions, event `data`, budgets and error fields; webhooks: camelCase, wrapped in
     (`POST`, `Content-Type: <mime>`, `?name=`; a JSON mime type goes out as
     `application/octet-stream` because the route reads JSON bodies as a base64 envelope).
     `input_file` (`file_id` or inline `file_data`) / `input_image` parts are accepted in
-    `ResponseInputItem.content`.
+    `ResponseInputItem.content`. A `SessionFile` now says where it is stored: `bucket_key` (the
+    Document Store bucket of the agent's Files setting) and `path`
+    (`<folder>/<agentKey>/<sessionId>/<unique name>`).
+  - `files.content(sessionId, fileId, { variant?, signal? })` and `files.contentStream(…)` — download
+    a session file (`GET …/files/{fileId}/content`): `{ data, contentType, fileName? }` buffered, or
+    `{ body, contentType, fileName?, size? }` as a stream. `variant: 'original'` (default) or
+    `'markdown'` (the text the agent reads). Needs a Console that serves the content route.
+- **`responses.create({ session_id })`** (alias `conversation`: a string or `{ id }`, OpenAI style) —
+  continue a session by id, the way `previous_response_id` does, for a session that has no response
+  yet (one from `sessions.create()`). Give one of `session_id`, `conversation` and
+  `previous_response_id`, or several that agree: different sessions are `400 session_conflict`, a
+  session of another agent or project `404 session_not_found`. `file_id` input parts work with any of
+  the three; `budget` is ignored on a continued session, as with `previous_response_id`.
+- **`Agent.attachments`** on `agents.get(key)` (`AgentAttachmentsInfo`: `enabled`, `max_files`,
+  `max_file_size_mb`, `allowed_mime_types`, `accepts_images`) — whether the agent takes files right
+  now (files on AND a usable bucket), its limits, and whether its model reads images (an image sent
+  to a text-only model is replaced by a note).
+- Error codes in `AgentActionErrorCodes`: `SessionConflict` (`session_conflict`),
+  `StorageUnavailable` (`storage_unavailable`, 409: the agent's bucket cannot take a file; the
+  message names it), `StorageNotConfigured` (`storage_not_configured`, 409), `AttachmentsDisabled`
+  (`attachments_disabled`, 403: files off for the agent, or on with no bucket) and `BucketInUse`
+  (`bucket_in_use`, 409, from the Files management API: a bucket agents keep session files in cannot
+  be deleted or disabled; no call of this SDK raises it). `SessionNotFound` also covers a
+  `session_id` of another agent or project.
+- Files API: `files.list(bucket, { prefix, purpose })` browses one folder (the answer adds `folders`
+  and `prefix`) and filters to agent session files (`purpose: 'conversation'`) or the rest
+  (`'other'`); `FileObject` gains `purpose`, `conversationId`, `agentKey`, `expiresAt`, `uploadedBy`
+  for session files. New types: `ListFilesResponse`.
+- Types: `AgentSessionCreateRequest`, `ListAgentSessionsQuery`, `AgentSessionStatusFilter`,
+  `AgentSessionSummary`, `AgentSessionList`, `AgentSessionDeleted`, `AgentSessionPage` (class),
+  `AgentSessionListCall`, `AgentAttachmentsInfo`, `SessionFileContent`, `SessionFileContentOptions`,
+  `SessionFileContentStream`.
+- `HttpClient.requestBinary()` also returns the response `headers` (for metadata that rides there,
+  such as the file name of a download).
 - `client.webhooks` — `create`, `list`, `get`, `update`, `delete` (answers `{ deleted: true }`),
   `rotateSecret`, `test`, `deliveries` (answers `{ deliveries, hasMore }`, pages with `skip`),
   `redeliver` and `eventTypes`. The signing secret is returned by `create` and `rotateSecret` only.
-  Webhook objects keep camelCase field names.
+  Webhook objects keep camelCase field names. Managing them is the Console permission engine's call and
+  nothing else: `webhooks.read` for `list` / `get` / `deliveries` / `eventTypes` and `webhooks.admin` for
+  every call that changes something (owners and admins hold it by default; being a project admin is no
+  longer enough on its own); a caller with only `webhooks.read` sees each endpoint `url` with its
+  userinfo and query string removed (`https://host/path?…`); a refusal is `403 forbidden` with a
+  `decisionId`, and `503 authorization_unavailable` means the engine could not decide (never an allow).
 - **`verifyWebhook`** in `@cognipeer/console-sdk/webhooks` — the generic check for any signed
   delivery (`X-Cognipeer-Signature: t=…,v1=…`, same scheme as agent-run callbacks), with the
   `WebhookEvent` types. `verifyAgentRunCallback` and `VerifyAgentRunCallbackParams` still work
@@ -60,6 +113,13 @@ actions, event `data`, budgets and error fields; webhooks: camelCase, wrapped in
 
 ### Changed
 
+- `AgentSession` (and the new `AgentSessionSummary`) carries `title`, `created_at`, `updated_at` and
+  `metadata`; `SessionFile` carries `bucket_key` and `path`. These are response fields the Console always
+  sends, so they are required in the types: code that builds these objects by hand (test doubles)
+  needs the new fields.
+- Documentation: a file for `input_file` / `input_image` is named with `session_id`, `conversation` or
+  `previous_response_id`; answering an approval is the Console's `agent.approve` permission
+  (`403 action_forbidden`).
 - `agents.runs.wait()` returns when the run reaches `requires_action` (it is waiting on a person,
   so polling would never end), in addition to `succeeded` / `failed` / `canceled`. Check
   `run.status`. `isAgentRunTerminal()` is unchanged: `requires_action` is not terminal.

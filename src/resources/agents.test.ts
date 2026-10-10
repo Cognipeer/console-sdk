@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { AgentsResource, AgentResponsesResource, AgentRunsResource } from './agents';
-import { AgentRunWaitTimeoutError, CognipeerAPIError } from '../types';
+import {
+  AgentActionErrorCodes,
+  AgentRunWaitTimeoutError,
+  CognipeerAPIError,
+  isAgentActionErrorCode,
+} from '../types';
 import { createMockHttp } from '../test/mockHttp';
 import type {
   Agent,
@@ -68,6 +73,23 @@ describe('AgentsResource', () => {
 
     expect(result).toBe(agent);
     expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/agents/support-bot');
+  });
+
+  it('keeps the attachments block of the single-agent lookup', async () => {
+    const http = createMockHttp();
+    const attachments = {
+      enabled: true,
+      max_files: 10,
+      max_file_size_mb: 20,
+      allowed_mime_types: ['image/*', 'application/pdf'],
+      accepts_images: true,
+    };
+    http.request.mockResolvedValue({ agent: makeAgent({ attachments }) });
+
+    const agent = await new AgentsResource(http).get('support-bot');
+
+    expect(agent.attachments).toEqual(attachments);
+    expect(agent.attachments?.enabled && agent.attachments.accepts_images).toBe(true);
   });
 
   it('encodes the agent key in get()', async () => {
@@ -392,6 +414,81 @@ describe('AgentResponsesResource', () => {
 
     expect(result).toBe(apiResponse);
     expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/responses', { body: params });
+  });
+});
+
+describe('AgentResponsesResource (session_id / conversation)', () => {
+  const completed: AgentResponse = {
+    id: 'resp_conv_1',
+    object: 'response',
+    model: 'support-bot',
+    output: [],
+    status: 'completed',
+    usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    created_at: 1700000005,
+    previous_response_id: null,
+    version: null,
+  };
+
+  it('sends session_id as is, with a file the session already holds', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue(completed);
+    const params: AgentResponseCreateRequest = {
+      model: 'support-bot',
+      session_id: 'conv_1',
+      input: [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: 'What is the total?' },
+            { type: 'input_file', file_id: 'file_1' },
+          ],
+        },
+      ],
+    };
+
+    const result = await new AgentResponsesResource(http).create(params);
+
+    expect(result).toBe(completed);
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/responses', { body: params });
+    expect(http.request.mock.calls[0][2].body).not.toHaveProperty('previous_response_id');
+  });
+
+  it('accepts the OpenAI-style conversation alias as a string or { id }', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue(completed);
+    const resource = new AgentResponsesResource(http);
+
+    await resource.create({ model: 'support-bot', input: 'hi', conversation: 'conv_1' });
+    await resource.create({ model: 'support-bot', input: 'hi', conversation: { id: 'conv_1' } });
+
+    expect(http.request.mock.calls.map((call) => call[2].body.conversation)).toEqual(['conv_1', { id: 'conv_1' }]);
+  });
+
+  it('lets the Console judge naming two different sessions (400 session_conflict)', async () => {
+    const http = createMockHttp();
+    http.request.mockRejectedValue(
+      new CognipeerAPIError('names different sessions', 400, 'invalid_request_error', {}, undefined, 'session_conflict'),
+    );
+
+    const error = await new AgentResponsesResource(http)
+      .create({ model: 'support-bot', input: 'hi', session_id: 'conv_1', previous_response_id: 'resp_conv_2' })
+      .catch((e: unknown) => e);
+
+    expect(isAgentActionErrorCode(error, AgentActionErrorCodes.SessionConflict)).toBe(true);
+  });
+
+  it('a session started with sessions.create() continues with the same id on responses.create()', async () => {
+    const http = createMockHttp();
+    http.request
+      .mockResolvedValueOnce({ id: 'conv_7', object: 'agent.session', agent: 'support-bot' })
+      .mockResolvedValueOnce(completed);
+    const agents = new AgentsResource(http);
+
+    const session = await agents.sessions.create({ agent: 'support-bot' });
+    await agents.responses.create({ model: 'support-bot', session_id: session.id, input: 'hello' });
+
+    expect(http.request.mock.calls[1][2].body).toEqual({ model: 'support-bot', session_id: 'conv_7', input: 'hello' });
   });
 });
 
