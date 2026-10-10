@@ -186,11 +186,11 @@ const client = new ConsoleClient({
 - `client.agents.runs.cancel(runId)` - Cooperatively cancel a `queued`/`running` run
 - `client.agents.runs.wait(runId, { pollIntervalMs?, timeoutMs?, signal? })` - Poll until the run is terminal **or `requires_action`** (waiting on an approval/question)
 - `client.agents.sessions.get(conversationId)` - Runtime state: `runtime_status`, `stop_reason`, `pending_actions`, `last_event_seq`
-- `client.agents.sessions.actions.list(conversationId)` / `.resolve(conversationId, actionId, body, { background? })` - Pending approvals/questions and answering them
+- `client.agents.sessions.actions.list(conversationId)` / `.resolve(conversationId, actionId, body, { background? })` - Pending approvals/questions (read from the session; the Console has no client list route) and answering them
 - `client.agents.sessions.events.list(conversationId, { after?, types?, limit? })` / `.stream(conversationId, { after?, types?, signal? })` - The session event log: paged, or followed live with automatic `Last-Event-ID` reconnect
-- `client.agents.sessions.update(conversationId, { budget, resume })` - Raise, set or remove (`null`) the session spend budget *(requires Console with agent runtime phase 1)*
-- `client.agents.sessions.files.upload/list/delete(conversationId, …)` - Files the agent can read in the conversation *(requires Console with agent runtime phase 1)*
-- `client.webhooks.create/list/get/update/delete/rotateSecret/test/deliveries/redeliver` - Webhook subscriptions *(requires Console with agent runtime phase 1)*
+- `client.agents.sessions.update(conversationId, { budget, resume })` - Raise, set or remove (`null`) the session spend budget (`budget` is required; `{ max_cost_usd, on_reach }`)
+- `client.agents.sessions.files.upload/list/delete(conversationId, …)` - Files the agent can read in the conversation
+- `client.webhooks.create/list/get/update/delete/rotateSecret/test/deliveries/redeliver/eventTypes` - Webhook subscriptions (objects keep camelCase field names, unlike the agent API's snake_case)
 - `verifyWebhook({ rawBody, signatureHeader, secret })` from `@cognipeer/console-sdk/webhooks` (Node.js) - Verify a signed webhook delivery (`verifyAgentRunCallback` is the same check, kept for existing code)
 
 ```typescript
@@ -217,13 +217,14 @@ if (res.status === 'requires_action') {
   const conversationId = res.id.replace(/^resp_/, '');
   for (const action of res.required_action!.actions) {
     if (action.kind === 'tool_approval') {
-      console.log('Agent wants to run', action.toolName, action.args);
-      // `approvedArgs` replaces the arguments; `rememberForSession` stops asking for this tool.
+      console.log('Agent wants to run', action.tool_name, action.args);
+      // `approved_args` replaces the arguments; `remember_for_session` stops asking for this tool.
       const next = await client.agents.sessions.actions.resolve(conversationId, action.id, {
         decision: 'allow',
-        rememberForSession: true,
+        remember_for_session: true,
       });
-      // `next` is the continuation (Responses shape) - `requires_action` again if more is pending.
+      // `next` is the continuation (Responses shape). While other actions of the same pause are
+      // still open it is a bare `requires_action` body (empty `output`, no `usage`).
     } else {
       await client.agents.sessions.actions.resolve(conversationId, action.id, {
         answers: { [action.questions![0].question]: 'staging' }, // or { cancelled: true } to skip
@@ -241,7 +242,7 @@ if (res.status === 'requires_action') {
   `action_not_found`, `409 action_not_pending` (answered by someone else), `410 action_expired`,
   `400 invalid_resolution`. Test with `isAgentActionErrorCode(error, AgentActionErrorCodes.Expired)`.
 - A new user message while an action is pending is rejected with `409 pending_action`
-  (`AgentActionErrorCodes.PendingAction`, ids in `error.response.error.pendingActionIds`) unless the
+  (`AgentActionErrorCodes.PendingAction`, ids in `error.response.error.pending_action_ids`) unless the
   agent is configured to cancel pending requests.
 
 ##### Session events and live follow
@@ -261,7 +262,7 @@ for await (const event of client.agents.sessions.events.stream(conversationId, {
   signal: controller.signal,
 })) {
   if (event.type === 'agent.message.delta') process.stdout.write(event.data.text); // live only
-  if (isSessionEvent(event, 'action.required')) notifyApprover(event.data.actionId);
+  if (isSessionEvent(event, 'action.required')) notifyApprover(event.data.action_id);
   if (isSessionEvent(event, 'session.status_idle')) break; // the stream itself never ends on idle
 }
 ```
@@ -270,17 +271,20 @@ for await (const event of client.agents.sessions.events.stream(conversationId, {
 `Last-Event-ID`, never repeats or skips a persisted event, gives up after `maxReconnects` (default 8)
 silent attempts, and throws the abort reason when `signal` aborts. `agent.message.delta` text chunks
 are live-only (they have no `seq` and are not replayed); the full text is in `agent.message`.
-Unknown event types arrive as plain `{ type, data }` objects: ignore them.
+Event `data` keys are snake_case (`tool_call_id`, `action_id`, `stop_reason`, ...); tool `args` and
+question `answers` are passed through untouched. Unknown event types arrive as plain `{ type, data }`
+objects: ignore them.
 
-##### Session budget and files (requires Console with agent runtime phase 1)
+##### Session budget and files
 
 ```typescript
 // Raise the cap of a budget_paused session; it continues as a background run.
 const run = await client.agents.sessions.update(conversationId, {
-  budget: { maxCostUsd: 10, onReach: 'pause' },
+  budget: { max_cost_usd: 10, on_reach: 'pause' },
 });
 if (run.object === 'agent.run') await client.agents.runs.wait(run.id);
-// budget: null removes the cap; resume: false changes it without continuing.
+// budget: null removes the cap; resume: false changes it without continuing (answers the session).
+// An agent with its own session budget lets API callers lower it but not raise/remove it (403 budget_override_forbidden).
 
 // Attach a file for the agent to read.
 const file = await client.agents.sessions.files.upload(conversationId, bytes, {
@@ -297,7 +301,7 @@ const res = await client.agents.responses.create({
 });
 ```
 
-##### Webhook subscriptions (requires Console with agent runtime phase 1)
+##### Webhook subscriptions
 
 ```typescript
 const hook = await client.webhooks.create({
@@ -306,8 +310,8 @@ const hook = await client.webhooks.create({
 });
 saveSecret(hook.secret); // returned only by create() and rotateSecret()
 await client.webhooks.test(hook.id);
-const failed = await client.webhooks.deliveries(hook.id, { status: 'failed' });
-await client.webhooks.redeliver(failed[0].id);
+const { deliveries: failed, hasMore } = await client.webhooks.deliveries(hook.id, { status: 'failed' });
+await client.webhooks.redeliver(failed[0].id); // queued again (202); sent asynchronously
 ```
 
 Verify every delivery on the raw body and dedupe on the `webhook-id` header (a delivery is retried

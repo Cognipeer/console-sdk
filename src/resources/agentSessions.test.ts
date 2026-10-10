@@ -13,6 +13,7 @@ import {
   isSessionEvent,
 } from '../types';
 import type {
+  AgentActionsPendingResponse,
   AgentResponse,
   AgentRun,
   AgentSession,
@@ -29,10 +30,10 @@ const SESSION_PATH = '/api/client/v1/agents/sessions/conv_1';
 const approval: PendingAction = {
   id: 'act_1',
   kind: 'tool_approval',
-  toolName: 'sandbox_exec',
+  tool_name: 'sandbox_exec',
   args: { cmd: 'ls' },
   status: 'pending',
-  requestedAt: '2026-10-10T10:00:00.000Z',
+  requested_at: '2026-10-10T10:00:00.000Z',
 };
 
 function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
@@ -44,6 +45,8 @@ function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
     stop_reason: 'requires_action',
     pending_actions: [approval],
     last_event_seq: 12,
+    budget: null,
+    spent_usd: 0,
     ...overrides,
   };
 }
@@ -84,19 +87,34 @@ describe('AgentSessionsResource', () => {
 
   it('updates the budget via PATCH with budget and resume', async () => {
     const http = createMockHttp();
-    const run: AgentRun = { id: 'run_9', object: 'agent.run', status: 'queued', created_at: 1 };
+    const run: AgentRun = {
+      id: 'run_9',
+      object: 'agent.run',
+      status: 'queued',
+      stop_reason: null,
+      agent: 'ops-agent',
+      conversation_id: 'conv_1',
+      result: null,
+      error: null,
+      created_at: 1,
+      started_at: null,
+      completed_at: null,
+      cancel_requested_at: null,
+      max_duration_ms: 600000,
+      callback: null,
+    };
     http.request.mockResolvedValue(run);
     const controller = new AbortController();
 
     const result = await new AgentSessionsResource(http).update(
       'conv_1',
-      { budget: { maxCostUsd: 5, onReach: 'pause' }, resume: true },
+      { budget: { max_cost_usd: 5, on_reach: 'pause' }, resume: true },
       { signal: controller.signal },
     );
 
     expect(result).toBe(run);
     expect(http.request).toHaveBeenCalledWith('PATCH', SESSION_PATH, {
-      body: { budget: { maxCostUsd: 5, onReach: 'pause' }, resume: true },
+      body: { budget: { max_cost_usd: 5, on_reach: 'pause' }, resume: true },
       signal: controller.signal,
     });
   });
@@ -168,8 +186,8 @@ function sseFrame({ seq, type, data = {} }: FrameSpec): string {
     ...(seq !== undefined ? { seq } : {}),
     type,
     data,
-    createdAt: '2026-10-10T10:00:00.000Z',
-    ...(seq === 1 ? { runId: 'run_a' } : {}),
+    created_at: '2026-10-10T10:00:00.000Z',
+    ...(seq === 1 ? { run_id: 'run_a' } : {}),
   };
   return `${seq !== undefined ? `id: ${seq}\n` : ''}event: ${type}\ndata: ${JSON.stringify(frame)}\n\n`;
 }
@@ -246,7 +264,7 @@ describe('AgentSessionEventsResource.stream', () => {
     expect(options.headers).toEqual({ Accept: 'text/event-stream' });
     expect(options.query).toEqual({ after: undefined, types: undefined });
 
-    // The stream frames camelCase runId / createdAt; events are the list shape.
+    // A client-API frame has the same shape as an `events.list` entry.
     expect(events[0]).toEqual({
       seq: 1,
       type: 'user.message',
@@ -267,7 +285,7 @@ describe('AgentSessionEventsResource.stream', () => {
     const http = createMockHttp();
     http.requestStream.mockImplementation(async () =>
       streamResponse([
-        sseFrame({ seq: 1, type: 'action.required', data: { actionId: 'act_1', kind: 'tool_approval', toolName: 'x' } }),
+        sseFrame({ seq: 1, type: 'action.required', data: { action_id: 'act_1', kind: 'tool_approval', tool_name: 'x' } }),
         sseFrame({ seq: 2, type: 'future.thing', data: { a: 1 } }),
       ]),
     );
@@ -276,7 +294,7 @@ describe('AgentSessionEventsResource.stream', () => {
 
     const [required, unknown] = events;
     expect(isSessionEvent(required, 'action.required')).toBe(true);
-    if (isSessionEvent(required, 'action.required')) expect(required.data.actionId).toBe('act_1');
+    if (isSessionEvent(required, 'action.required')) expect(required.data.action_id).toBe('act_1');
     expect(isSessionEvent(unknown, 'action.required')).toBe(false);
     expect(unknown.type).toBe('future.thing');
   });
@@ -515,14 +533,34 @@ describe('AgentSessionActionsResource', () => {
     const result = await new AgentSessionActionsResource(http).resolve('conv_1', 'act_1', {
       decision: 'allow',
       comment: 'ok',
-      approvedArgs: { cmd: 'ls -la' },
-      rememberForSession: true,
+      approved_args: { cmd: 'ls -la' },
+      remember_for_session: true,
     });
 
     expect(result).toBe(response);
     expect(http.request).toHaveBeenCalledWith('POST', `${SESSION_PATH}/actions/act_1`, {
-      body: { decision: 'allow', comment: 'ok', approvedArgs: { cmd: 'ls -la' }, rememberForSession: true },
+      body: { decision: 'allow', comment: 'ok', approved_args: { cmd: 'ls -la' }, remember_for_session: true },
     });
+  });
+
+  it('returns the minimal requires_action body while other actions of the pause are open', async () => {
+    const http = createMockHttp();
+    const pending: AgentActionsPendingResponse = {
+      id: 'resp_conv_1',
+      object: 'response',
+      model: 'ops-agent',
+      output: [],
+      status: 'requires_action',
+      stop_reason: 'requires_action',
+      required_action: { type: 'agent_actions', actions: [approval] },
+    };
+    http.request.mockResolvedValue(pending);
+
+    const result = await new AgentSessionActionsResource(http).resolve('conv_1', 'act_2', { decision: 'deny' });
+
+    expect(result.status).toBe('requires_action');
+    if (result.status === 'requires_action') expect(result.required_action?.actions[0].id).toBe('act_1');
+    expect('usage' in result).toBe(false);
   });
 
   it('resolves a question with answers, and a skip with cancelled', async () => {
@@ -615,10 +653,12 @@ describe('AgentSessionFilesResource', () => {
   const stored: SessionFile = {
     id: 'file_1',
     object: 'agent.session.file',
+    session_id: 'conv_1',
     name: 'report.pdf',
     mime_type: 'application/pdf',
     size: 5,
-    status: 'ready',
+    conversion_status: 'succeeded',
+    created_at: '2026-10-10T10:00:00.000Z',
   };
 
   it('uploads raw bytes with the mime type as Content-Type and the name as a query param', async () => {
@@ -643,7 +683,7 @@ describe('AgentSessionFilesResource', () => {
 
   it('takes name and type from a File', async () => {
     const http = createMockHttp();
-    http.requestRaw.mockResolvedValue({ file: stored });
+    http.requestRaw.mockResolvedValue(stored);
     const file = new File(['hello'], 'notes.txt', { type: 'text/plain' });
 
     const result = await new AgentSessionFilesResource(http).upload('conv_1', file);
@@ -673,29 +713,37 @@ describe('AgentSessionFilesResource', () => {
     expect(http.requestRaw).not.toHaveBeenCalled();
   });
 
-  it('lists files from a bare array, { data } or { files }', async () => {
+  it('sends a JSON mime type as application/octet-stream (the route reads JSON as a base64 envelope)', async () => {
     const http = createMockHttp();
+    http.requestRaw.mockResolvedValue(stored);
     const resource = new AgentSessionFilesResource(http);
 
-    http.request.mockResolvedValueOnce([stored]);
-    http.request.mockResolvedValueOnce({ object: 'list', data: [stored] });
-    http.request.mockResolvedValueOnce({ files: [stored] });
-    http.request.mockResolvedValueOnce({});
+    await resource.upload('conv_1', new Uint8Array([123, 125]), { name: 'data.json', mimeType: 'application/json' });
+    await resource.upload('conv_1', new Uint8Array([123, 125]), { name: 'x.json', mimeType: 'application/vnd.api+json; charset=utf-8' });
+    await resource.upload('conv_1', new Uint8Array([1]), { name: 'a.txt', mimeType: 'text/plain' });
 
-    expect(await resource.list('conv_1')).toEqual([stored]);
-    expect(await resource.list('conv_1')).toEqual([stored]);
-    expect(await resource.list('conv_1')).toEqual([stored]);
-    expect(await resource.list('conv_1')).toEqual([]);
+    expect(http.requestRaw.mock.calls.map((call) => call[3].contentType)).toEqual([
+      'application/octet-stream',
+      'application/octet-stream',
+      'text/plain',
+    ]);
+  });
+
+  it('lists files from the { object: "list", data } envelope', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ object: 'list', data: [stored] });
+
+    expect(await new AgentSessionFilesResource(http).list('conv_1')).toEqual([stored]);
     expect(http.request).toHaveBeenCalledWith('GET', `${SESSION_PATH}/files`, {});
   });
 
   it('deletes a file via DELETE .../files/{fileId}', async () => {
     const http = createMockHttp();
-    http.request.mockResolvedValue({ id: 'file_1', deleted: true });
+    http.request.mockResolvedValue({ id: 'file_1', object: 'agent.session.file', deleted: true });
 
     const result = await new AgentSessionFilesResource(http).delete('conv_1', 'file_1');
 
-    expect(result).toEqual({ id: 'file_1', deleted: true });
+    expect(result).toEqual({ id: 'file_1', object: 'agent.session.file', deleted: true });
     expect(http.request).toHaveBeenCalledWith('DELETE', `${SESSION_PATH}/files/file_1`, {});
   });
 });
@@ -716,7 +764,7 @@ describe('events.stream over the real HttpClient', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(body([sseFrame({ seq: 4, type: 'user.message', data: { content: 'hi' } })]))
-      .mockResolvedValueOnce(body([sseFrame({ seq: 5, type: 'session.status_idle', data: { stopReason: 'end_turn' } })]));
+      .mockResolvedValueOnce(body([sseFrame({ seq: 5, type: 'session.status_idle', data: { stop_reason: 'end_turn' } })]));
     const http = new HttpClient('https://api.test', 'sk-test', 5000, 0, fetchMock);
 
     const events = await collect(

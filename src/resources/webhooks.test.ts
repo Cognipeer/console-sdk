@@ -7,9 +7,15 @@ import type { WebhookDelivery, WebhookEndpoint, WebhookEndpointWithSecret } from
 const endpoint: WebhookEndpoint = {
   id: 'whk_1',
   url: 'https://example.com/hook',
+  description: null,
   events: ['action.required', 'agent_run.*'],
   projectId: 'proj_1',
   status: 'active',
+  disabledReason: null,
+  failingSince: null,
+  createdBy: 'user_1',
+  createdAt: '2026-10-10T10:00:00.000Z',
+  updatedAt: '2026-10-10T10:00:00.000Z',
 };
 
 const delivery: WebhookDelivery = {
@@ -19,7 +25,13 @@ const delivery: WebhookDelivery = {
   eventType: 'webhook.test',
   status: 'delivered',
   attempts: 1,
+  nextAttemptAt: null,
   lastStatusCode: 204,
+  lastError: null,
+  lastDurationMs: 31,
+  createdAt: '2026-10-10T10:00:00.000Z',
+  deliveredAt: '2026-10-10T10:00:00.031Z',
+  payload: { id: 'evt_1', type: 'webhook.test', createdAt: '2026-10-10T10:00:00.000Z', projectId: 'proj_1', data: {} },
 };
 
 describe('WebhooksResource', () => {
@@ -31,7 +43,7 @@ describe('WebhooksResource', () => {
   it('creates an endpoint via POST /api/client/v1/webhooks and returns the one-time secret', async () => {
     const http = createMockHttp();
     const created: WebhookEndpointWithSecret = { ...endpoint, secret: 'whsec_abc' };
-    http.request.mockResolvedValue(created);
+    http.request.mockResolvedValue({ endpoint: created });
     const body = { url: endpoint.url, events: endpoint.events, description: 'ops', projectId: null };
 
     const result = await new WebhooksResource(http).create(body);
@@ -40,35 +52,33 @@ describe('WebhooksResource', () => {
     expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/webhooks', { body });
   });
 
-  it('lists endpoints from a bare array, { data } or { webhooks }', async () => {
+  it('lists endpoints from the { endpoints } envelope', async () => {
     const http = createMockHttp();
-    const resource = new WebhooksResource(http);
-    http.request
-      .mockResolvedValueOnce([endpoint])
-      .mockResolvedValueOnce({ object: 'list', data: [endpoint] })
-      .mockResolvedValueOnce({ webhooks: [endpoint] })
-      .mockResolvedValueOnce({});
+    http.request.mockResolvedValue({ endpoints: [endpoint] });
 
-    expect(await resource.list()).toEqual([endpoint]);
-    expect(await resource.list()).toEqual([endpoint]);
-    expect(await resource.list()).toEqual([endpoint]);
-    expect(await resource.list()).toEqual([]);
+    expect(await new WebhooksResource(http).list()).toEqual([endpoint]);
     expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/webhooks');
   });
 
-  it('gets an endpoint by id, bare or wrapped', async () => {
+  it('lists the event types from GET .../events', async () => {
     const http = createMockHttp();
-    const resource = new WebhooksResource(http);
-    http.request.mockResolvedValueOnce(endpoint).mockResolvedValueOnce({ webhook: endpoint });
+    http.request.mockResolvedValue({ events: [{ type: 'session.idled', group: 'session' }] });
 
-    expect(await resource.get('whk_1')).toEqual(endpoint);
-    expect(await resource.get('whk_1')).toEqual(endpoint);
+    expect(await new WebhooksResource(http).eventTypes()).toEqual([{ type: 'session.idled', group: 'session' }]);
+    expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/webhooks/events');
+  });
+
+  it('gets an endpoint by id from the { endpoint } envelope', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ endpoint });
+
+    expect(await new WebhooksResource(http).get('whk_1')).toEqual(endpoint);
     expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/webhooks/whk_1');
   });
 
   it('encodes the webhook id', async () => {
     const http = createMockHttp();
-    http.request.mockResolvedValue(endpoint);
+    http.request.mockResolvedValue({ endpoint });
 
     await new WebhooksResource(http).get('whk/1');
 
@@ -77,7 +87,7 @@ describe('WebhooksResource', () => {
 
   it('updates an endpoint via PATCH, including re-enabling it', async () => {
     const http = createMockHttp();
-    http.request.mockResolvedValue({ ...endpoint, status: 'active' });
+    http.request.mockResolvedValue({ endpoint: { ...endpoint, status: 'active' } });
 
     const result = await new WebhooksResource(http).update('whk_1', { status: 'active', events: ['session.idled'] });
 
@@ -89,17 +99,17 @@ describe('WebhooksResource', () => {
 
   it('deletes an endpoint via DELETE', async () => {
     const http = createMockHttp();
-    http.request.mockResolvedValue({ id: 'whk_1', deleted: true });
+    http.request.mockResolvedValue({ deleted: true });
 
     const result = await new WebhooksResource(http).delete('whk_1');
 
-    expect(result).toEqual({ id: 'whk_1', deleted: true });
+    expect(result).toEqual({ deleted: true });
     expect(http.request).toHaveBeenCalledWith('DELETE', '/api/client/v1/webhooks/whk_1');
   });
 
   it('rotates the secret via POST .../rotate-secret with an empty JSON body', async () => {
     const http = createMockHttp();
-    http.request.mockResolvedValue({ ...endpoint, secret: 'whsec_new' });
+    http.request.mockResolvedValue({ endpoint: { ...endpoint, secret: 'whsec_new' } });
 
     const result = await new WebhooksResource(http).rotateSecret('whk_1');
 
@@ -109,7 +119,7 @@ describe('WebhooksResource', () => {
 
   it('sends a test event via POST .../test', async () => {
     const http = createMockHttp();
-    http.request.mockResolvedValue(delivery);
+    http.request.mockResolvedValue({ delivery });
 
     const result = await new WebhooksResource(http).test('whk_1');
 
@@ -117,26 +127,26 @@ describe('WebhooksResource', () => {
     expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/webhooks/whk_1/test', { body: {} });
   });
 
-  it('lists deliveries with status and limit filters', async () => {
+  it('lists deliveries with status, limit and skip, keeping hasMore', async () => {
     const http = createMockHttp();
-    http.request.mockResolvedValue({ object: 'list', data: [delivery] });
+    http.request.mockResolvedValue({ deliveries: [delivery], hasMore: true });
 
-    const result = await new WebhooksResource(http).deliveries('whk_1', { status: 'failed', limit: 20 });
+    const result = await new WebhooksResource(http).deliveries('whk_1', { status: 'failed', limit: 20, skip: 40 });
 
-    expect(result).toEqual([delivery]);
+    expect(result).toEqual({ deliveries: [delivery], hasMore: true });
     expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/webhooks/whk_1/deliveries', {
-      query: { status: 'failed', limit: 20 },
+      query: { status: 'failed', limit: 20, skip: 40 },
     });
   });
 
   it('lists deliveries without filters', async () => {
     const http = createMockHttp();
-    http.request.mockResolvedValue([delivery]);
+    http.request.mockResolvedValue({ deliveries: [], hasMore: false });
 
     await new WebhooksResource(http).deliveries('whk_1');
 
     expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/webhooks/whk_1/deliveries', {
-      query: { status: undefined, limit: undefined },
+      query: { status: undefined, limit: undefined, skip: undefined },
     });
   });
 

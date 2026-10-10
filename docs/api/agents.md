@@ -281,6 +281,10 @@ try {
 | `action_expired` | 410 | The approval request ran out of time |
 | `action_forbidden` | 403 | The agent's approvers setting does not allow this caller |
 | `invalid_resolution` | 400 | The answer does not fit the action |
+| `invalid_budget` | 400 | The budget is malformed, missing from `sessions.update`, or not above what the session spent |
+| `agent_background_disabled` | 400 | `background: true` / a budget resume on an agent with background execution disabled |
+| `budget_override_forbidden` | 403 | The agent's own session budget binds API callers (they may lower, not raise or remove it) |
+| `budget_reached` | 402 | The session used up its budget (`error.response.error.spent_usd` / `max_cost_usd`) |
 
 ### Verifying Callbacks (Node.js)
 
@@ -321,8 +325,8 @@ A turn can pause for a tool approval or a question (`status: 'requires_action'`
 with `required_action`, or a run in `requires_action`). `client.agents.sessions`
 reads the conversation's runtime state (`get`), answers actions
 (`actions.resolve`), pages or follows the event log (`events.list`,
-`events.stream`), and — with a Console that has the agent runtime phase 1 —
-changes the session budget (`update`) and handles session files (`files`).
+`events.stream`), changes the session budget (`update`) and handles session files
+(`files`).
 `client.webhooks` manages event subscriptions. See the
 [README](https://github.com/Cognipeer/console-sdk#approvals-and-questions-human-in-the-loop)
 for examples.

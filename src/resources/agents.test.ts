@@ -502,9 +502,9 @@ describe('AgentRunsResource', () => {
             {
               id: 'act_1',
               kind: 'tool_approval',
-              toolName: 'sandbox_exec',
+              tool_name: 'sandbox_exec',
               status: 'pending',
-              requestedAt: '2026-10-10T10:00:00.000Z',
+              requested_at: '2026-10-10T10:00:00.000Z',
             },
           ],
         },

@@ -10,8 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Agent sessions: approvals and questions (human in the loop), the session event log, and webhook
 subscriptions. Additive: nothing in 3.0.0 changes behaviour, except that `agents.runs.wait()` now
 also returns a run that is `requires_action` (see Changed). The approvals/events/actions calls need
-a Console with the agent runtime phase 1 release; the pieces marked **budget**, **webhooks** and
-**files** are written against its documented contract and need that release too.
+a Console with the agent runtime phase 1 release. Every request and response shape was checked
+against that Console's `/api/client/v1` routes (agent family: snake_case, including pending
+actions, event `data`, budgets and error fields; webhooks: camelCase, wrapped in
+`{ endpoint }` / `{ endpoints }` / `{ delivery }` / `{ deliveries, hasMore }`).
 
 ### Added
 
@@ -20,7 +22,7 @@ a Console with the agent runtime phase 1 release; the pieces marked **budget**, 
     `last_event_seq`.
   - `actions.list(conversationId)` (the pending actions, read from `get()`) and
     `actions.resolve(conversationId, actionId, body, { background?, signal? })` — answer a tool
-    approval (`{ decision, comment?, approvedArgs?, rememberForSession? }`) or a question
+    approval (`{ decision, comment?, approved_args?, remember_for_session? }`) or a question
     (`{ answers }` / `{ cancelled: true }`). Returns the continuation in the Responses shape, or the
     queued `AgentRun` with `background: true`.
   - `events.list(conversationId, { after?, types?, limit? })` and `events.stream(conversationId,
@@ -28,15 +30,18 @@ a Console with the agent runtime phase 1 release; the pieces marked **budget**, 
     idleTimeoutMs? })` — an async iterator over the SSE log that reconnects with `Last-Event-ID`
     (bounded retries, idle-stall detection, no repeated or skipped persisted events), yields live
     `agent.message.delta` chunks, and throws the abort reason when `signal` aborts.
-  - **budget** `update(conversationId, { budget, resume })` — set, raise or remove (`null`) a
-    session spend budget; may answer with the queued `AgentRun` that continues a `budget_paused`
-    session. `budget` is also accepted by `responses.create()` when it starts a conversation.
-  - **files** `files.upload / list / delete` — files the agent can read; `upload` sends the raw
-    bytes (`Content-Type: <mime>`, `?name=`). `input_file` / `input_image` parts are accepted in
+  - `update(conversationId, { budget, resume })` — set, raise or remove (`null`) a session spend
+    budget (`budget` is required, `{ max_cost_usd, on_reach }`); may answer 202 with the queued
+    `AgentRun` that continues a `budget_paused` session. `budget` is also accepted by `responses.create()` when it starts a conversation.
+  - `files.upload / list / delete` — files the agent can read; `upload` sends the raw bytes
+    (`POST`, `Content-Type: <mime>`, `?name=`; a JSON mime type goes out as
+    `application/octet-stream` because the route reads JSON bodies as a base64 envelope).
+    `input_file` (`file_id` or inline `file_data`) / `input_image` parts are accepted in
     `ResponseInputItem.content`.
-- **webhooks** `client.webhooks` — `create`, `list`, `get`, `update`, `delete`, `rotateSecret`,
-  `test`, `deliveries`, `redeliver`. The signing secret is returned by `create` and `rotateSecret`
-  only.
+- `client.webhooks` — `create`, `list`, `get`, `update`, `delete` (answers `{ deleted: true }`),
+  `rotateSecret`, `test`, `deliveries` (answers `{ deliveries, hasMore }`, pages with `skip`),
+  `redeliver` and `eventTypes`. The signing secret is returned by `create` and `rotateSecret` only.
+  Webhook objects keep camelCase field names.
 - **`verifyWebhook`** in `@cognipeer/console-sdk/webhooks` — the generic check for any signed
   delivery (`X-Cognipeer-Signature: t=…,v1=…`, same scheme as agent-run callbacks), with the
   `WebhookEvent` types. `verifyAgentRunCallback` and `VerifyAgentRunCallbackParams` still work

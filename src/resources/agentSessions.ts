@@ -1,8 +1,8 @@
 import { abortReason, sleep } from '../abort';
 import { HttpClient } from '../http';
 import { SseParser, SseMessage } from '../sse';
-import { unwrapList, unwrapOne } from '../unwrap';
 import {
+  AgentActionsPendingResponse,
   AgentResponse,
   AgentRun,
   AgentSession,
@@ -16,11 +16,16 @@ import {
   SessionEventList,
   SessionEventStreamOptions,
   SessionFile,
+  SessionFileDeleted,
+  SessionFileList,
   SessionStreamEvent,
   UploadSessionFileOptions,
 } from '../types';
 
 const SESSIONS_PATH = '/api/client/v1/agents/sessions';
+
+/** `application/json`, `application/vnd.x+json`: what the upload route takes for its JSON envelope. */
+const JSON_MIME_TYPE = /^application\/(?:[\w.+-]+\+)?json\b/i;
 
 function sessionPath(conversationId: string, suffix = ''): string {
   return `${SESSIONS_PATH}/${encodeURIComponent(conversationId)}${suffix}`;
@@ -67,12 +72,18 @@ export class AgentSessionsResource {
 
   /**
    * Change a session's spend budget (raise it, set one, or remove it with
-   * `budget: null`). A `budget_paused` session continues by itself unless
-   * `resume: false`: then the call answers with the queued background
-   * {@link AgentRun} (`object: 'agent.run'`) instead of the session.
+   * `budget: null`; `budget` is required). A `budget_paused` session continues
+   * by itself unless `resume: false`: the call then answers `202` with the
+   * queued background {@link AgentRun} (`object: 'agent.run'`, the full run
+   * shape) instead of the updated {@link AgentSession} (`200`). Tell them
+   * apart with `result.object`.
    *
-   * Requires a Console with agent runtime phase 1 (session budget). Rejects
-   * with 400 when the new `maxCostUsd` does not exceed what the session spent.
+   * Rejects with `CognipeerAPIError`: 400 `invalid_budget` (malformed, or not
+   * above what the session already spent), 400 `agent_background_disabled`
+   * (a resume needs background execution), 403 `budget_override_forbidden`
+   * (the agent has its own session budget and does not let API callers raise
+   * or remove it; lowering it is allowed), 404 `session_not_found`, 409
+   * `agent_run_conflict` (a run is already active).
    */
   async update(
     conversationId: string,
@@ -298,9 +309,9 @@ function readWithIdleTimeout(
  * persisted event already delivered, an unreadable body). Persisted frames
  * advance `state.lastSeq`.
  *
- * The stream frames its payload as `{ seq?, type, data, runId?, createdAt }`
- * (camelCase) while `events.list` returns `run_id` / `created_at`; both are
- * normalized to the list shape here.
+ * A client-API frame is `{ seq?, type, data, run_id?, created_at }`, the same
+ * shape `events.list` returns (live `agent.message.delta` frames have no `seq`;
+ * a persisted frame also carries it as the SSE `id:`).
  */
 function toStreamEvent(message: SseMessage, state: StreamState): SessionStreamEvent | null {
   if (message.event === 'error') {
@@ -334,8 +345,8 @@ function toStreamEvent(message: SseMessage, state: StreamState): SessionStreamEv
     state.lastSeq = seq;
   }
 
-  const runId = frame.run_id ?? frame.runId;
-  const createdAt = frame.created_at ?? frame.createdAt;
+  const runId = frame.run_id;
+  const createdAt = frame.created_at;
   return {
     ...(seq !== undefined ? { seq } : {}),
     type: frame.type,
@@ -362,8 +373,9 @@ export class AgentSessionActionsResource {
   /**
    * The actions currently waiting for an answer (`status: 'pending'`).
    *
-   * Read from the session record (`sessions.get()`), which is what the Console
-   * exposes to API callers; answered and expired actions are not listed — the
+   * The Console has no client route that lists actions (only the dashboard
+   * does), so this reads `pending_actions` from the session record
+   * (`sessions.get()`). Answered and expired actions are not listed — the
    * event log (`action.resolved`) has them.
    */
   async list(conversationId: string, options: { signal?: AbortSignal } = {}): Promise<PendingAction[]> {
@@ -376,20 +388,23 @@ export class AgentSessionActionsResource {
   /**
    * Answer a pending approval or question and let the paused turn continue.
    *
-   * - Tool approval: `{ decision: 'allow' | 'deny', comment?, approvedArgs?, rememberForSession? }`
+   * - Tool approval: `{ decision: 'allow' | 'deny', comment?, approved_args?, remember_for_session? }`
    * - Question: `{ answers: { '<question text>': 'value' | ['v1', 'v2'] } }`, or `{ cancelled: true }` to skip
    *
-   * Returns the continuation in the Responses shape: `completed`/`incomplete`
-   * when the turn finished, or `requires_action` again when other actions of
-   * the same pause are still open (or the continuation paused anew). With
+   * Returns the continuation (200) in the Responses shape: a full
+   * {@link AgentResponse} (`completed` / `incomplete`, or `requires_action`
+   * when the continuation paused anew), or — while other actions of the same
+   * pause are still open — an {@link AgentActionsPendingResponse}
+   * (`status: 'requires_action'`, empty `output`, no `usage`). With
    * `{ background: true }` the continuation is queued instead and the
    * {@link AgentRun} comes back right away (`202`); follow it with
    * `agents.runs.wait()`.
    *
    * Rejects with `CognipeerAPIError`: 403 `action_forbidden` (not an allowed
-   * approver), 404 `action_not_found`, 409 `action_not_pending` (already
-   * answered/cancelled) or `agent_run_conflict` (a run is active), 410
-   * `action_expired`, 400 `invalid_resolution`. See `AgentActionErrorCodes`.
+   * approver), 404 `action_not_found` / `session_not_found`, 409
+   * `action_not_pending` (already answered/cancelled; `error.response.error.action_status`
+   * says which) or `agent_run_conflict` (a run is active), 410 `action_expired`,
+   * 400 `invalid_resolution` / `agent_background_disabled`. See `AgentActionErrorCodes`.
    */
   async resolve(
     conversationId: string,
@@ -402,20 +417,20 @@ export class AgentSessionActionsResource {
     actionId: string,
     body: ResolveActionBody,
     options?: ResolveActionOptions & { background?: false },
-  ): Promise<AgentResponse>;
+  ): Promise<AgentResponse | AgentActionsPendingResponse>;
   async resolve(
     conversationId: string,
     actionId: string,
     body: ResolveActionBody,
     options?: ResolveActionOptions,
-  ): Promise<AgentResponse | AgentRun>;
+  ): Promise<AgentResponse | AgentActionsPendingResponse | AgentRun>;
   async resolve(
     conversationId: string,
     actionId: string,
     body: ResolveActionBody,
     options: ResolveActionOptions = {},
-  ): Promise<AgentResponse | AgentRun> {
-    return this.http.request<AgentResponse | AgentRun>(
+  ): Promise<AgentResponse | AgentActionsPendingResponse | AgentRun> {
+    return this.http.request<AgentResponse | AgentActionsPendingResponse | AgentRun>(
       'POST',
       sessionPath(conversationId, `/actions/${encodeURIComponent(actionId)}`),
       {
@@ -428,10 +443,8 @@ export class AgentSessionActionsResource {
 
 /**
  * Files attached to a conversation. The agent reads them in later turns; hand
- * one to a turn with an `input_file` / `input_image` part (`{ file_id }`).
- *
- * Requires a Console with agent runtime phase 1 (session files); the request
- * and response shapes below follow that contract.
+ * one to a turn with an `input_file` / `input_image` part (`{ file_id }`) on a
+ * request that continues the conversation (`previous_response_id`).
  */
 export class AgentSessionFilesResource {
   private http: HttpClient;
@@ -441,11 +454,16 @@ export class AgentSessionFilesResource {
   }
 
   /**
-   * Upload a file. The bytes are sent as the raw request body
-   * (`Content-Type: <mimeType>`, `?name=<name>`), not base64.
+   * Upload a file (201). The bytes are sent as the raw request body
+   * (`POST`, `Content-Type: <mimeType>`, `?name=<name>`), not base64. (The
+   * route also takes a JSON `{ name, content_type, data: <base64> }` body for
+   * small files; the SDK always uses the raw form, and therefore sends a JSON
+   * `mimeType` as `application/octet-stream` — see {@link UploadSessionFileOptions}.)
    *
-   * Rejects when the file exceeds the agent's `maxFileSizeMb` / `maxFiles`, or
-   * its type is not allowed (see the agent's `attachments` setting).
+   * Rejects with `CognipeerAPIError` when the file exceeds the agent's
+   * `maxFileSizeMb` / `maxFiles` (`file_too_large`, `too_many_files`), its type
+   * is not allowed (`unsupported_file_type`), the agent takes no attachments
+   * (`attachments_disabled`, 403) or the tenant is over quota (`quota_exceeded`).
    */
   async upload(
     conversationId: string,
@@ -457,33 +475,34 @@ export class AgentSessionFilesResource {
     if (!name) {
       throw new CognipeerError('sessions.files.upload needs a file name: pass options.name (or a File)');
     }
-    const mimeType = options.mimeType
+    const declared = options.mimeType
       ?? (typeof named.type === 'string' && named.type ? named.type : undefined)
       ?? 'application/octet-stream';
+    // The upload route reads any JSON content type as its base64 envelope; the file name decides how a .json file is read.
+    const mimeType = JSON_MIME_TYPE.test(declared) ? 'application/octet-stream' : declared;
 
-    const response = await this.http.requestRaw<unknown>('POST', sessionPath(conversationId, '/files'), file, {
+    return this.http.requestRaw<SessionFile>('POST', sessionPath(conversationId, '/files'), file, {
       contentType: mimeType,
       query: { name },
       signal: options.signal,
     });
-    return unwrapOne<SessionFile>(response, 'file');
   }
 
   /** The conversation's files. */
   async list(conversationId: string, options: { signal?: AbortSignal } = {}): Promise<SessionFile[]> {
-    const response = await this.http.request<unknown>('GET', sessionPath(conversationId, '/files'), {
+    const response = await this.http.request<SessionFileList>('GET', sessionPath(conversationId, '/files'), {
       signal: options.signal,
     });
-    return unwrapList<SessionFile>(response, 'files');
+    return response.data;
   }
 
-  /** Delete a file (object, converted text and record). */
+  /** Delete a file (object, converted text and record); 404 `file_not_found` when it is not on this conversation. */
   async delete(
     conversationId: string,
     fileId: string,
     options: { signal?: AbortSignal } = {},
-  ): Promise<{ id: string; deleted: boolean }> {
-    return this.http.request<{ id: string; deleted: boolean }>(
+  ): Promise<SessionFileDeleted> {
+    return this.http.request<SessionFileDeleted>(
       'DELETE',
       sessionPath(conversationId, `/files/${encodeURIComponent(fileId)}`),
       { signal: options.signal },

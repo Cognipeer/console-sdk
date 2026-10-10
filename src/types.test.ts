@@ -104,7 +104,7 @@ describe('isSessionEvent', () => {
   const event: SessionStreamEvent = {
     seq: 3,
     type: 'session.status_idle',
-    data: { stopReason: 'requires_action', pendingActionIds: ['act_1'] },
+    data: { stop_reason: 'requires_action', pending_action_ids: ['act_1'] },
     created_at: '2026-10-10T10:00:00.000Z',
   };
 
@@ -112,7 +112,7 @@ describe('isSessionEvent', () => {
     expect(isSessionEvent(event, 'session.status_idle')).toBe(true);
     expect(isSessionEvent(event, 'session.error')).toBe(false);
     if (isSessionEvent(event, 'session.status_idle')) {
-      expect(event.data.pendingActionIds).toEqual(['act_1']);
+      expect(event.data.pending_action_ids).toEqual(['act_1']);
     }
   });
 });
