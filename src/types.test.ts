@@ -11,7 +11,7 @@ import {
   isSessionEvent,
   WEBHOOK_EVENT_TYPES,
 } from './types';
-import type { SessionStreamEvent } from './types';
+import type { SessionFile, SessionStreamEvent, WebhookEndpoint } from './types';
 
 describe('CognipeerError', () => {
   it('sets the message and defaults name to CognipeerError', () => {
@@ -109,6 +109,10 @@ describe('session and storage error codes', () => {
       StorageNotConfigured: 'storage_not_configured',
       AttachmentsDisabled: 'attachments_disabled',
       BucketInUse: 'bucket_in_use',
+      NotPending: 'action_not_pending',
+      ActionCancelled: 'action_cancelled',
+      AuthorizationUnavailable: 'authorization_unavailable',
+      MarkdownUnavailable: 'markdown_unavailable',
     });
   });
 
@@ -126,6 +130,42 @@ describe('session and storage error codes', () => {
     expect(isAgentActionErrorCode(nested, AgentActionErrorCodes.StorageNotConfigured)).toBe(false);
     expect(isAgentActionErrorCode(conflict, AgentActionErrorCodes.SessionConflict)).toBe(true);
     expect(isAgentActionErrorCode(inUse, AgentActionErrorCodes.BucketInUse)).toBe(true);
+  });
+});
+
+describe('response fields the Console sends on top of the core shape', () => {
+  it('a session file names the path that serves its bytes', () => {
+    const file: SessionFile = {
+      id: 'file_1',
+      object: 'agent.session.file',
+      session_id: 'conv_1',
+      name: 'report.pdf',
+      mime_type: 'application/pdf',
+      size: 5,
+      conversion_status: 'succeeded',
+      bucket_key: 'session-docs',
+      path: 'agent-sessions/ops/conv_1/report.pdf',
+      content_url: '/api/client/v1/agents/sessions/conv_1/files/file_1/content',
+    };
+    expect(file.content_url).toContain('/files/file_1/content');
+  });
+
+  it('a webhook endpoint read by a read-only caller says its url is shortened', () => {
+    const endpoint: WebhookEndpoint = {
+      id: 'whk_1',
+      url: 'https://hooks.example.com/services/T0/B0?…',
+      urlRedacted: true,
+      description: null,
+      events: ['action.required'],
+      projectId: null,
+      status: 'active',
+      disabledReason: null,
+      failingSince: null,
+      createdBy: 'user_1',
+      createdAt: null,
+      updatedAt: null,
+    };
+    expect(endpoint.urlRedacted).toBe(true);
   });
 });
 

@@ -62,14 +62,18 @@ actions, event `data`, budgets and error fields; webhooks: camelCase, wrapped in
 - **`responses.create({ session_id })`** (alias `conversation`: a string or `{ id }`, OpenAI style) —
   continue a session by id, the way `previous_response_id` does, for a session that has no response
   yet (one from `sessions.create()`). Give one of `session_id`, `conversation` and
-  `previous_response_id`, or several that agree: different sessions are `400 session_conflict`, a
-  session of another agent or project `404 session_not_found`. `file_id` input parts work with any of
+  `previous_response_id`, or several that agree: `session_id` / `conversation` naming a different
+  session than `previous_response_id` is `400 session_conflict` (the two of them disagreeing with
+  each other is `400 invalid_request`), a session of another agent or project `404 session_not_found`. `file_id` input parts work with any of
   the three; `budget` is ignored on a continued session, as with `previous_response_id`.
 - **`Agent.attachments`** on `agents.get(key)` (`AgentAttachmentsInfo`: `enabled`, `max_files`,
   `max_file_size_mb`, `allowed_mime_types`, `accepts_images`) — whether the agent takes files right
   now (files on AND a usable bucket), its limits, and whether its model reads images (an image sent
   to a text-only model is replaced by a note).
-- Error codes in `AgentActionErrorCodes`: `SessionConflict` (`session_conflict`),
+- Error codes in `AgentActionErrorCodes`: `ActionCancelled` (`action_cancelled`, 409: the request was
+  cancelled before it was answered; `NotPending` now means answered), `AuthorizationUnavailable`
+  (`authorization_unavailable`, 503), `MarkdownUnavailable` (`markdown_unavailable`, 409: a markdown
+  variant of a file without a text version), `SessionConflict` (`session_conflict`),
   `StorageUnavailable` (`storage_unavailable`, 409: the agent's bucket cannot take a file; the
   message names it), `StorageNotConfigured` (`storage_not_configured`, 409), `AttachmentsDisabled`
   (`attachments_disabled`, 403: files off for the agent, or on with no bucket) and `BucketInUse`
@@ -114,9 +118,10 @@ actions, event `data`, budgets and error fields; webhooks: camelCase, wrapped in
 ### Changed
 
 - `AgentSession` (and the new `AgentSessionSummary`) carries `title`, `created_at`, `updated_at` and
-  `metadata`; `SessionFile` carries `bucket_key` and `path`. These are response fields the Console always
-  sends, so they are required in the types: code that builds these objects by hand (test doubles)
-  needs the new fields.
+  `metadata`; `SessionFile` carries `bucket_key`, `path` and `content_url`. These are response fields the
+  Console always sends, so they are required in the types: code that builds these objects by hand (test
+  doubles) needs the new fields. `WebhookEndpoint.urlRedacted` (optional) is `true` when the caller may
+  not read the whole URL and `url` is the shortened form.
 - Documentation: a file for `input_file` / `input_image` is named with `session_id`, `conversation` or
   `previous_response_id`; answering an approval is the Console's `agent.approve` permission
   (`403 action_forbidden`).

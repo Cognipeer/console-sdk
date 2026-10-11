@@ -1950,9 +1950,13 @@ export interface AgentAttachmentsInfo {
    * take a file at the moment).
    */
   enabled: boolean;
-  /** Files one session holds (0 while files are off). */
+  /**
+   * Files one session holds (0 while files are switched off for the agent). When
+   * files are on but the bucket cannot take a file at the moment, `enabled` is
+   * false and the real limits are still reported.
+   */
   max_files: number;
-  /** Largest file in MB (0 while files are off). */
+  /** Largest file in MB (0 while files are switched off; real limits otherwise, see `max_files`). */
   max_file_size_mb: number;
   /** Accepted MIME types (`image/*` style wildcards allowed); empty = any. */
   allowed_mime_types: string[];
@@ -2062,10 +2066,11 @@ export interface AgentResponseCreateRequest {
    * Continue this session: one created with `client.agents.sessions.create()`
    * (with files already uploaded to it, if any) or any session id. The same
    * session `previous_response_id` (`resp_<id>`) and `conversation` name; give
-   * one, or several that agree. Naming different sessions is a
-   * `400 session_conflict`, and a session of another agent or project a
-   * `404 session_not_found`. `file_id` input parts may name a file of this
-   * session.
+   * one, or several that agree. `session_id` and `conversation` naming two
+   * different sessions is a `400 invalid_request`; either of them naming a
+   * different session than `previous_response_id` is a `400 session_conflict`.
+   * A session of another agent or project is a `404 session_not_found`.
+   * `file_id` input parts may name a file of this session.
    */
   session_id?: string | null;
   /**
@@ -2828,8 +2833,10 @@ export const AgentActionErrorCodes = {
    */
   SessionNotFound: 'session_not_found',
   /**
-   * 400: `session_id`, `conversation` and `previous_response_id` of one
-   * `responses.create()` name different sessions. Give one of them.
+   * 400: `session_id` or `conversation` of one `responses.create()` names a
+   * different session than `previous_response_id`. Give one of them. (Two
+   * different sessions in `session_id` and `conversation` alone are a plain
+   * `400 invalid_request`.)
    */
   SessionConflict: 'session_conflict',
   /**
@@ -2859,12 +2866,36 @@ export const AgentActionErrorCodes = {
   BucketInUse: 'bucket_in_use',
   /** 404: no such action in this conversation. */
   NotFound: 'action_not_found',
-  /** 409: somebody else answered it first, or it was cancelled; `error.response.error.action_status` says which. */
+  /**
+   * 409: the request is no longer open because it was answered already (by
+   * somebody else, or by an earlier call). A cancelled request is
+   * {@link AgentActionErrorCodes.ActionCancelled} instead, a timed-out one
+   * {@link AgentActionErrorCodes.Expired}; `error.response.error.action_status`
+   * carries the final state.
+   */
   NotPending: 'action_not_pending',
+  /**
+   * 409: the request was cancelled before it was answered (a new message that
+   * withdrew it, a run cancel, or the agent's timeout policy), so there is
+   * nothing left to answer. `error.response.error.action_status` is `cancelled`.
+   */
+  ActionCancelled: 'action_cancelled',
   /** 410: the request ran out of time (the agent's approval timeout). */
   Expired: 'action_expired',
   /** 403: the agent's `approvers` setting does not let this caller answer. */
   Forbidden: 'action_forbidden',
+  /**
+   * 503: the Console could not decide whether this caller may answer (or end a
+   * request by sending a message) right now. Nothing was changed; retry after
+   * the `Retry-After` seconds.
+   */
+  AuthorizationUnavailable: 'authorization_unavailable',
+  /**
+   * 409 from `sessions.files.content(…, { variant: 'markdown' })`: the file has
+   * no text version (a picture, or a conversion that did not succeed). Read the
+   * original instead.
+   */
+  MarkdownUnavailable: 'markdown_unavailable',
   /** 400: the body does not fit the action (bad decision, answers, `approvedArgs`...). */
   InvalidResolution: 'invalid_resolution',
   /**
@@ -2975,6 +3006,13 @@ export interface SessionFile {
    * `sessions.files.content()`.
    */
   path: string;
+  /**
+   * Console-relative path that serves the file's bytes
+   * (`/api/client/v1/agents/sessions/{id}/files/{fileId}/content`). Prefer
+   * `sessions.files.content()` / `contentStream()`, which add the base URL and the
+   * token; this is for building a link on the Console host.
+   */
+  content_url: string;
   /** ISO timestamp. */
   created_at?: string;
   /** ISO timestamp after which the Console deletes the file (the agent's `retentionDays`); absent = kept. */
@@ -2998,7 +3036,8 @@ export interface SessionFileDeleted {
 export interface SessionFileContentOptions {
   /**
    * `original` (default): the bytes as uploaded. `markdown`: the text the agent
-   * reads, for a file that has one (`conversion_status: 'succeeded'`); 404 otherwise.
+   * reads, for a file that has one (`conversion_status: 'succeeded'`); a file without
+   * one is a `409 markdown_unavailable` (the original is still there).
    */
   variant?: 'original' | 'markdown';
   signal?: AbortSignal;
@@ -3092,6 +3131,11 @@ export interface WebhookEndpoint {
    * a URL you read as a read-only caller back with `update()` (which needs admin anyway).
    */
   url: string;
+  /**
+   * `true` when `url` is the shortened form described above because the caller
+   * may not read the whole address. Absent when the full URL is shown.
+   */
+  urlRedacted?: boolean;
   /** null when none was given. */
   description: string | null;
   events: WebhookEventPattern[];

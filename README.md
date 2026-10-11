@@ -244,8 +244,9 @@ if (res.status === 'requires_action') {
   `run.result.required_action.actions` and `run.stop_reason`. The `agent_run.requires_action`
   callback/webhook event fires at the same moment.
 - Errors (`CognipeerAPIError`): `403 action_forbidden` (not an allowed approver), `404`
-  `action_not_found`, `409 action_not_pending` (answered by someone else), `410 action_expired`,
-  `400 invalid_resolution`. Test with `isAgentActionErrorCode(error, AgentActionErrorCodes.Expired)`.
+  `action_not_found`, `409 action_not_pending` (answered by someone else), `409 action_cancelled`
+  (withdrawn before it was answered), `410 action_expired`, `400 invalid_resolution`,
+  `503 authorization_unavailable` (the Console could not decide; nothing changed, retry). Test with `isAgentActionErrorCode(error, AgentActionErrorCodes.Expired)`.
 - A new user message while an action is pending is rejected with `409 pending_action`
   (`AgentActionErrorCodes.PendingAction`, ids in `error.response.error.pending_action_ids`) unless the
   agent is configured to cancel pending requests.
@@ -306,8 +307,9 @@ await client.agents.sessions.delete(session.id); // with its files, events and o
 ```
 
 `session_id`, `conversation` and `previous_response_id` name the same conversation: give one, or
-several that agree (`400 session_conflict` otherwise; `404 session_not_found` for another agent's or
-project's session). `delete()` is refused with `409 agent_run_conflict` while a run is active.
+several that agree (`400 session_conflict` when `session_id` / `conversation` and
+`previous_response_id` name different sessions, `400 invalid_request` when `session_id` and
+`conversation` disagree; `404 session_not_found` for another agent's or project's session). `delete()` is refused with `409 agent_run_conflict` while a run is active.
 Details and the error table: [Agents → Sessions](docs/api/agents.md#sessions-start-list-delete).
 
 ##### Session budget and files
@@ -365,7 +367,8 @@ Upload errors (`CognipeerAPIError.errorCode`, see `AgentActionErrorCodes`): `403
 (files off for the agent, or on with no bucket chosen), `409 storage_unavailable` (the bucket was deleted or
 disabled, or its provider is unusable; the message names it), `409 storage_not_configured`,
 `409 too_many_files`, `413 file_too_large`, `415 unsupported_file_type`, `429 quota_exceeded`. The file
-content call needs a Console that serves the session-file content route.
+content call needs a Console that serves the session-file content route; `variant: 'markdown'` on a
+file without a text version is a `409 markdown_unavailable`.
 
 ##### Webhook subscriptions
 

@@ -146,8 +146,10 @@ const followUp = await client.agents.responses.create({
 
 `session_id` (alias `conversation`, a string or `{ id }`) names the same conversation as
 `previous_response_id` (`resp_<id>`) in the session's own words. Give one, or several that
-agree: naming two different sessions is a `400 session_conflict`, and a session of another
-agent or project is a `404 session_not_found`. It is what you use to continue a session you
+agree: `session_id` or `conversation` naming a different session than `previous_response_id`
+is a `400 session_conflict` (`session_id` and `conversation` disagreeing with each other is a
+plain `400 invalid_request`), and a session of another agent or project is a
+`404 session_not_found`. It is what you use to continue a session you
 started with `sessions.create()`, because that one has no response yet:
 
 ```typescript
@@ -324,12 +326,15 @@ try {
 | `idempotency_key_sync_not_supported` | 400 | `Idempotency-Key` sent without `background: true` |
 | `agent_run_already_terminal` | 409 | `cancel()` on a finished run |
 | `action_not_found` / `session_not_found` | 404 | No such action / conversation in this project; `session_not_found` is also a `session_id` / `conversation` of another agent or project |
-| `session_conflict` | 400 | `session_id`, `conversation` and `previous_response_id` of one request name different sessions |
+| `session_conflict` | 400 | `session_id` / `conversation` and `previous_response_id` of one request name different sessions (`session_id` vs `conversation` alone is a `400 invalid_request`) |
 | `attachments_disabled` | 403 | The agent takes no files: they are off for it, or on with no bucket chosen (`agents.get(key).attachments.enabled` says so in advance) |
 | `storage_unavailable` | 409 | The bucket the agent keeps its files in cannot take a file now (deleted, disabled, or its provider is gone, inactive or not assigned to the project); the message names the bucket |
 | `storage_not_configured` | 409 | The agent has files on but no bucket to keep them in (older data); pick a bucket in the agent's Files settings |
 | `bucket_in_use` | 409 | From the Files management API: a bucket cannot be deleted or disabled while an agent keeps session files in it (`error.response.agents` lists them). No call of this SDK raises it |
-| `action_not_pending` | 409 | The action was already answered or cancelled |
+| `action_not_pending` | 409 | The action was already answered |
+| `action_cancelled` | 409 | The action was cancelled before it was answered (a new message withdrew it, a run cancel, the timeout policy); `error.response.error.action_status` is `cancelled` |
+| `authorization_unavailable` | 503 | The Console could not decide whether this caller may answer (nothing changed; retry after `Retry-After`) |
+| `markdown_unavailable` | 409 | `files.content(…, { variant: 'markdown' })` on a file without a text version (a picture, or a conversion that did not succeed) |
 | `pending_action` | 409 | A new message was sent while approvals/questions are open |
 | `action_expired` | 410 | The approval request ran out of time |
 | `action_forbidden` | 403 | This caller may not answer the request (the Console's `agent.approve` permission, or the agent's approvers setting on a Console without the permission engine) |
@@ -494,13 +499,15 @@ await writeFile(fileName ?? 'download', data);
 const { data: md } = await client.agents.sessions.files.content(session.id, file.id, { variant: 'markdown' });
 ```
 
-`variant` is `original` (default) or `markdown`; `fileName` is the base name from
-`Content-Disposition`. The content call needs a Console that serves the session-file content
+`variant` is `original` (default) or `markdown`; a file without a text version answers
+`409 markdown_unavailable`, and a file that is not on the session `404 file_not_found`.
+`fileName` is the base name from `Content-Disposition`. The content call needs a Console that serves the session-file content
 route (`GET /agents/sessions/{id}/files/{fileId}/content`); on an older one it answers `404`.
 
 A `SessionFile` carries `id`, `name`, `mime_type`, `size`, `conversion_status`
 (`succeeded` = the agent can read the text; `failed` / `skipped` = only the original exists;
-`pending` = still converting), `bucket_key`, `path`, `created_at` and `expires_at`.
+`pending` = still converting), `bucket_key`, `path`, `content_url` (the Console path that serves
+the bytes), `created_at` and `expires_at`.
 The agent's *Files* setting in the Console decides the bucket, folder, limits and retention;
 changing the bucket later affects new files only. Uploads can be refused with
 `403 attachments_disabled`, `409 storage_unavailable`, `409 storage_not_configured`,

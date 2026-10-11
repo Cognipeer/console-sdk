@@ -553,9 +553,12 @@ export class AgentSessionActionsResource {
    *
    * Rejects with `CognipeerAPIError`: 403 `action_forbidden` (not an allowed
    * approver), 404 `action_not_found` / `session_not_found`, 409
-   * `action_not_pending` (already answered/cancelled; `error.response.error.action_status`
-   * says which) or `agent_run_conflict` (a run is active), 410 `action_expired`,
-   * 400 `invalid_resolution` / `agent_background_disabled`. See `AgentActionErrorCodes`.
+   * `action_not_pending` (already answered), `action_cancelled` (withdrawn before
+   * it was answered) or `agent_run_conflict` (a run is active), 410
+   * `action_expired`, 400 `invalid_resolution` / `agent_background_disabled`,
+   * 503 `authorization_unavailable` (the Console could not decide; nothing
+   * changed, retry). `error.response.error.action_status` carries the final state
+   * of a request that is no longer open. See `AgentActionErrorCodes`.
    */
   async resolve(
     conversationId: string,
@@ -663,8 +666,9 @@ export class AgentSessionFilesResource {
    * `Content-Type` and the file name from `Content-Disposition`.
    *
    * 404 `file_not_found` when the file is not on this conversation (or was deleted
-   * or expired), or has no `markdown` variant (its `conversion_status` is not
-   * `succeeded`). For a large file use {@link contentStream}.
+   * or expired); 409 `markdown_unavailable` when `variant: 'markdown'` is asked for
+   * a file that has no text version (its `conversion_status` is not `succeeded`).
+   * For a large file use {@link contentStream}.
    */
   async content(
     conversationId: string,

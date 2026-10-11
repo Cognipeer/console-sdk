@@ -938,6 +938,33 @@ describe('AgentSessionActionsResource', () => {
     expect(isAgentActionErrorCode(error, AgentActionErrorCodes.NotPending)).toBe(true);
     expect(isAgentActionErrorCode(error, AgentActionErrorCodes.Expired)).toBe(false);
   });
+
+  it('tells a cancelled request (409 action_cancelled) from an answered one (409 action_not_pending)', async () => {
+    const http = createMockHttp();
+    http.request.mockRejectedValue(
+      new CognipeerAPIError('This request was cancelled', 409, 'invalid_request_error', { error: { action_status: 'cancelled' } }, undefined, 'action_cancelled'),
+    );
+
+    const error = await new AgentSessionActionsResource(http)
+      .resolve('conv_1', 'act_1', { decision: 'allow' })
+      .catch((e: unknown) => e);
+
+    expect(isAgentActionErrorCode(error, AgentActionErrorCodes.ActionCancelled)).toBe(true);
+    expect(isAgentActionErrorCode(error, AgentActionErrorCodes.NotPending)).toBe(false);
+  });
+
+  it('surfaces the engine being unable to decide (503 authorization_unavailable)', async () => {
+    const http = createMockHttp();
+    http.request.mockRejectedValue(
+      new CognipeerAPIError('Authorization is temporarily unavailable', 503, 'server_error', undefined, undefined, 'authorization_unavailable'),
+    );
+
+    const error = await new AgentSessionActionsResource(http)
+      .resolve('conv_1', 'act_1', { decision: 'allow' })
+      .catch((e: unknown) => e);
+
+    expect(isAgentActionErrorCode(error, AgentActionErrorCodes.AuthorizationUnavailable)).toBe(true);
+  });
 });
 
 // ── files ─────────────────────────────────────────────────────────
@@ -953,6 +980,7 @@ describe('AgentSessionFilesResource', () => {
     conversion_status: 'succeeded',
     bucket_key: 'session-docs',
     path: 'agent-sessions/ops-agent/conv_1/report.pdf',
+    content_url: '/api/client/v1/agents/sessions/conv_1/files/file_1/content',
     created_at: '2026-10-10T10:00:00.000Z',
   };
 
@@ -1126,6 +1154,20 @@ describe('AgentSessionFilesResource', () => {
       const error = await new AgentSessionFilesResource(http).content('conv_1', 'gone').catch((e: unknown) => e);
 
       expect((error as CognipeerAPIError).errorCode).toBe('file_not_found');
+    });
+
+    it('a markdown variant of a file without a text version is 409 markdown_unavailable', async () => {
+      const http = createMockHttp();
+      http.requestBinary.mockRejectedValue(
+        new CognipeerAPIError('This file has no text version.', 409, 'invalid_request_error', {}, undefined, 'markdown_unavailable'),
+      );
+
+      const error = await new AgentSessionFilesResource(http)
+        .content('conv_1', 'pic_1', { variant: 'markdown' })
+        .catch((e: unknown) => e);
+
+      expect(isAgentActionErrorCode(error, AgentActionErrorCodes.MarkdownUnavailable)).toBe(true);
+      expect((error as CognipeerAPIError).statusCode).toBe(409);
     });
   });
 

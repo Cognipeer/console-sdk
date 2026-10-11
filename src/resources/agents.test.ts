@@ -465,7 +465,7 @@ describe('AgentResponsesResource (session_id / conversation)', () => {
     expect(http.request.mock.calls.map((call) => call[2].body.conversation)).toEqual(['conv_1', { id: 'conv_1' }]);
   });
 
-  it('lets the Console judge naming two different sessions (400 session_conflict)', async () => {
+  it('lets the Console judge a session_id that disagrees with previous_response_id (400 session_conflict)', async () => {
     const http = createMockHttp();
     http.request.mockRejectedValue(
       new CognipeerAPIError('names different sessions', 400, 'invalid_request_error', {}, undefined, 'session_conflict'),
