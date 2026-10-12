@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { HttpClient } from './http';
 import { CognipeerAPIError, CognipeerError } from './types';
+import { SDK_VERSION } from './version';
 
 function jsonResponse(
   body: unknown,
@@ -94,6 +96,16 @@ describe('HttpClient', () => {
         Authorization: 'Bearer sk-test-key',
       });
       expect(init.headers['User-Agent']).toContain('@cognipeer/console-sdk');
+    });
+
+    it('sends the package version in the User-Agent', async () => {
+      const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+      expect(SDK_VERSION).toBe(pkg.version);
+
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
+      await new HttpClient('https://api.test', 'key', 5000, 0, fetchMock).request('GET', '/v1/things');
+
+      expect(fetchMock.mock.calls[0][1].headers['User-Agent']).toBe(`@cognipeer/console-sdk/${pkg.version}`);
     });
 
     it('merges custom headers over the defaults', async () => {
@@ -358,6 +370,37 @@ describe('HttpClient', () => {
       });
     });
 
+    it('reads a top-level code beside a string error (webhook routes) into errorCode', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: 'The endpoint is disabled; enable it first', code: 'endpoint_disabled' }, { status: 409 }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+
+      await expect(http.request('POST', '/v1/deliveries/d/redeliver', { body: {} })).rejects.toMatchObject({
+        statusCode: 409,
+        errorCode: 'endpoint_disabled',
+        message: 'The endpoint is disabled; enable it first',
+      });
+    });
+
+    it('prefers error.code over a top-level code, and ignores a non-string one', async () => {
+      const http = new HttpClient(
+        'https://api.test',
+        'key',
+        5000,
+        0,
+        vi
+          .fn()
+          .mockResolvedValueOnce(jsonResponse({ error: { type: 't', code: 'inner', message: 'm' }, code: 'outer' }, { status: 409 }))
+          .mockResolvedValueOnce(jsonResponse({ error: 'plain', code: 42 }, { status: 400 })),
+      );
+
+      await expect(http.request('GET', '/v1/a')).rejects.toMatchObject({ errorCode: 'inner' });
+      const second = await http.request('GET', '/v1/b').catch((e: CognipeerAPIError) => e);
+      expect(second).toBeInstanceOf(CognipeerAPIError);
+      expect((second as CognipeerAPIError).errorCode).toBeUndefined();
+    });
+
     it('does not retry a 504 whose body says retryable: false (sync agent timeout)', async () => {
       const fetchMock = vi.fn().mockResolvedValue(
         jsonResponse(
@@ -500,6 +543,19 @@ describe('HttpClient', () => {
       expect(result.requestId).toBe('req_123');
     });
 
+    it('hands back the response headers (for routes that put metadata there)', async () => {
+      const response = new Response(new Uint8Array([1]), {
+        status: 200,
+        headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="a.pdf"' },
+      });
+      const fetchMock = vi.fn().mockResolvedValue(response);
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+
+      const result = await http.requestBinary('GET', '/v1/download');
+
+      expect(result.headers.get('content-disposition')).toBe('attachment; filename="a.pdf"');
+    });
+
     it('defaults the content type when the header is missing', async () => {
       const response = new Response(new Uint8Array([9]), { status: 200 });
       const fetchMock = vi.fn().mockResolvedValue(response);
@@ -588,6 +644,37 @@ describe('HttpClient', () => {
       await expect(http.requestMultipart('POST', '/v1/audio/transcriptions', new FormData())).rejects.toBeInstanceOf(
         CognipeerAPIError
       );
+    });
+  });
+
+  describe('requestRaw()', () => {
+    it('sends the bytes as-is under the given Content-Type and parses the JSON reply', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 'file_1' }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+      const bytes = new Uint8Array([1, 2, 3]);
+
+      const result = await http.requestRaw('POST', '/v1/files', bytes, {
+        contentType: 'application/pdf',
+        query: { name: 'a b.pdf' },
+      });
+
+      expect(result).toEqual({ id: 'file_1' });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.test/v1/files?name=a+b.pdf');
+      expect(init.method).toBe('POST');
+      expect(init.body).toBe(bytes);
+      expect(init.headers['Content-Type']).toBe('application/pdf');
+      expect(init.headers.Authorization).toBe('Bearer key');
+    });
+
+    it('throws a CognipeerAPIError on a non-ok response and does not retry', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: { message: 'too large' } }, { status: 503 }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 3, fetchMock);
+
+      await expect(
+        http.requestRaw('POST', '/v1/files', new Uint8Array([1]), { contentType: 'text/plain' }),
+      ).rejects.toBeInstanceOf(CognipeerAPIError);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 

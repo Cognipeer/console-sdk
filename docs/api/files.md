@@ -34,6 +34,23 @@ const { files, count, nextCursor } = await client.files.list('user-uploads', {
 });
 ```
 
+Browse a bucket by folder with `prefix` (a path such as `agent-sessions/support-bot/`; `''` is the
+root). The answer then lists the folder's files and its sub-folders:
+
+```typescript
+const { files, folders, prefix } = await client.files.list('user-uploads', {
+  prefix: 'agent-sessions/support-bot/',
+  purpose: 'conversation', // only files attached to agent sessions; 'other' = only the rest
+});
+// folders: ['agent-sessions/support-bot/<sessionId>/', ...]
+```
+
+Files that agents keep for their sessions are ordinary objects here: they carry
+`purpose: 'conversation'`, `conversationId`, `agentKey`, `expiresAt` and `uploadedBy`.
+Manage them through [`client.agents.sessions.files`](/api/agents#session-files); a bucket an agent
+keeps session files in cannot be deleted or disabled until the agent uses another one
+(`409 bucket_in_use`).
+
 ### `client.files.upload(bucketKey, data)`
 
 Upload a file using a base64 / data-URL payload. Set `convertToMarkdown: true`

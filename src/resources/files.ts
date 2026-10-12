@@ -6,6 +6,7 @@ import {
   FileProvider,
   ListFileProvidersQuery,
   ListFilesQuery,
+  ListFilesResponse,
   UploadFileRequest,
 } from '../types';
 
@@ -46,7 +47,7 @@ export class FilesResource {
   async list(
     bucketKey: string,
     query?: ListFilesQuery
-  ): Promise<{ files: FileObject[]; count: number; nextCursor?: string | null }> {
+  ): Promise<ListFilesResponse> {
     return this.http.request('GET', `/api/client/v1/files/buckets/${bucketKey}/objects`, {
       query: query as Record<string, string | number | boolean | undefined>,
     });

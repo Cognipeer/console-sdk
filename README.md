@@ -184,8 +184,19 @@ const client = new ConsoleClient({
 - `client.agents.responses.create({ ..., background: true, callback_url?, callback_secret? }, { idempotencyKey? })` - Start a background run; returns an `AgentRun` (`run_...`) immediately
 - `client.agents.runs.get(runId)` - Run status, with `result` once `succeeded` / `error` once `failed`/`canceled`
 - `client.agents.runs.cancel(runId)` - Cooperatively cancel a `queued`/`running` run
-- `client.agents.runs.wait(runId, { pollIntervalMs?, timeoutMs?, signal? })` - Poll until the run is terminal
-- `verifyAgentRunCallback({ rawBody, signatureHeader, secret })` from `@cognipeer/console-sdk/webhooks` (Node.js) - Verify a signed run callback
+- `client.agents.runs.wait(runId, { pollIntervalMs?, timeoutMs?, signal? })` - Poll until the run is terminal **or `requires_action`** (waiting on an approval/question)
+- `client.agents.sessions.create({ agent, title?, metadata?, budget? })` - Start an empty session (nothing runs); continue it with `responses.create({ session_id })`
+- `client.agents.sessions.list({ agent?, status?, limit?, after? })` - Await it for a page, or `for await` it for every session (newest first)
+- `client.agents.sessions.delete(conversationId)` - Delete a session with its files, events and open actions
+- `client.agents.sessions.get(conversationId)` - Runtime state: `runtime_status`, `stop_reason`, `pending_actions`, `last_event_seq`
+- `client.agents.sessions.actions.list(conversationId)` / `.resolve(conversationId, actionId, body, { background? })` - Pending approvals/questions (read from the session; the Console has no client list route) and answering them
+- `client.agents.sessions.events.list(conversationId, { after?, types?, limit? })` / `.stream(conversationId, { after?, types?, signal? })` - The session event log: paged, or followed live with automatic `Last-Event-ID` reconnect
+- `client.agents.sessions.update(conversationId, { budget, resume })` - Raise, set or remove (`null`) the session spend budget (`budget` is required; `{ max_cost_usd, on_reach }`)
+- `client.agents.sessions.files.upload/list/delete(conversationId, …)` - Files the agent can read in the conversation; each file says where it is stored (`bucket_key`, `path`)
+- `client.agents.sessions.files.content(conversationId, fileId, { variant? })` / `.contentStream(…)` - Download a session file (the original, or the `markdown` text the agent reads)
+- `client.agents.get(key).attachments` - Whether the agent takes files now, its limits, and whether its model reads images
+- `client.webhooks.create/list/get/update/delete/rotateSecret/test/deliveries/redeliver/eventTypes` - Webhook subscriptions (objects keep camelCase field names, unlike the agent API's snake_case)
+- `verifyWebhook({ rawBody, signatureHeader, secret })` from `@cognipeer/console-sdk/webhooks` (Node.js) - Verify a signed webhook delivery (`verifyAgentRunCallback` is the same check, kept for existing code)
 
 ```typescript
 const run = await client.agents.responses.create(
@@ -197,6 +208,206 @@ if (done.status === 'succeeded') console.log(done.result?.output[0]?.content[0]?
 ```
 
 See [Agents → Background runs](docs/api/agents.md#background-runs) for callbacks and error codes.
+
+##### Approvals and questions (human in the loop)
+
+An agent can pause a turn to ask for a tool approval or to ask the user a question. The turn then
+comes back with `status: 'requires_action'` (Responses API) or a run in `requires_action`, listing
+what to answer. Answer with `sessions.actions.resolve()`; the turn continues from where it stopped.
+
+```typescript
+const res = await client.agents.responses.create({ model: 'ops-agent', input: 'Clean up staging' });
+
+if (res.status === 'requires_action') {
+  const conversationId = res.id.replace(/^resp_/, '');
+  for (const action of res.required_action!.actions) {
+    if (action.kind === 'tool_approval') {
+      console.log('Agent wants to run', action.tool_name, action.args);
+      // `approved_args` replaces the arguments; `remember_for_session` stops asking for this tool.
+      const next = await client.agents.sessions.actions.resolve(conversationId, action.id, {
+        decision: 'allow',
+        remember_for_session: true,
+      });
+      // `next` is the continuation (Responses shape). While other actions of the same pause are
+      // still open it is a bare `requires_action` body (empty `output`, no `usage`).
+    } else {
+      await client.agents.sessions.actions.resolve(conversationId, action.id, {
+        answers: { [action.questions![0].question]: 'staging' }, // or { cancelled: true } to skip
+      });
+    }
+  }
+}
+```
+
+- `resolve(..., { background: true })` queues the continuation and returns an `AgentRun` (`202`).
+- For a background run, `runs.wait()` returns when the run is `requires_action`; read
+  `run.result.required_action.actions` and `run.stop_reason`. The `agent_run.requires_action`
+  callback/webhook event fires at the same moment.
+- Errors (`CognipeerAPIError`): `403 action_forbidden` (not an allowed approver), `404`
+  `action_not_found`, `409 action_not_pending` (answered by someone else), `409 action_cancelled`
+  (withdrawn before it was answered), `410 action_expired`, `400 invalid_resolution`,
+  `503 authorization_unavailable` (the Console could not decide; nothing changed, retry). Test with `isAgentActionErrorCode(error, AgentActionErrorCodes.Expired)`.
+- A new user message while an action is pending is rejected with `409 pending_action`
+  (`AgentActionErrorCodes.PendingAction`, ids in `error.response.error.pending_action_ids`) unless the
+  agent is configured to cancel pending requests.
+
+##### Session events and live follow
+
+Every session has an append-only event log (`user.message`, `agent.tool_use`, `agent.tool_result`,
+`action.required`, `action.resolved`, `agent.message`, `session.status_idle`, `session.work_done`,
+`session.error`, ...). Read it with `events.list()` or follow it:
+
+```typescript
+import { isSessionEvent } from '@cognipeer/console-sdk';
+
+const session = await client.agents.sessions.get(conversationId);
+const controller = new AbortController();
+
+for await (const event of client.agents.sessions.events.stream(conversationId, {
+  after: session.last_event_seq, // omit to replay the whole log first
+  signal: controller.signal,
+})) {
+  if (event.type === 'agent.message.delta') process.stdout.write(event.data.text); // live only
+  if (isSessionEvent(event, 'action.required')) notifyApprover(event.data.action_id);
+  if (isSessionEvent(event, 'session.status_idle')) break; // the stream itself never ends on idle
+}
+```
+
+`stream()` reconnects by itself (network drop, idle stall, the server's hourly cap) using
+`Last-Event-ID`, never repeats or skips a persisted event, gives up after `maxReconnects` (default 8)
+silent attempts, and throws the abort reason when `signal` aborts. `agent.message.delta` text chunks
+are live-only (they have no `seq` and are not replayed); the full text is in `agent.message`.
+Event `data` keys are snake_case (`tool_call_id`, `action_id`, `stop_reason`, ...); tool `args` and
+question `answers` are passed through untouched. Unknown event types arrive as plain `{ type, data }`
+objects: ignore them.
+
+##### Sessions: start, list, delete
+
+```typescript
+// Start a session without a message (nothing runs, nothing is spent), then continue it by id.
+const session = await client.agents.sessions.create({
+  agent: 'support-bot',
+  metadata: { ticket: 'T-1042' },   // up to 16 string pairs, returned as session.metadata
+});
+const reply = await client.agents.responses.create({
+  model: 'support-bot',
+  session_id: session.id,           // or `conversation: session.id` / `conversation: { id }` (OpenAI style)
+  input: 'I have a billing question',
+});
+
+// One page (newest first)...
+const page = await client.agents.sessions.list({ agent: 'support-bot', status: 'requires_action', limit: 50 });
+console.log(page.data.map((s) => `${s.id} ${s.runtime_status} ${s.message_count} messages`));
+const next = await page.getNextPage(); // null on the last page
+
+// ...or every session, fetching pages as you go.
+for await (const s of client.agents.sessions.list({ agent: 'support-bot' })) console.log(s.id, s.title);
+
+await client.agents.sessions.delete(session.id); // with its files, events and open actions
+```
+
+`session_id`, `conversation` and `previous_response_id` name the same conversation: give one, or
+several that agree (`400 session_conflict` when `session_id` / `conversation` and
+`previous_response_id` name different sessions, `400 invalid_request` when `session_id` and
+`conversation` disagree; `404 session_not_found` for another agent's or project's session). `delete()` is refused with `409 agent_run_conflict` while a run is active.
+Details and the error table: [Agents → Sessions](docs/api/agents.md#sessions-start-list-delete).
+
+##### Session budget and files
+
+```typescript
+// Raise the cap of a budget_paused session; it continues as a background run.
+const run = await client.agents.sessions.update(conversationId, {
+  budget: { max_cost_usd: 10, on_reach: 'pause' },
+});
+if (run.object === 'agent.run') await client.agents.runs.wait(run.id);
+// budget: null removes the cap; resume: false changes it without continuing (answers the session).
+// An agent with its own session budget lets API callers lower it but not raise/remove it (403 budget_override_forbidden).
+```
+
+Files go to a session before or between messages. Whether an agent takes files, and in which Document
+Store bucket and folder it keeps them, is its **Configure → Files** setting in the Console; ask the
+agent first:
+
+```typescript
+const agent = await client.agents.get('support-bot');
+if (agent.attachments?.enabled) {
+  const { max_files, max_file_size_mb, allowed_mime_types, accepts_images } = agent.attachments;
+}
+
+const session = await client.agents.sessions.create({ agent: 'support-bot' });
+
+// Upload first (create -> upload -> ask)...
+const file = await client.agents.sessions.files.upload(session.id, bytes, {
+  name: 'invoice.pdf',
+  mimeType: 'application/pdf',
+});
+file.bucket_key; // the bucket it is stored in
+file.path;       // <folder>/<agentKey>/<sessionId>/<unique name>
+
+// ...a file nobody has sent yet goes with the next message...
+await client.agents.responses.create({ model: 'support-bot', session_id: session.id, input: 'Total?' });
+
+// ...or name it explicitly.
+await client.agents.responses.create({
+  model: 'support-bot',
+  session_id: session.id,
+  input: [{ role: 'user', content: [
+    { type: 'input_text', text: 'Summarise this' },
+    { type: 'input_file', file_id: file.id },
+  ] }],
+});
+
+// Read a file back: the bytes as uploaded, or the text the agent reads.
+const { data, contentType, fileName } = await client.agents.sessions.files.content(session.id, file.id);
+const { data: markdown } = await client.agents.sessions.files.content(session.id, file.id, { variant: 'markdown' });
+// A large file: `contentStream()` returns { body: ReadableStream, contentType, fileName?, size? }.
+```
+
+Upload errors (`CognipeerAPIError.errorCode`, see `AgentActionErrorCodes`): `403 attachments_disabled`
+(files off for the agent, or on with no bucket chosen), `409 storage_unavailable` (the bucket was deleted or
+disabled, or its provider is unusable; the message names it), `409 storage_not_configured`,
+`409 too_many_files`, `413 file_too_large`, `415 unsupported_file_type`, `429 quota_exceeded`. The file
+content call needs a Console that serves the session-file content route; `variant: 'markdown'` on a
+file without a text version is a `409 markdown_unavailable`.
+
+##### Webhook subscriptions
+
+Webhooks are managed with the Console's permission engine and nothing else: `webhooks.read` lists endpoints
+and deliveries (each `url` comes back with its userinfo and query string removed, `https://host/path?…`),
+`webhooks.admin` creates, changes, tests, rotates, redelivers and deletes, and sees the full URL. Workspace
+owners and admins hold it by default; everybody else gets `403 forbidden` (with a `decisionId`) until it is
+granted. A token acts for its owner, in its own project only.
+
+```typescript
+const hook = await client.webhooks.create({
+  url: 'https://example.com/hooks/cognipeer',
+  events: ['action.required', 'session.idled', 'agent_run.*'], // `prefix.*` patterns allowed
+});
+saveSecret(hook.secret); // returned only by create() and rotateSecret()
+await client.webhooks.test(hook.id);
+const { deliveries: failed, hasMore } = await client.webhooks.deliveries(hook.id, { status: 'failed' });
+await client.webhooks.redeliver(failed[0].id); // queued again (202); sent asynchronously
+```
+
+Verify every delivery on the raw body and dedupe on the `webhook-id` header (a delivery is retried
+until your endpoint answers 2xx; the Console disables an endpoint that redirects, resolves to a
+blocked address or keeps failing):
+
+```typescript
+import { verifyWebhook, type WebhookEvent } from '@cognipeer/console-sdk/webhooks';
+
+app.post('/hooks/cognipeer', express.raw({ type: 'application/json' }), (req, res) => {
+  const ok = verifyWebhook({
+    rawBody: req.body,
+    signatureHeader: req.get('X-Cognipeer-Signature'),
+    secret: process.env.COGNIPEER_WEBHOOK_SECRET!,
+  });
+  if (!ok) return res.sendStatus(400);
+  const event: WebhookEvent = JSON.parse(req.body.toString('utf8'));
+  // event.type: 'session.idled' | 'action.required' | 'agent_run.requires_action' | ...
+  res.sendStatus(204);
+});
+```
 
 #### Embeddings
 - `client.embeddings.create(params)` - Create embeddings
@@ -250,7 +461,7 @@ See [Agents → Background runs](docs/api/agents.md#background-runs) for callbac
 - `client.files.buckets.get(bucketKey)` - Get bucket details
 - `client.files.providers.list(query?)` - List storage providers
 - `client.files.providers.create(data)` - Create a storage provider
-- `client.files.list(bucketKey, query?)` - List files
+- `client.files.list(bucketKey, query?)` - List files (`prefix` browses one folder and returns `folders`; `purpose: 'conversation'` keeps only agent session files)
 - `client.files.upload(bucketKey, data)` - Upload file
 - `client.files.get(bucketKey, objectKey)` - Get file metadata
 - `client.files.delete(bucketKey, objectKey)` - Delete a file

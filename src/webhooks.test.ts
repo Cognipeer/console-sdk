@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createHmac } from 'node:crypto';
-import { verifyAgentRunCallback } from './webhooks';
+import { verifyAgentRunCallback, verifyWebhook } from './webhooks';
 
 const SECRET = 'whsec_0123456789abcdef';
 const BODY = JSON.stringify({ id: 'evt_1', event: 'agent_run.succeeded', runId: 'abc', data: { result: {} } });
@@ -86,5 +86,44 @@ describe('verifyAgentRunCallback', () => {
   it('uses the current clock when nowSeconds is omitted', () => {
     const t = Math.floor(Date.now() / 1000);
     expect(verifyAgentRunCallback({ rawBody: BODY, signatureHeader: `t=${t},v1=${sign(BODY, t)}`, secret: SECRET })).toBe(true);
+  });
+});
+
+describe('verifyWebhook', () => {
+  const EVENT_BODY = JSON.stringify({
+    id: 'evt_1',
+    type: 'action.required',
+    createdAt: '2026-10-10T10:00:00.000Z',
+    projectId: 'proj_1',
+    data: { conversationId: 'conv_1', agentKey: 'ops', actionId: 'act_1', kind: 'tool_approval' },
+  });
+
+  it('accepts a valid webhook signature (same t=...,v1=... scheme as agent-run callbacks)', () => {
+    const header = `t=${NOW},v1=${sign(EVENT_BODY, NOW)}`;
+    expect(verifyWebhook({ rawBody: EVENT_BODY, signatureHeader: header, secret: SECRET, nowSeconds: NOW })).toBe(true);
+  });
+
+  it('accepts a byte body and any one matching v1 entry (secret rotation)', () => {
+    const header = `t=${NOW},v1=${'0'.repeat(64)},v1=${sign(EVENT_BODY, NOW)}`;
+    expect(
+      verifyWebhook({ rawBody: Buffer.from(EVENT_BODY, 'utf8'), signatureHeader: header, secret: SECRET, nowSeconds: NOW }),
+    ).toBe(true);
+  });
+
+  it('rejects a tampered body, a wrong secret, a stale timestamp and a missing header', () => {
+    const header = `t=${NOW},v1=${sign(EVENT_BODY, NOW)}`;
+    expect(verifyWebhook({ rawBody: EVENT_BODY + ' ', signatureHeader: header, secret: SECRET, nowSeconds: NOW })).toBe(false);
+    expect(verifyWebhook({ rawBody: EVENT_BODY, signatureHeader: header, secret: 'other-secret-value', nowSeconds: NOW })).toBe(false);
+    expect(verifyWebhook({ rawBody: EVENT_BODY, signatureHeader: header, secret: SECRET, nowSeconds: NOW + 301 })).toBe(false);
+    expect(verifyWebhook({ rawBody: EVENT_BODY, signatureHeader: undefined, secret: SECRET, nowSeconds: NOW })).toBe(false);
+  });
+
+  it('is what verifyAgentRunCallback delegates to: both accept and reject the same inputs', () => {
+    const good = `t=${NOW},v1=${sign(BODY, NOW)}`;
+    const bad = `t=${NOW},v1=${'a'.repeat(64)}`;
+    for (const header of [good, bad]) {
+      const params = { rawBody: BODY, signatureHeader: header, secret: SECRET, nowSeconds: NOW };
+      expect(verifyAgentRunCallback(params)).toBe(verifyWebhook(params));
+    }
   });
 });

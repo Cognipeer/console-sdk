@@ -20,6 +20,16 @@ describe('package entry point (index.ts)', () => {
     expect((sdk as Record<string, unknown>).verifyAgentRunCallback).toBeUndefined();
   });
 
+  it('exports the session / webhook helpers', () => {
+    expect(sdk.isSessionEvent).toBeTypeOf('function');
+    expect(sdk.isAgentRunSettled('requires_action')).toBe(true);
+    expect(sdk.AgentActionErrorCodes.NotPending).toBe('action_not_pending');
+    expect(sdk.AgentActionErrorCodes.ActionCancelled).toBe('action_cancelled');
+    expect(sdk.AgentSessionPage).toBeTypeOf('function');
+    expect(sdk.WEBHOOK_EVENT_TYPES).toContain('session.idled');
+    expect((sdk as Record<string, unknown>).verifyWebhook).toBeUndefined();
+  });
+
   it('exports the realtime connection helpers', () => {
     expect(sdk.RealtimeConnection).toBeTypeOf('function');
     expect(sdk.RealtimeResource).toBeTypeOf('function');

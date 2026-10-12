@@ -30,6 +30,10 @@ export type {
   WebSocketConstructorLike,
 } from './resources/realtime';
 
+// Sessions: the page `agents.sessions.list()` resolves to
+export { AgentSessionPage } from './resources/agentSessions';
+export type { AgentSessionListCall } from './resources/agentSessions';
+
 /** @deprecated Use `ConsoleClient` instead. */
 export { ConsoleClient as CognipeerClient } from './client';
 
