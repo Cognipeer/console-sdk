@@ -100,8 +100,20 @@ export interface Tool {
   };
 }
 
+/** Reasoning effort accepted by the reasoning knobs of chat and agent calls. */
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
+
 export interface ChatCompletionRequest {
   model: string;
+  /**
+   * When `model` names an agent that offers several models: which one answers
+   * (its main model or one listed in `Agent.models`). Not offered: `400 model_not_allowed`.
+   */
+  agent_model?: string;
+  /** Reasoning effort. Model Hub / agent picks win over it; an invalid value is `400 invalid_reasoning`. */
+  reasoning_effort?: ReasoningEffort;
+  /** Same as `reasoning_effort` in the Responses shape; the object wins when both are sent. */
+  reasoning?: { effort?: ReasoningEffort };
   messages: ChatMessage[];
   temperature?: number;
   top_p?: number;
@@ -145,6 +157,8 @@ export interface ChatCompletionResponse {
   choices: ChatChoice[];
   usage: Usage;
   request_id?: string;
+  /** Present when `model` named an agent that offers several models. */
+  cognipeer?: { agent_model?: string };
 }
 
 export interface ChatCompletionChunk {
@@ -1916,6 +1930,20 @@ export interface AgentConfig {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  /** False when the agent hides its reasoning text from API responses and session events. Default true. */
+  showReasoning?: boolean;
+}
+
+/** One entry of `Agent.models`: a model a caller may pick with `agent_model`. */
+export interface AgentModelChoice {
+  /** Model key to send as `agent_model`. */
+  key: string;
+  /** Display name. */
+  label: string;
+  /** When to choose it, as the agent's author wrote it. */
+  description?: string;
+  /** True for the agent's main model. */
+  default: boolean;
 }
 
 export interface Agent {
@@ -1935,6 +1963,11 @@ export interface Agent {
    * Console that predates session files.
    */
   attachments?: AgentAttachmentsInfo;
+  /**
+   * Models a caller may pick with `agent_model`, main model first. Only on the
+   * single-agent lookup, and only when the agent offers more than one model.
+   */
+  models?: AgentModelChoice[];
 }
 
 /**
@@ -2116,6 +2149,18 @@ export interface AgentResponseCreateRequest {
    * Requires a Console with agent runtime phase 1 (session budget).
    */
   budget?: AgentSessionBudget;
+  /**
+   * Which of the agent's models answers this turn (its main model or one in
+   * `Agent.models`). Omit for the session's last choice, else the main model.
+   * Not offered: `400 model_not_allowed`.
+   */
+  agent_model?: string;
+  /** Reasoning effort; the agent's own pick and the Model Hub default win over it. Background runs ignore it. */
+  reasoning_effort?: ReasoningEffort;
+  /** Same as `reasoning_effort` in the Responses shape; the object wins when both are sent. */
+  reasoning?: { effort?: ReasoningEffort };
+  /** False leaves the reasoning output item out of this response. It can only narrow what the agent's `showReasoning` allows. */
+  include_reasoning?: boolean;
 }
 
 /** Request body that starts a background agent run. */
@@ -2190,6 +2235,23 @@ export interface AgentResponse {
   previous_response_id: string | null;
   /** Published version used for this response (null if not versioned) */
   version: number | null;
+  /** Present when the agent offers several models: the one that answered. */
+  cognipeer?: { agent_model?: string };
+}
+
+/** What `sessions.cancel()` answers (200). */
+export interface AgentConversationCancelResult {
+  conversation_id: string;
+  /** Whether a running turn was asked to stop. */
+  cancelled: boolean;
+  /** Ids of the runs that were cancelled. */
+  run_ids: string[];
+}
+
+/** What `responses.cancel()` answers (200). */
+export interface AgentResponseCancelResult extends AgentConversationCancelResult {
+  /** The response id that was given (`resp_<conversationId>` or `run_<runId>`). */
+  id: string;
 }
 
 /**
@@ -2336,7 +2398,7 @@ export interface AgentRunWaitOptions {
   pollIntervalMs?: number;
   /** Give up after this long and throw `AgentRunWaitTimeoutError`. Unset = wait until terminal or `requires_action`. */
   timeoutMs?: number;
-  /** Abort waiting (the run itself keeps going — use `runs.cancel()` to stop it). */
+  /** Abort waiting (the run itself keeps going; stop the turn with `sessions.cancel()` or `responses.cancel()`, or one background run with `runs.cancel()`). */
   signal?: AbortSignal;
 }
 

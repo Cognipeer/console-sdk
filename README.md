@@ -312,6 +312,34 @@ several that agree (`400 session_conflict` when `session_id` / `conversation` an
 `conversation` disagree; `404 session_not_found` for another agent's or project's session). `delete()` is refused with `409 agent_run_conflict` while a run is active.
 Details and the error table: [Agents → Sessions](docs/api/agents.md#sessions-start-list-delete).
 
+##### Stopping a turn
+
+```typescript
+// By conversation (a response id without its `resp_` prefix)...
+const { cancelled, run_ids } = await client.agents.sessions.cancel(conversationId);
+
+// ...or by response id: `resp_<conversationId>` or a background `run_<runId>`.
+await client.agents.responses.cancel(response.id); // { id, conversation_id, cancelled, run_ids }
+```
+
+Cancellation is cooperative: the turn ends at its next checkpoint. `cancelled: false` means nothing
+was running; an unknown id is a `404`. Closing the connection (`signal`) alone does not stop a
+server-side turn. `agents.runs.cancel(runId)` still stops one background run.
+
+##### Choosing a model and reasoning
+
+```typescript
+const agent = await client.agents.get('support-bot');
+console.log(agent.models);                    // [{ key, label, default }] when the agent offers several
+await client.agents.responses.create({
+  model: 'support-bot',
+  input: 'Summarise this',
+  agent_model: agent.models?.[1]?.key,        // 400 model_not_allowed if not offered
+  reasoning_effort: 'low',                    // or reasoning: { effort: 'low' }
+  include_reasoning: false,                   // hide the reasoning item (can only narrow showReasoning)
+});
+```
+
 ##### Session budget and files
 
 ```typescript

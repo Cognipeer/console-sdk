@@ -4,6 +4,7 @@ import { AgentSessionsResource } from './agentSessions';
 import {
   Agent,
   AgentBackgroundResponseCreateRequest,
+  AgentResponseCancelResult,
   AgentChatRequest,
   AgentChatResponse,
   AgentCreateRequest,
@@ -258,6 +259,25 @@ export class AgentResponsesResource {
       headers: options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
       signal: options.signal,
     });
+  }
+
+  /**
+   * Stop the turn behind a response: `resp_<conversationId>` (what `create()`
+   * returns) or `run_<runId>` (a background run). Cooperative; `cancelled: false`
+   * means nothing was running. Rejects with `CognipeerAPIError` 404 for an unknown id.
+   *
+   * @example
+   * ```typescript
+   * const run = await client.agents.responses.create({ model: 'my-agent', input: 'Hi', background: true });
+   * const { cancelled } = await client.agents.responses.cancel(run.id);
+   * ```
+   */
+  async cancel(responseId: string, options: { signal?: AbortSignal } = {}): Promise<AgentResponseCancelResult> {
+    return this.http.request<AgentResponseCancelResult>(
+      'POST',
+      `/api/client/v1/agents/responses/${encodeURIComponent(responseId)}/cancel`,
+      { signal: options.signal },
+    );
   }
 }
 
