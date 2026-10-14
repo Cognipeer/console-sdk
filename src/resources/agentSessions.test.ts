@@ -1325,3 +1325,49 @@ describe('sessions over the real HttpClient', () => {
     expect(Array.from(read)).toEqual([1, 2, 3, 4]);
   });
 });
+
+describe('AgentSessionsResource.cancel', () => {
+  it('POSTs the conversation cancel route and returns the result', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ conversation_id: 'conv_1', cancelled: true, run_ids: ['run_1'] });
+    const result = await new AgentSessionsResource(http).cancel('conv_1');
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/agents/conversations/conv_1/cancel', {
+      signal: undefined,
+    });
+    expect(result).toEqual({ conversation_id: 'conv_1', cancelled: true, run_ids: ['run_1'] });
+  });
+
+  it('encodes the id and forwards the abort signal', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ conversation_id: 'a/b', cancelled: false, run_ids: [] });
+    const signal = new AbortController().signal;
+    await new AgentSessionsResource(http).cancel('a/b', { signal });
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/agents/conversations/a%2Fb/cancel', { signal });
+  });
+});
+
+describe('AgentResponsesResource.cancel', () => {
+  it('POSTs the response cancel route', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ id: 'resp_conv_1', conversation_id: 'conv_1', cancelled: true, run_ids: [] });
+    const result = await new AgentsResource(http).responses.cancel('resp_conv_1');
+    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/agents/responses/resp_conv_1/cancel', {
+      signal: undefined,
+    });
+    expect(result.cancelled).toBe(true);
+    expect(result.id).toBe('resp_conv_1');
+  });
+
+  it('accepts a background run id', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ id: 'run_9', conversation_id: 'c', cancelled: true, run_ids: ['9'] });
+    await new AgentsResource(http).responses.cancel('run_9');
+    expect(http.request.mock.calls[0][1]).toBe('/api/client/v1/agents/responses/run_9/cancel');
+  });
+
+  it('surfaces a 404 as CognipeerAPIError', async () => {
+    const http = createMockHttp();
+    http.request.mockRejectedValue(new CognipeerAPIError('not found', 404));
+    await expect(new AgentsResource(http).responses.cancel('resp_x')).rejects.toBeInstanceOf(CognipeerAPIError);
+  });
+});

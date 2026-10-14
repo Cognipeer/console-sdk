@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-10-14
+
+### Added
+
+- `client.agents.sessions.cancel(conversationId)` -> `POST /client/v1/agents/conversations/:id/cancel`,
+  result `{ conversation_id, cancelled, run_ids }`.
+- `client.agents.responses.cancel(responseId)` -> `POST /client/v1/agents/responses/:id/cancel`
+  (`resp_<conversationId>` or `run_<runId>`), result `{ id, conversation_id, cancelled, run_ids }`.
+- Request fields `agent_model`, `reasoning_effort`, `reasoning` on agent responses and chat
+  completions, and `include_reasoning` on agent responses; `Agent.models` (model choices),
+  `AgentConfig.showReasoning`, and `cognipeer.agent_model` on responses.
+
+### Changed
+
+- Docs that pointed to `runs.cancel()` for stopping a turn now point to `sessions.cancel()` /
+  `responses.cancel()`.
+
 ## [3.1.0] - 2026-10-11
 
 Agent sessions: starting, listing and deleting sessions, continuing one by id, files that live in a

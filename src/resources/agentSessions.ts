@@ -4,6 +4,7 @@ import { HttpClient } from '../http';
 import { SseParser, SseMessage } from '../sse';
 import {
   AgentActionsPendingResponse,
+  AgentConversationCancelResult,
   AgentResponse,
   AgentRun,
   AgentSession,
@@ -200,13 +201,30 @@ export class AgentSessionsResource {
    * log and any open approvals or questions.
    *
    * Rejects with `CognipeerAPIError`: 404 `session_not_found`, 409
-   * `agent_run_conflict` (a run is queued or running on it: cancel it with
-   * `agents.runs.cancel()` first).
+   * `agent_run_conflict` (a run is queued or running on it: stop it with
+   * `sessions.cancel()` first).
    */
   async delete(conversationId: string, options: { signal?: AbortSignal } = {}): Promise<AgentSessionDeleted> {
     return this.http.request<AgentSessionDeleted>('DELETE', sessionPath(conversationId), {
       signal: options.signal,
     });
+  }
+
+  /**
+   * Stop the turn running on a conversation (and its queued or running
+   * background runs). Cooperative: the turn ends at its next checkpoint.
+   * Open approvals / questions are cancelled too when the caller may answer them.
+   * `cancelled: false` means nothing was running.
+   *
+   * Rejects with `CognipeerAPIError` 404 when the conversation is not found.
+   * @param conversationId - The conversation id (a response id without its `resp_` prefix)
+   */
+  async cancel(conversationId: string, options: { signal?: AbortSignal } = {}): Promise<AgentConversationCancelResult> {
+    return this.http.request<AgentConversationCancelResult>(
+      'POST',
+      `/api/client/v1/agents/conversations/${encodeURIComponent(conversationId)}/cancel`,
+      { signal: options.signal },
+    );
   }
 
   /**
