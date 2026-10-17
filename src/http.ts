@@ -125,6 +125,11 @@ export class HttpClient {
     }
   }
 
+  /** The request timeout in ms (what a long-poll must stay below). */
+  getTimeoutMs(): number {
+    return this.timeout;
+  }
+
   /**
    * Make a request to the API
    */

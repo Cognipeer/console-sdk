@@ -7,7 +7,9 @@ import {
   isAgentActionErrorCode,
   isAgentRunErrorCode,
   isAgentRunSettled,
+  isAgentModelEntry,
   isAgentRunTerminal,
+  isResponseStreamEvent,
   isSessionEvent,
   WEBHOOK_EVENT_TYPES,
 } from './types';
@@ -191,5 +193,32 @@ describe('WEBHOOK_EVENT_TYPES', () => {
     expect(WEBHOOK_EVENT_TYPES).toContain('action.required');
     expect(WEBHOOK_EVENT_TYPES).toContain('agent_run.requires_action');
     expect(WEBHOOK_EVENT_TYPES).toContain('webhook.test');
+  });
+});
+
+describe('SDK 4.0 contract helpers', () => {
+  it('the webhook catalog has routine and feedback events and no schedule events', () => {
+    expect(WEBHOOK_EVENT_TYPES).toEqual(expect.arrayContaining(['routine.fired', 'routine.failed', 'feedback.recorded']));
+    expect(WEBHOOK_EVENT_TYPES).not.toContain('schedule.fired');
+    expect(WEBHOOK_EVENT_TYPES).not.toContain('schedule.failed');
+  });
+
+  it('run error codes no longer include the removed background / sync-timeout codes', () => {
+    const codes = Object.values(AgentRunErrorCodes) as string[];
+    expect(codes).not.toContain('idempotency_key_sync_not_supported');
+    expect(codes).not.toContain('timeout');
+    expect(AgentRunErrorCodes.InvalidInputs).toBe('invalid_inputs');
+    expect(Object.values(AgentActionErrorCodes) as string[]).not.toContain('agent_background_disabled');
+  });
+
+  it('scheduled runs are not settled', () => {
+    expect(isAgentRunSettled('scheduled')).toBe(false);
+    expect(isAgentRunTerminal('scheduled')).toBe(false);
+  });
+
+  it('narrows response stream events and model entries', () => {
+    expect(isResponseStreamEvent({ type: 'response.created', sequence_number: 0, response: {} as never }, 'response.created')).toBe(true);
+    expect(isResponseStreamEvent({ type: 'response.future', sequence_number: 1 }, 'response.completed')).toBe(false);
+    expect(isAgentModelEntry({ id: 'm', object: 'model', created: 0, owned_by: 'x' })).toBe(false);
   });
 });

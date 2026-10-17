@@ -1,30 +1,28 @@
-import { abortReason, sleep } from '../abort';
 import { HttpClient } from '../http';
+import { AgentRoutinesResource } from './agentRoutines';
+import { AgentRunsResource } from './agentRuns';
 import { AgentSessionsResource } from './agentSessions';
 import {
   Agent,
-  AgentBackgroundResponseCreateRequest,
-  AgentResponseCancelResult,
-  AgentChatRequest,
-  AgentChatResponse,
   AgentCreateRequest,
   AgentPublishRequest,
   AgentResponseCreateOptions,
   AgentResponseCreateRequest,
   AgentResponse,
-  AgentRun,
-  AgentRunWaitOptions,
-  AgentRunWaitTimeoutError,
+  AgentResponseStreamEvent,
   AgentUpdateRequest,
   AgentVersion,
-  isAgentRunSettled,
   ListAgentsQuery,
 } from '../types';
+
+export { AgentRunsResource } from './agentRuns';
+export { AgentRoutinesResource } from './agentRoutines';
 
 /**
  * Agents API resource
  *
- * Create, list, and chat with AI agents using the OpenAI Responses API format.
+ * Create, list and run AI agents: the OpenAI Responses API format for chat-style
+ * calls, the runs API for jobs (async, scheduled, deferred) and routines for recurring work.
  *
  * @example
  * ```typescript
@@ -34,12 +32,12 @@ import {
  * // Get agent details
  * const agent = await client.agents.get('my-agent-key');
  *
- * // Chat using Responses API (recommended)
+ * // Chat using the Responses API (runs the published version)
  * const response = await client.agents.responses.create({
  *   model: 'my-agent-key',
  *   input: 'Hello!',
  * });
- * console.log(response.output[0].content[0].text);
+ * console.log(response.output_text);
  *
  * // Continue conversation
  * const followUp = await client.agents.responses.create({
@@ -48,22 +46,23 @@ import {
  *   previous_response_id: response.id,
  * });
  *
- * // Legacy chat (deprecated – use responses.create instead)
- * const legacy = await client.agents.chat('my-agent-key', {
- *   message: 'Hello!',
- * });
+ * // A job: start a run, then wait for it
+ * const run = await client.agents.runs.create('my-agent-key', { input: 'Report', class: 'deferred' });
+ * const done = await client.agents.runs.wait(run.id);
  * ```
  */
 export class AgentsResource {
   private http: HttpClient;
   public readonly responses: AgentResponsesResource;
   public readonly runs: AgentRunsResource;
+  public readonly routines: AgentRoutinesResource;
   public readonly sessions: AgentSessionsResource;
 
   constructor(http: HttpClient) {
     this.http = http;
     this.responses = new AgentResponsesResource(http);
     this.runs = new AgentRunsResource(http);
+    this.routines = new AgentRoutinesResource(http);
     this.sessions = new AgentSessionsResource(http);
   }
 
@@ -150,42 +149,6 @@ export class AgentsResource {
     );
     return response.version;
   }
-
-  /**
-   * Chat with an agent (legacy format)
-   * @deprecated Use `client.agents.responses.create()` instead for OpenAI Responses API compatibility
-   * @param agentKey - The agent key
-   * @param params - Chat request parameters
-   * @returns Chat response with content and conversation ID. When the agent paused
-   * for an approval or a question, `content` is empty and `status` / `pendingActions`
-   * say so: resolve them with `client.agents.sessions.actions.resolve()`.
-   */
-  async chat(agentKey: string, params: AgentChatRequest): Promise<AgentChatResponse> {
-    // Translate legacy format to Responses API format
-    const res = await this.responses.create({
-      model: agentKey,
-      input: params.message,
-      ...(params.conversationId
-        ? { previous_response_id: `resp_${params.conversationId}` }
-        : {}),
-    });
-
-    // Map back to legacy shape
-    const text = res.output?.[0]?.content?.[0]?.text ?? '';
-    const convId = res.id?.startsWith('resp_') ? res.id.slice(5) : res.id;
-    return {
-      content: text,
-      conversationId: convId,
-      agentKey,
-      // Only a turn that did not complete says why its content is empty
-      ...(res.status && res.status !== 'completed'
-        ? {
-            status: res.status,
-            ...(res.required_action ? { pendingActions: res.required_action.actions } : {}),
-          }
-        : {}),
-    };
-  }
 }
 
 /**
@@ -201,160 +164,98 @@ export class AgentResponsesResource {
   /**
    * Create a response (invoke the agent)
    *
-   * Follows the OpenAI Responses API standard.
-   * The agent is identified by the `model` field in the request body.
-   * Pass `previous_response_id` to continue a multi-turn conversation.
+   * Follows the OpenAI Responses API standard. The agent is identified by the `model`
+   * field and runs its PUBLISHED version unless `version` says otherwise (`version: 3`
+   * pins one, `version: 'draft'` runs the draft). Pass `previous_response_id` to continue
+   * a conversation.
    *
-   * @param params - Responses API request body (must include `model` with the agent key)
-   * @returns OpenAI Responses API–shaped response
-   *
-   * @example
-   * ```typescript
-   * // First turn
-   * const res = await client.agents.responses.create({
-   *   model: 'my-agent',
-   *   input: 'What can you do?',
-   * });
-   *
-   * // Follow-up turn
-   * const res2 = await client.agents.responses.create({
-   *   model: 'my-agent',
-   *   input: 'Tell me more about the first option',
-   *   previous_response_id: res.id,
-   * });
-   * ```
-   *
-   * With `background: true` the turn is queued and an {@link AgentRun}
-   * (`status: 'queued'`) is returned right away — poll it with
-   * `client.agents.runs.wait(run.id)` or receive it at `callback_url`.
+   * - `await create(...)` waits up to the Console's window. A turn that is still going
+   *   then (or `background: true`) answers HTTP `202`: the call does NOT throw, it
+   *   returns the {@link AgentResponse} with `status: 'queued'` or `'in_progress'`. The
+   *   turn keeps running: follow it with `retrieve(res.id)` or
+   *   `client.agents.runs.wait(res.cognipeer.run_id)`.
+   * - `stream: true` returns an async iterator of typed `response.*` events.
    *
    * @example
    * ```typescript
-   * const run = await client.agents.responses.create(
-   *   { model: 'my-agent', input: 'Research this topic', background: true },
-   *   { idempotencyKey: 'job-42' },
-   * );
-   * const done = await client.agents.runs.wait(run.id, { timeoutMs: 10 * 60_000 });
-   * if (done.status === 'succeeded') console.log(done.result?.output[0]?.content[0]?.text);
+   * const res = await client.agents.responses.create({ model: 'my-agent', input: 'What can you do?' });
+   * if (res.status === 'completed') console.log(res.output_text);
+   *
+   * // Structured output
+   * const typed = await client.agents.responses.create({
+   *   model: 'my-agent',
+   *   input: 'Extract the invoice',
+   *   text: { format: { type: 'json_schema', name: 'invoice', schema: { type: 'object' } } },
+   * });
+   * console.log(typed.output_parsed);
+   *
+   * // Streaming
+   * for await (const event of await client.agents.responses.create({ model: 'my-agent', input: 'Hi', stream: true })) {
+   *   if (event.type === 'response.output_text.delta') process.stdout.write(event.delta);
+   * }
+   *
+   * // Background
+   * const queued = await client.agents.responses.create({ model: 'my-agent', input: 'Research', background: true });
+   * const run = await client.agents.runs.wait(queued.cognipeer!.run_id!);
    * ```
    */
   async create(
-    params: AgentBackgroundResponseCreateRequest,
+    params: AgentResponseCreateRequest & { stream: true },
     options?: AgentResponseCreateOptions,
-  ): Promise<AgentRun>;
+  ): Promise<AsyncGenerator<AgentResponseStreamEvent, void, undefined>>;
   async create(
-    params: AgentResponseCreateRequest & { background?: false },
+    params: AgentResponseCreateRequest & { stream?: false },
     options?: AgentResponseCreateOptions,
   ): Promise<AgentResponse>;
   async create(
     params: AgentResponseCreateRequest,
     options?: AgentResponseCreateOptions,
-  ): Promise<AgentResponse | AgentRun>;
+  ): Promise<AgentResponse | AsyncGenerator<AgentResponseStreamEvent, void, undefined>>;
   async create(
     params: AgentResponseCreateRequest,
     options: AgentResponseCreateOptions = {},
-  ): Promise<AgentResponse | AgentRun> {
-    return this.http.request<AgentResponse | AgentRun>('POST', '/api/client/v1/responses', {
+  ): Promise<AgentResponse | AsyncGenerator<AgentResponseStreamEvent, void, undefined>> {
+    const request = {
       body: params,
       headers: options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
       signal: options.signal,
-    });
+    };
+    if (params.stream) {
+      return this.http.stream<AgentResponseStreamEvent>('POST', '/api/client/v1/responses', request);
+    }
+    return this.http.request<AgentResponse>('POST', '/api/client/v1/responses', request);
   }
 
   /**
-   * Stop the turn behind a response: `resp_<conversationId>` (what `create()`
-   * returns) or `run_<runId>` (a background run). Cooperative; `cancelled: false`
-   * means nothing was running. Rejects with `CognipeerAPIError` 404 for an unknown id.
+   * Read a response by id (`resp_<runId>`, as `create()` returned it): the current state of
+   * its run, `queued` / `in_progress` while it goes, final afterwards. Rejects with
+   * `CognipeerAPIError` 404 for an unknown id.
+   */
+  async retrieve(responseId: string, options: { signal?: AbortSignal } = {}): Promise<AgentResponse> {
+    return this.http.request<AgentResponse>(
+      'GET',
+      `/api/client/v1/responses/${encodeURIComponent(responseId)}`,
+      { signal: options.signal },
+    );
+  }
+
+  /**
+   * Stop the turn behind a response (`resp_<runId>`). Cooperative: the returned
+   * response is `cancelled`, or still `in_progress` while the stop lands (`retrieve()` to
+   * see it). A response that already finished is returned as it is. Rejects with
+   * `CognipeerAPIError` 404 for an unknown id.
    *
    * @example
    * ```typescript
-   * const run = await client.agents.responses.create({ model: 'my-agent', input: 'Hi', background: true });
-   * const { cancelled } = await client.agents.responses.cancel(run.id);
+   * const res = await client.agents.responses.create({ model: 'my-agent', input: 'Hi', background: true });
+   * const stopped = await client.agents.responses.cancel(res.id);
    * ```
    */
-  async cancel(responseId: string, options: { signal?: AbortSignal } = {}): Promise<AgentResponseCancelResult> {
-    return this.http.request<AgentResponseCancelResult>(
+  async cancel(responseId: string, options: { signal?: AbortSignal } = {}): Promise<AgentResponse> {
+    return this.http.request<AgentResponse>(
       'POST',
-      `/api/client/v1/agents/responses/${encodeURIComponent(responseId)}/cancel`,
-      { signal: options.signal },
+      `/api/client/v1/responses/${encodeURIComponent(responseId)}/cancel`,
+      { body: {}, signal: options.signal },
     );
-  }
-}
-
-/**
- * Sub-resource for background agent runs (`responses.create({ background: true })`).
- *
- * @example
- * ```typescript
- * const run = await client.agents.responses.create({ model: 'my-agent', input: 'Hi', background: true });
- * const status = await client.agents.runs.get(run.id);
- * await client.agents.runs.cancel(run.id);
- * ```
- */
-export class AgentRunsResource {
-  private http: HttpClient;
-
-  constructor(http: HttpClient) {
-    this.http = http;
-  }
-
-  /**
-   * Get a run's status; includes `result` once `succeeded` and `error` once
-   * `failed`/`canceled`.
-   * @param runId - The run id exactly as returned (`run_<id>`)
-   */
-  async get(runId: string, options: { signal?: AbortSignal } = {}): Promise<AgentRun> {
-    return this.http.request<AgentRun>(
-      'GET',
-      `/api/client/v1/agents/runs/${encodeURIComponent(runId)}`,
-      { signal: options.signal },
-    );
-  }
-
-  /**
-   * Request cancellation of a `queued` or `running` run. Cancellation is
-   * cooperative: the returned run may still read `running` until the worker
-   * observes the request (typically within ~1s) — use `wait()` to see it land
-   * on `canceled`.
-   *
-   * Throws `CognipeerAPIError` with `errorCode === 'agent_run_already_terminal'`
-   * (409) if the run already finished, and a 404 if it does not exist.
-   */
-  async cancel(runId: string): Promise<AgentRun> {
-    return this.http.request<AgentRun>(
-      'POST',
-      `/api/client/v1/agents/runs/${encodeURIComponent(runId)}/cancel`,
-      { body: {} },
-    );
-  }
-
-  /**
-   * Poll until the run reaches `succeeded`, `failed` or `canceled` — or
-   * `requires_action`, where it waits on a person and polling would never end —
-   * and return it. Does not throw on `failed`/`canceled`/`requires_action`:
-   * check `run.status`. A `requires_action` run lists what to answer in
-   * `run.result.required_action.actions`; answer them with
-   * `client.agents.sessions.actions.resolve()`.
-   *
-   * Throws `AgentRunWaitTimeoutError` when `timeoutMs` elapses, and the
-   * signal's abort reason when `signal` aborts. Neither stops the run itself.
-   */
-  async wait(runId: string, options: AgentRunWaitOptions = {}): Promise<AgentRun> {
-    const pollIntervalMs = Math.max(0, options.pollIntervalMs ?? 1000);
-    const { timeoutMs, signal } = options;
-    const deadline = timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
-
-    for (;;) {
-      if (signal?.aborted) throw abortReason(signal);
-      const run = await this.get(runId, { signal });
-      if (isAgentRunSettled(run.status)) return run;
-
-      const now = Date.now();
-      if (deadline !== undefined && now >= deadline) {
-        throw new AgentRunWaitTimeoutError(runId, timeoutMs as number, run);
-      }
-      const delay = deadline !== undefined ? Math.min(pollIntervalMs, deadline - now) : pollIntervalMs;
-      await sleep(delay, signal);
-    }
   }
 }

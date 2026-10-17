@@ -30,6 +30,10 @@ export type {
   WebSocketConstructorLike,
 } from './resources/realtime';
 
+// Runs: the page `agents.runs.list()` resolves to
+export { AgentRunPage } from './resources/agentRuns';
+export type { AgentRunListCall, AgentRunEvents } from './resources/agentRuns';
+
 // Sessions: the page `agents.sessions.list()` resolves to
 export { AgentSessionPage } from './resources/agentSessions';
 export type { AgentSessionListCall } from './resources/agentSessions';

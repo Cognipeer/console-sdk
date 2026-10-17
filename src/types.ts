@@ -101,7 +101,25 @@ export interface Tool {
 }
 
 /** Reasoning effort accepted by the reasoning knobs of chat and agent calls. */
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/**
+ * `response_format` of a chat completion or an agent run (OpenAI shape).
+ * `json_schema` constrains the answer to the schema; `json_object` to any JSON object.
+ */
+export type ChatResponseFormat =
+  | { type: 'text' }
+  | { type: 'json_object' }
+  | {
+      type: 'json_schema';
+      json_schema: { name: string; schema: Record<string, unknown>; description?: string; strict?: boolean };
+    };
+
+/** `service_tier` of a chat, responses or run request. `flex` runs the call as a low-priority `deferred` run (agents). */
+export type ServiceTier = 'auto' | 'default' | 'flex' | (string & {});
+
+/** Request `metadata`: up to 16 string pairs (key up to 64 chars of `[A-Za-z0-9_.-]`, value up to 512 chars). */
+export type RequestMetadata = Record<string, string>;
 
 export interface ChatCompletionRequest {
   model: string;
@@ -134,6 +152,27 @@ export interface ChatCompletionRequest {
     scopeId?: string;
     maxTokens?: number;
   };
+  /** Constrain the answer (models and agents). An agent returns the JSON as a string in `message.content`. */
+  response_format?: ChatResponseFormat;
+  /** `{ include_usage: true }` adds a final chunk with `usage` to a stream. */
+  stream_options?: { include_usage?: boolean };
+  /** `flex` runs an agent call as a low-priority deferred run. */
+  service_tier?: ServiceTier;
+  /** Stored on the agent run (agents) / echoed (models). */
+  metadata?: RequestMetadata;
+  /** Agent targets: values for the agent's declared inputs (`Agent.input_schema`). */
+  inputs?: Record<string, unknown>;
+  /** Agent targets: continue this agent session (also `X-Cognipeer-Session-Id`). */
+  conversation_id?: string;
+}
+
+/** Per-call options of `chat.completions.create()`. */
+export interface ChatCompletionOptions {
+  /** Agent targets: continue this session (sent as `X-Cognipeer-Session-Id`). */
+  sessionId?: string;
+  /** Sent as the `Idempotency-Key` header. */
+  idempotencyKey?: string;
+  signal?: AbortSignal;
 }
 
 export interface Usage {
@@ -157,8 +196,14 @@ export interface ChatCompletionResponse {
   choices: ChatChoice[];
   usage: Usage;
   request_id?: string;
-  /** Present when `model` named an agent that offers several models. */
-  cognipeer?: { agent_model?: string };
+  /** Agent targets: the session this turn belongs to (pass it back as `conversation_id`). */
+  conversation_id?: string;
+  /**
+   * Agent targets. `agent_model` is set when the agent offers several models. A call
+   * that outlives the wait window answers `202` with `choices: []` and
+   * `status: 'in_progress'` + `run_id`: follow it with `client.agents.runs.wait(run_id)`.
+   */
+  cognipeer?: { agent_model?: string; status?: AgentRunStatus | 'in_progress'; run_id?: string; session_id?: string };
 }
 
 export interface ChatCompletionChunk {
@@ -171,6 +216,77 @@ export interface ChatCompletionChunk {
     delta: Partial<ChatMessage>;
     finish_reason?: string;
   }>;
+  /** Final chunk when `stream_options.include_usage` is set (its `choices` is empty). */
+  usage?: Usage | null;
+  /** Agent targets: the session (first and last chunk). */
+  conversation_id?: string;
+}
+
+// ============================================================================
+// Models (`GET /api/client/v1/models`)
+// ============================================================================
+
+/** A model of the project as `models.list()` shows it (OpenAI discovery shape plus capabilities). */
+export interface ModelListModelEntry {
+  id: string;
+  object: 'model';
+  created: number;
+  owned_by: string;
+  name?: string;
+  context_length?: number;
+  max_output_tokens?: number;
+  category?: string;
+  supports_image_input?: boolean;
+  supports_reasoning?: boolean;
+  supports_structured_outputs?: boolean;
+  supports_tool_calls?: boolean;
+  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
+  cognipeer?: {
+    kind?: 'model';
+    schema_version?: string | number;
+    canonical_model_id?: string | null;
+    capabilities?: Record<string, unknown>;
+  };
+}
+
+/**
+ * An active agent of the project, listed beside the models. Use `id` (`agent:<key>`)
+ * as `model` in `chat.completions.create()` and `responses.create()`.
+ */
+export interface ModelListAgentEntry {
+  id: `agent:${string}`;
+  object: 'model';
+  created: number;
+  owned_by: 'cognipeer-agent';
+  /** The agent's name. */
+  name: string;
+  description?: string;
+  cognipeer: { kind: 'agent'; key: string };
+}
+
+export type ModelListEntry = ModelListModelEntry | ModelListAgentEntry;
+
+/** True for the agent entries of a model list. */
+export function isAgentModelEntry(entry: ModelListEntry): entry is ModelListAgentEntry {
+  return entry.cognipeer?.kind === 'agent';
+}
+
+/** Query of `models.list()`. */
+export interface ListModelsQuery {
+  category?: string;
+  providerKey?: string;
+  providerDriver?: string;
+  includeProviders?: boolean;
+}
+
+/** `GET /api/client/v1/models`: the OpenAI discovery list (`data`, models and agents) and the full registry rows (`models`). */
+export interface ModelList {
+  object: 'list';
+  data: ModelListEntry[];
+  /** The project's model registry rows (secrets masked); agents are not in it. */
+  models?: Array<Record<string, unknown>>;
+  /** Present with `includeProviders`. */
+  providers?: Array<Record<string, unknown>>;
 }
 
 // ============================================================================
@@ -1968,6 +2084,14 @@ export interface Agent {
    * single-agent lookup, and only when the agent offers more than one model.
    */
   models?: AgentModelChoice[];
+  /**
+   * JSON Schema of the inputs the agent declares (`inputs` of a request, run or routine),
+   * "the agent as a typed function". Only on the single-agent lookup, and only when the
+   * agent declares inputs.
+   */
+  input_schema?: Record<string, unknown> | null;
+  /** JSON Schema of the agent's structured output (`output_parsed`). Only on the single-agent lookup, when it has one. */
+  output_schema?: Record<string, unknown> | null;
 }
 
 /**
@@ -2006,25 +2130,6 @@ export interface ListAgentsQuery {
   status?: AgentStatus;
 }
 
-export interface AgentChatRequest {
-  message: string;
-  conversationId?: string;
-}
-
-export interface AgentChatResponse {
-  content: string;
-  conversationId: string;
-  agentKey: string;
-  /**
-   * Only present when the turn did not complete: `requires_action` (the agent is
-   * paused on an approval or a question, `content` is empty), `incomplete` or
-   * `failed`. A completed turn has no `status`.
-   */
-  status?: Exclude<AgentResponse['status'], 'completed'>;
-  /** The approvals / questions to resolve while `status` is `requires_action`. */
-  pendingActions?: PendingAction[];
-}
-
 // ============================================================================
 // Agent Responses API Types (OpenAI Responses API compatible)
 // ============================================================================
@@ -2053,7 +2158,9 @@ export interface ResponseInputFileContent {
   file_id?: string;
   /** Base64 or a `data:` URL; used when there is no `file_id`. */
   file_data?: string;
-  /** Name for inline `file_data`. */
+  /** An `http(s)` URL the Console fetches (public hosts only); used when there is no `file_id` / `file_data`. */
+  file_url?: string;
+  /** Name for inline `file_data` / `file_url`. */
   filename?: string;
 }
 
@@ -2088,12 +2195,32 @@ export interface RuntimeContext {
   metadata?: Record<string, unknown>;
 }
 
+/** `text.format` of a Responses request: structured output for the turn. */
+export type ResponsesTextFormat =
+  | { type: 'text' }
+  | { type: 'json_object' }
+  | { type: 'json_schema'; name: string; schema: Record<string, unknown>; description?: string; strict?: boolean };
+
+/**
+ * Which version of the agent runs: a version number, or `'draft'` for the unpublished
+ * draft. Omitted = the published version (the draft only when nothing was ever published).
+ */
+export type AgentRunVersion = number | 'draft';
+
+/**
+ * Request body of `client.agents.responses.create()` (OpenAI Responses API, agent fields).
+ *
+ * The agent's own configuration decides instructions, sampling, tools and output
+ * limits: `instructions`, `temperature`, `top_p`, `max_output_tokens`, `tools`,
+ * `tool_choice` and the like are ignored (the response header `X-Cognipeer-Ignored-Params`
+ * lists them), so they are not part of this type.
+ */
 export interface AgentResponseCreateRequest {
-  /** Agent name or key — identifies which agent to invoke */
+  /** Agent key (`my-agent` or `agent:my-agent`). */
   model: string;
   /** User input: a plain string or array of message items */
   input: string | ResponseInputItem[];
-  /** ID of the previous response to continue the conversation */
+  /** ID of the previous response (`resp_<runId>`) to continue the conversation */
   previous_response_id?: string;
   /**
    * Continue this session: one created with `client.agents.sessions.create()`
@@ -2110,43 +2237,52 @@ export interface AgentResponseCreateRequest {
    * OpenAI-style alias of `session_id`: a session id, or `{ id }`. Same rules.
    */
   conversation?: string | { id: string } | null;
-  /** System prompt override */
-  instructions?: string;
-  /** Request a specific published version of the agent */
-  version?: number;
-  /** Sampling temperature */
-  temperature?: number;
-  /** Top-p sampling */
-  top_p?: number;
-  /** Maximum output tokens */
-  max_output_tokens?: number;
+  /**
+   * Agent version to run: a number pins one, `'draft'` runs the draft. Omitted =
+   * the published version.
+   */
+  version?: AgentRunVersion;
+  /**
+   * Structured output for this turn (replaces the agent's own structured output).
+   * The parsed result is `output_parsed`; an answer that does not fit is `output_error`.
+   */
+  text?: { format?: ResponsesTextFormat };
+  /** Stored on the run (up to 16 string pairs) and echoed in the response. */
+  metadata?: RequestMetadata;
+  /** `flex` runs the turn as a low-priority `deferred` run; every other value is the default class. */
+  service_tier?: ServiceTier;
+  /** Values for the inputs the agent declares (`Agent.input_schema`). */
+  inputs?: Record<string, unknown>;
+  /** OpenAI compatibility. The turn is always stored; the value is ignored. */
+  store?: boolean;
   /** Runtime context (downstream headers/metadata) for this invocation */
   runtime_context?: RuntimeContext;
   /**
-   * Run the turn in the background. The call returns immediately (`202`)
-   * with an {@link AgentRun} to poll via `client.agents.runs.get/wait()` or
-   * to be notified about through `callback_url`.
+   * Do not wait for the answer: the call returns right away (`202`) with a response in
+   * `queued` / `in_progress`. With `stream: true`, `background: true` keeps the run going
+   * after the connection closes (otherwise a disconnect cancels it).
+   * Follow it with `responses.retrieve(id)` or `agents.runs.wait(response.cognipeer.run_id)`.
    */
   background?: boolean;
   /**
-   * Background only: URL the Console POSTs the run's terminal event to
+   * Async runs: URL the Console POSTs the run's terminal event to
    * (`agent_run.succeeded` / `agent_run.failed` / `agent_run.canceled`).
    */
   callback_url?: string;
   /**
-   * Background only: secret (min 16 chars) used to HMAC-sign callback
+   * Async runs: secret (min 16 chars) used to HMAC-sign callback
    * deliveries (`X-Cognipeer-Signature`). Verify with
    * `verifyAgentRunCallback` from `@cognipeer/console-sdk/webhooks`.
    */
   callback_secret?: string;
+  /** `true`: server-sent `response.*` events (use `for await` over what `create()` returns). */
+  stream?: boolean;
   /**
    * Spend cap for the conversation this request creates (ignored when
    * `previous_response_id`, `session_id` or `conversation` continues an
    * existing one — use `client.agents.sessions.update()` then, or give the
    * budget to `client.agents.sessions.create()`). Defaults to the agent's own
    * session budget.
-   *
-   * Requires a Console with agent runtime phase 1 (session budget).
    */
   budget?: AgentSessionBudget;
   /**
@@ -2155,7 +2291,7 @@ export interface AgentResponseCreateRequest {
    * Not offered: `400 model_not_allowed`.
    */
   agent_model?: string;
-  /** Reasoning effort; the agent's own pick and the Model Hub default win over it. Background runs ignore it. */
+  /** Reasoning effort; the agent's own pick and the Model Hub default win over it. */
   reasoning_effort?: ReasoningEffort;
   /** Same as `reasoning_effort` in the Responses shape; the object wins when both are sent. */
   reasoning?: { effort?: ReasoningEffort };
@@ -2163,26 +2299,31 @@ export interface AgentResponseCreateRequest {
   include_reasoning?: boolean;
 }
 
-/** Request body that starts a background agent run. */
-export type AgentBackgroundResponseCreateRequest = AgentResponseCreateRequest & { background: true };
-
 /** Per-call options for `client.agents.responses.create()`. */
 export interface AgentResponseCreateOptions {
   /**
-   * Sent as the `Idempotency-Key` header. Background mode only (the server
-   * rejects it on synchronous calls with `400 idempotency_key_sync_not_supported`).
-   * Retrying an identical request with the same key returns the original run
-   * instead of queueing a second one.
+   * Sent as the `Idempotency-Key` header. Retrying an identical request with the
+   * same key returns the original run's response instead of starting a second turn;
+   * the same key with a different request is `409 idempotency_key_conflict`.
    */
   idempotencyKey?: string;
-  /** Abort the HTTP request. */
+  /** Abort the HTTP request (for a stream: the stream; the run is cancelled unless `background: true`). */
   signal?: AbortSignal;
+}
+
+/** Annotation citing a file the agent produced this turn. */
+export interface ResponseFileAnnotation {
+  type: 'file_path';
+  file_id: string;
+  filename: string;
 }
 
 /** Text content within a response output message */
 export interface ResponseOutputText {
   type: 'output_text';
   text: string;
+  /** Files the agent produced this turn (also in `AgentResponse.output_files`). */
+  annotations?: ResponseFileAnnotation[];
 }
 
 /** A single output message in the response */
@@ -2200,24 +2341,58 @@ export interface ResponseUsage {
   total_tokens: number;
 }
 
+/** A file the agent wrote this turn, saved as a session file (download with `sessions.files.content()`). */
+export interface AgentOutputFile {
+  id: string;
+  name: string;
+  mime_type: string;
+  size: number;
+  /** Path of the file's content under the API root. */
+  download_url: string;
+}
+
+/**
+ * `AgentResponse.status`. `queued` / `in_progress` come with HTTP `202`: the turn is
+ * still going. `cancelled` and `failed` end it without an answer, `incomplete` with a
+ * partial one (a limit, see `incomplete_details`), `requires_action` waits on a person.
+ */
+export type AgentResponseStatus =
+  | 'queued'
+  | 'in_progress'
+  | 'completed'
+  | 'incomplete'
+  | 'failed'
+  | 'cancelled'
+  | 'requires_action';
+
+/** True when the response will not change any more (`completed`, `incomplete`, `failed`, `cancelled`). */
+export function isAgentResponseFinal(status: AgentResponseStatus | string): boolean {
+  return status === 'completed' || status === 'incomplete' || status === 'failed' || status === 'cancelled';
+}
+
 /** Full response returned by the Responses API */
 export interface AgentResponse {
-  /** Unique response ID (use as `previous_response_id` for follow-ups) */
+  /** Response ID, `resp_<runId>` (use as `previous_response_id` for follow-ups, `responses.retrieve()` / `cancel()`). */
   id: string;
   object: 'response';
-  /** Agent name */
+  /** Agent key, as requested */
   model: string;
-  /** Output messages from the agent */
+  /** Output messages from the agent (empty while `queued` / `in_progress`) */
   output: ResponseOutputMessage[];
-  /**
-   * Completion status. `incomplete`: a run limit or a cancellation ended the
-   * turn before a final answer (see `stop_reason`). `requires_action`: the
-   * turn is paused on an approval or a question — answer it with
-   * `client.agents.sessions.actions.resolve()`; `required_action` lists them.
-   */
-  status: 'completed' | 'failed' | 'incomplete' | 'requires_action';
+  /** The answer text (all output text joined); a JSON string when structured output is set. */
+  output_text?: string;
+  /** Structured output: the parsed answer when the turn had a schema (`text.format`, or the agent's own). */
+  output_parsed?: unknown;
+  /** Structured output: why the answer does not fit the schema. */
+  output_error?: string;
+  /** Files the agent produced this turn. Absent when none. */
+  output_files?: AgentOutputFile[];
+  /** Completion status; see {@link AgentResponseStatus}. */
+  status: AgentResponseStatus;
   /** Why a non-`completed` response ended early, OpenAI-style (e.g. `{ reason: 'max_cost' }`). */
   incomplete_details?: { reason: string } | null;
+  /** Set when `status` is `failed`. */
+  error?: { type?: string; code?: string; message: string } | null;
   /**
    * How the agent turn ended: `completed` for a normal answer, `limit`,
    * `cancelled`, or `requires_action` while it waits on a person.
@@ -2231,27 +2406,156 @@ export interface AgentResponse {
   usage: ResponseUsage;
   /** Unix timestamp (seconds) */
   created_at: number;
+  /** Request `metadata`, echoed. */
+  metadata?: RequestMetadata | null;
+  /** The structured-output format the turn used, when any. */
+  text?: { format?: ResponsesTextFormat };
+  service_tier?: ServiceTier;
+  /** Whether the call asked for `background: true`. */
+  background?: boolean;
   /** Previous response ID if this is a follow-up */
   previous_response_id: string | null;
-  /** Published version used for this response (null if not versioned) */
+  /** The session (conversation) this turn belongs to. */
+  conversation?: { id: string } | null;
+  /** Agent version used for this response (null if not versioned) */
   version: number | null;
+  /** The run behind the response, and which of the agent's models answered. */
+  cognipeer?: AgentResponseCognipeer;
+}
+
+/** `AgentResponse.cognipeer`. */
+export interface AgentResponseCognipeer {
+  /** `run_<id>`: follow with `agents.runs.get()` / `wait()` / `events`. */
+  run_id?: string;
+  session_id?: string;
   /** Present when the agent offers several models: the one that answered. */
-  cognipeer?: { agent_model?: string };
+  agent_model?: string;
+}
+
+// ── Response stream events (`responses.create({ stream: true })`) ────
+
+interface ResponseEventBase<T extends string> {
+  type: T;
+  sequence_number: number;
+}
+
+/** `response.created` | `response.in_progress` | `response.completed` | `response.failed` | `response.incomplete`: carries the whole response. */
+export type ResponseLifecycleEvent = {
+  [T in
+    | 'response.created'
+    | 'response.in_progress'
+    | 'response.completed'
+    | 'response.failed'
+    | 'response.incomplete']: ResponseEventBase<T> & { response: AgentResponse };
+}[
+  | 'response.created'
+  | 'response.in_progress'
+  | 'response.completed'
+  | 'response.failed'
+  | 'response.incomplete'
+];
+
+export type ResponseOutputItemEvent = {
+  [T in 'response.output_item.added' | 'response.output_item.done']: ResponseEventBase<T> & {
+    output_index: number;
+    item: ResponseOutputMessage | { id: string; type: 'reasoning'; summary?: unknown[] };
+  };
+}['response.output_item.added' | 'response.output_item.done'];
+
+export type ResponseContentPartEvent = {
+  [T in 'response.content_part.added' | 'response.content_part.done']: ResponseEventBase<T> & {
+    item_id: string;
+    output_index: number;
+    content_index: number;
+    part: ResponseOutputText;
+  };
+}['response.content_part.added' | 'response.content_part.done'];
+
+export type ResponseOutputTextDeltaEvent = ResponseEventBase<'response.output_text.delta'> & {
+  item_id: string;
+  output_index: number;
+  content_index: number;
+  delta: string;
+};
+
+export type ResponseOutputTextDoneEvent = ResponseEventBase<'response.output_text.done'> & {
+  item_id: string;
+  output_index: number;
+  content_index: number;
+  text: string;
+};
+
+export type ResponseReasoningSummaryEvent =
+  | (ResponseEventBase<'response.reasoning_summary_part.added'> & {
+      item_id: string;
+      output_index: number;
+      summary_index: number;
+      part: { type: 'summary_text'; text: string };
+    })
+  | (ResponseEventBase<'response.reasoning_summary_part.done'> & {
+      item_id: string;
+      output_index: number;
+      summary_index: number;
+      part: { type: 'summary_text'; text: string };
+    })
+  | (ResponseEventBase<'response.reasoning_summary_text.delta'> & {
+      item_id: string;
+      output_index: number;
+      summary_index: number;
+      delta: string;
+    })
+  | (ResponseEventBase<'response.reasoning_summary_text.done'> & {
+      item_id: string;
+      output_index: number;
+      summary_index: number;
+      text: string;
+    });
+
+/** The stream failed: `message` says why. The stream ends after it. */
+export interface ResponseErrorEvent {
+  type: 'error';
+  sequence_number?: number;
+  code?: string | null;
+  message: string;
+  param?: string | null;
+}
+
+/** An event type this SDK version does not know: ignore it. */
+export interface UnknownResponseEvent {
+  type: string & {};
+  sequence_number?: number;
+  [key: string]: unknown;
+}
+
+/** One server-sent event of a streamed response. */
+export type AgentResponseStreamEvent =
+  | ResponseLifecycleEvent
+  | ResponseOutputItemEvent
+  | ResponseContentPartEvent
+  | ResponseOutputTextDeltaEvent
+  | ResponseOutputTextDoneEvent
+  | ResponseReasoningSummaryEvent
+  | ResponseErrorEvent
+  | UnknownResponseEvent;
+
+type KnownResponseStreamEvent = Exclude<AgentResponseStreamEvent, UnknownResponseEvent>;
+
+/** Narrow a stream event by its `type`. */
+export function isResponseStreamEvent<T extends KnownResponseStreamEvent['type']>(
+  event: AgentResponseStreamEvent,
+  type: T,
+): event is Extract<KnownResponseStreamEvent, { type: T }> {
+  return event.type === type;
 }
 
 /** What `sessions.cancel()` answers (200). */
 export interface AgentConversationCancelResult {
-  conversation_id: string;
+  object?: 'agent.session.cancel';
+  conversation_id?: string;
   /** Whether a running turn was asked to stop. */
   cancelled: boolean;
   /** Ids of the runs that were cancelled. */
   run_ids: string[];
-}
-
-/** What `responses.cancel()` answers (200). */
-export interface AgentResponseCancelResult extends AgentConversationCancelResult {
-  /** The response id that was given (`resp_<conversationId>` or `run_<runId>`). */
-  id: string;
 }
 
 /**
@@ -2290,12 +2594,14 @@ export interface AgentRequiredAction {
 // ============================================================================
 
 /**
- * Lifecycle of a background agent run. `succeeded`/`failed`/`canceled` are
+ * Lifecycle of an agent run. `scheduled` waits for its start time (`run_at` /
+ * `delay_seconds`, a routine); `queued` waits for a worker. `succeeded`/`failed`/`canceled` are
  * terminal. `requires_action` is NOT terminal: the run paused on an approval or
  * a question (its `result.required_action` lists them) and continues once they
  * are resolved.
  */
 export type AgentRunStatus =
+  | 'scheduled'
   | 'queued'
   | 'running'
   | 'requires_action'
@@ -2333,6 +2639,8 @@ export type AgentRunErrorReason =
   | 'agent_error'
   | 'max_duration_exceeded'
   | 'worker_lost'
+  | 'expired'
+  | 'interrupted'
   | 'canceled'
   | (string & {});
 
@@ -2341,81 +2649,229 @@ export interface AgentRunError {
   message: string | null;
 }
 
+/** Execution class of a run: `default` (interactive) or `deferred` (low priority, own queue and caps). */
+export type AgentRunClass = 'default' | 'deferred';
+
+/** Where a run came from. */
+export type AgentRunChannel = 'runs' | 'responses' | 'chat_completions' | 'a2a' | 'routine' | (string & {});
+
+/** What started a run. */
+export type AgentRunTrigger = 'request' | 'schedule' | 'once' | 'manual' | (string & {});
+
 /**
- * A background agent run (`object: 'agent.run'`).
- *
- * The `202` returned by `responses.create({ background: true })` is already the
- * full run (`stop_reason`, `agent`, `conversation_id`, `callback`... with
- * `result: null` and `error: null` until it finishes); `runs.get()` and
- * `runs.wait()` return the same shape.
+ * A run of an agent turn (`object: 'agent.run'`): what `agents.runs.*`,
+ * `agents.routines.run()` and the `202` of the runs API return. `result` is the
+ * Responses-shaped answer once the run finished; `output_text` / `output_parsed`
+ * are lifted from it for convenience.
  */
 export interface AgentRun {
-  /** Run id, `run_<id>`. Also accepted as `previous_response_id`. */
+  /** Run id, `run_<id>`. Its response id is `resp_<id>`. */
   id: string;
   object: 'agent.run';
   status: AgentRunStatus;
-  /**
-   * How the agent turn ended (`end_turn`, `limit`, `requires_action`,
-   * `cancelled`, `error`, ...). Null while the run is active and on runs that
-   * predate the field.
-   */
-  stop_reason?: AgentSessionStopReason | null;
+  class?: AgentRunClass;
   /** Agent key */
   agent?: string;
+  /** Agent version the run uses. */
+  version?: number | null;
+  /** The session (conversation) the run belongs to. */
+  session_id?: string;
+  /** Same as `session_id`. */
   conversation_id?: string;
+  channel?: AgentRunChannel | null;
+  trigger?: AgentRunTrigger | null;
+  /** The routine that fired it. */
+  routine_id?: string | null;
+  /** Request metadata. */
+  metadata?: RequestMetadata | null;
   /**
-   * The turn's Responses API result once `succeeded` (its `id` is `resp_<...>`),
+   * How the agent turn ended (`end_turn`, `limit`, `requires_action`,
+   * `cancelled`, `error`, ...). Null while the run is active.
+   */
+  stop_reason?: AgentSessionStopReason | null;
+  /**
+   * The turn's Responses API result once `succeeded` (its `id` is `resp_<runId>`),
    * or the `requires_action` response (with `required_action`) while `requires_action`.
    */
   result?: AgentResponse | null;
+  /** The answer text, once there is one. */
+  output_text?: string | null;
+  /** The structured answer, when the run had a schema. */
+  output_parsed?: unknown;
   /** Set when `failed` or `canceled`. */
   error?: AgentRunError | null;
+  /** Unix seconds a `scheduled` run starts at. */
+  scheduled_for?: number | null;
   /** Unix timestamps (seconds) */
   created_at: number;
   started_at?: number | null;
   completed_at?: number | null;
+  /** Unix seconds the caller stopped waiting (a sync call that became `202`), else null. */
+  detached_at?: number | null;
   /** Unix seconds a cancel was requested (cooperative cancel in progress), else null. */
   cancel_requested_at?: number | null;
   /** The run's wall-clock ceiling in ms. */
   max_duration_ms?: number | null;
-  /** The run's `callback_url` delivery, null when it has none. */
+  /** The run's `callback` delivery, null when it has none. */
   callback?: AgentRunCallbackState | null;
 }
 
-/** `AgentRun.callback`: the state of the run's `callback_url` delivery. */
+/** `AgentRun.callback`: the state of the run's callback delivery. */
 export interface AgentRunCallbackState {
   url: string;
   /** Delivery state (`pending`, `delivered`, `failed`...); null before the first attempt. */
   status: string | null;
   attempts: number;
-  /** Whether the callback is HMAC-signed (a `callback_secret` was given). */
+  /** Whether the callback is HMAC-signed (a callback secret was given). */
   signed: boolean;
 }
 
 /** Options for `client.agents.runs.wait()`. */
 export interface AgentRunWaitOptions {
-  /** Delay between polls (default 1000 ms). */
+  /**
+   * Seconds each long-poll asks the Console to hold the request (`?wait=`). Default
+   * 20; capped below the client's request timeout. The Console answers as soon as
+   * the run settles, so this is only how long a quiet poll lasts.
+   */
+  waitSeconds?: number;
+  /**
+   * Smallest gap between two polls in ms (default 1000), a guard for a Console that
+   * answers a long-poll at once. A long-poll that held for its time is not delayed.
+   */
   pollIntervalMs?: number;
   /** Give up after this long and throw `AgentRunWaitTimeoutError`. Unset = wait until terminal or `requires_action`. */
   timeoutMs?: number;
-  /** Abort waiting (the run itself keeps going; stop the turn with `sessions.cancel()` or `responses.cancel()`, or one background run with `runs.cancel()`). */
+  /** Abort waiting (the run itself keeps going; stop it with `runs.cancel()`). */
   signal?: AbortSignal;
+}
+
+/** `Prefer` header of a run call (RFC 7240): hold the call up to `wait` seconds, or answer at once with `respondAsync`. */
+export interface AgentRunPrefer {
+  wait?: number;
+  respondAsync?: boolean;
+}
+
+/** Per-call options of `runs.create()` and `routines.run()`. */
+export interface AgentRunCreateOptions {
+  /**
+   * Sent as `Idempotency-Key`. `runs.create()` generates one when you give none, so a
+   * retried request (a network error, `429`/`5xx`) never starts a second run. Pass your
+   * own to make the same job idempotent across processes; the same key with a different
+   * request is `409 idempotency_key_conflict`.
+   */
+  idempotencyKey?: string;
+  /** Sent as the `Prefer` header (a ready string, or `{ wait, respondAsync }`). */
+  prefer?: string | AgentRunPrefer;
+  signal?: AbortSignal;
+}
+
+/** Body of `runs.create()`. */
+export interface AgentRunCreateRequest {
+  /** The user message: text, or Responses input items (`input_text`, `input_file`, `input_image`). */
+  input?: string | ResponseInputItem[];
+  /** Values for the inputs the agent declares (`Agent.input_schema`). */
+  inputs?: Record<string, unknown>;
+  /** Continue this session; omitted starts a new one (its id is in the run). */
+  session_id?: string;
+  /** A version number, or `'draft'`. Omitted = the published version. */
+  version?: AgentRunVersion;
+  /** `deferred` is a low-priority run in its own queue. Default `default`. */
+  class?: AgentRunClass;
+  /** Start at this time (ISO 8601; up to 30 days ahead). The run is `scheduled` until then. */
+  run_at?: string;
+  /** Start in this many seconds. */
+  delay_seconds?: number;
+  /** Hold the call up to this many seconds for the answer (default 0: answer at once with the queued run; capped by the Console's window). */
+  wait?: number;
+  /** `true`: stream `response.*` events (see {@link AgentResponseStreamEvent}). */
+  stream?: boolean;
+  /** Streams: `continue` (default) keeps the run going when the connection closes, `cancel` stops it. */
+  on_disconnect?: 'continue' | 'cancel';
+  metadata?: RequestMetadata;
+  /** Where to POST the terminal event; `secret` (min 16 chars) signs it. */
+  callback?: { url: string; secret?: string };
+  /** Structured output for this run. */
+  response_format?: ChatResponseFormat;
+  runtime_context?: RuntimeContext;
+  reasoning?: { effort?: ReasoningEffort };
+  agent_model?: string;
+  budget?: AgentSessionBudget;
+}
+
+/** Options of `runs.get()`. */
+export interface AgentRunGetOptions {
+  /** Hold the request up to this many seconds until the run settles (long-poll). */
+  wait?: number;
+  signal?: AbortSignal;
+}
+
+/** Filters of `runs.list()`. */
+export interface ListAgentRunsQuery {
+  /** Agent key. */
+  agent?: string;
+  /** One status or several. */
+  status?: AgentRunStatus | AgentRunStatus[];
+  class?: AgentRunClass;
+  session_id?: string;
+  routine_id?: string;
+  channel?: AgentRunChannel;
+  /** Exact match on up to 3 metadata pairs. */
+  metadata?: RequestMetadata;
+  /** Unix seconds, ISO 8601 string or Date. */
+  created_after?: number | string | Date;
+  created_before?: number | string | Date;
+  /** Page size (default 20, max 100). */
+  limit?: number;
+  /** Cursor: a run id; the page starts after it (`AgentRunList.last_id`). */
+  after?: string;
+}
+
+/** `GET /agents/runs`: one page, newest first. */
+export interface AgentRunList {
+  object: 'list';
+  data: AgentRun[];
+  first_id: string | null;
+  last_id: string | null;
+  has_more: boolean;
+}
+
+/** Counters of one execution class in {@link AgentRunQueue}. */
+export interface AgentRunQueueCounts {
+  running: number;
+  queued: number;
+  scheduled: number;
+}
+
+/** `runs.queue()`: what is running and waiting (tenant-wide, plus the token's project under `project`). */
+export interface AgentRunQueue {
+  object: 'agent.run_queue';
+  default: AgentRunQueueCounts & { limit: number };
+  deferred: AgentRunQueueCounts & {
+    running_limit: number;
+    queued_limit: number;
+    oldest_queued_at: number | null;
+  };
+  /** The same counters for the caller's project only. */
+  project?: {
+    default?: AgentRunQueueCounts;
+    deferred?: AgentRunQueueCounts;
+  };
 }
 
 /** Machine-readable `error.code` values returned by agent run endpoints. */
 export const AgentRunErrorCodes = {
   /** 409: a run is already queued/running on this conversation. */
   Conflict: 'agent_run_conflict',
-  /** 409: cancel was called on a run that already finished. */
+  /** 409: cancel was called on a run that already finished (runs API). */
   AlreadyTerminal: 'agent_run_already_terminal',
-  /** 429: the tenant hit its concurrent background-run limit. */
+  /** 429: the tenant hit its concurrent run limit (or the deferred queue is full). */
   ConcurrencyLimit: 'agent_run_concurrency_limit',
-  /** 504: a synchronous turn exceeded the server's ceiling. Not retried: tool side effects may have happened. */
-  SyncTimeout: 'timeout',
   /** 409: the Idempotency-Key was reused with a different request. */
   IdempotencyKeyConflict: 'idempotency_key_conflict',
-  /** 400: Idempotency-Key sent without `background: true`. */
-  IdempotencyKeySyncNotSupported: 'idempotency_key_sync_not_supported',
+  /** 400: `inputs` do not fit the agent's input schema; `error.response.error.errors` lists the fields. */
+  InvalidInputs: 'invalid_inputs',
+  /** 400: the response format (`response_format` / `text.format`) cannot be used. */
+  InvalidResponseFormat: 'invalid_response_format',
 } as const;
 
 export type AgentRunErrorCode = (typeof AgentRunErrorCodes)[keyof typeof AgentRunErrorCodes];
@@ -2459,6 +2915,91 @@ export interface AgentRunCallbackEvent {
    * `required_action`), `{ errorReason, message? }` on failure, `{}` on cancel.
    */
   data: Record<string, unknown>;
+}
+
+// ============================================================================
+// Agent Routines
+// ============================================================================
+
+/**
+ * When a routine fires: on a cron `schedule` (5 fields, IANA `timezone`, default
+ * `UTC`), `once` at a time, or only `manual`ly (`routines.run()`).
+ */
+export type AgentRoutineTrigger =
+  | { type: 'schedule'; cron: string; timezone?: string }
+  | { type: 'once'; run_at: string }
+  | { type: 'manual' };
+
+/** Trigger of a create / update: a `once` trigger may also say `delay_seconds` instead of `run_at`. */
+export type AgentRoutineTriggerInput =
+  | { type: 'schedule'; cron: string; timezone?: string }
+  | { type: 'once'; run_at?: string; delay_seconds?: number }
+  | { type: 'manual' };
+
+/** A routine of an agent (`object: 'agent.routine'`): a prompt the agent runs on a trigger. Each fire is an {@link AgentRun}. */
+export interface AgentRoutine {
+  id: string;
+  object: 'agent.routine';
+  /** Agent key. */
+  agent: string;
+  name: string;
+  description?: string | null;
+  enabled: boolean;
+  trigger: AgentRoutineTrigger;
+  /** The message each fire sends. */
+  prompt: string;
+  inputs?: Record<string, unknown> | null;
+  /** Pinned version; null = the published one. */
+  version?: number | null;
+  class?: AgentRunClass;
+  /** Copied onto every run. */
+  metadata?: RequestMetadata | null;
+  /** Where each run's terminal event goes; the secret is never returned. */
+  callback?: { url: string; signed: boolean } | null;
+  response_format?: ChatResponseFormat | null;
+  /** ISO 8601; null for `manual` and a finished `once`. */
+  next_fire_at?: string | null;
+  last_fire_at?: string | null;
+  last_run_id?: string | null;
+  last_status?: 'started' | 'failed' | null;
+  last_error?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Body of `routines.create()`. The prompt is required unless the agent declares inputs and they are given. */
+export interface AgentRoutineCreateRequest {
+  name: string;
+  description?: string | null;
+  /** Default true. */
+  enabled?: boolean;
+  trigger: AgentRoutineTriggerInput;
+  prompt?: string;
+  inputs?: Record<string, unknown> | null;
+  /** Pin a version (omitted = the published one). */
+  version?: number | null;
+  class?: AgentRunClass;
+  metadata?: RequestMetadata | null;
+  callback?: { url: string; secret?: string } | null;
+  response_format?: ChatResponseFormat | null;
+}
+
+/** Body of `routines.update()`: any field of the create body. */
+export type AgentRoutineUpdateRequest = Partial<AgentRoutineCreateRequest>;
+
+/** Body of `routines.run()`: overrides for this one fire. */
+export interface AgentRoutineRunRequest {
+  inputs?: Record<string, unknown>;
+  metadata?: RequestMetadata;
+  /** Hold the call up to this many seconds for the answer (see `AgentRunCreateRequest.wait`). */
+  wait?: number;
+}
+
+/** `routines.delete()` answer. */
+export interface AgentRoutineDeleted {
+  id: string;
+  object: 'agent.routine';
+  deleted: true;
 }
 
 // ============================================================================
@@ -2586,8 +3127,7 @@ export type ResolveActionBody = (ToolApprovalResolution | UserQuestionResolution
 export interface ResolveActionOptions {
   /**
    * Continue the turn as a background run: the call returns the queued
-   * {@link AgentRun} (`202`) instead of waiting for the continuation. Needs
-   * background execution enabled for the agent (400 `agent_background_disabled` otherwise).
+   * {@link AgentRun} (`202`) instead of waiting for the continuation.
    */
   background?: boolean;
   signal?: AbortSignal;
@@ -2969,8 +3509,6 @@ export const AgentActionErrorCodes = {
   BudgetOverrideForbidden: 'budget_override_forbidden',
   /** 400: the budget is malformed or not above what the session already spent. */
   InvalidBudget: 'invalid_budget',
-  /** 400: `background: true` / `resume` on an agent with background execution disabled. */
-  BackgroundDisabled: 'agent_background_disabled',
   /**
    * 402: the session used up its budget; `error.response.error.spent_usd` /
    * `max_cost_usd` say how much. Raise the budget with `sessions.update()`.
@@ -3157,8 +3695,9 @@ export type WebhookEventType =
   | 'agent_run.failed'
   | 'agent_run.canceled'
   | 'agent_run.requires_action'
-  | 'schedule.fired'
-  | 'schedule.failed'
+  | 'routine.fired'
+  | 'routine.failed'
+  | 'feedback.recorded'
   | 'webhook.test'
   | (string & {});
 
@@ -3172,8 +3711,9 @@ export const WEBHOOK_EVENT_TYPES = [
   'agent_run.failed',
   'agent_run.canceled',
   'agent_run.requires_action',
-  'schedule.fired',
-  'schedule.failed',
+  'routine.fired',
+  'routine.failed',
+  'feedback.recorded',
   'webhook.test',
 ] as const;
 
@@ -3318,11 +3858,39 @@ export type WebhookAgentRunEvent = WebhookEventEnvelope<
   | 'agent_run.failed'
   | 'agent_run.canceled'
   | 'agent_run.requires_action',
-  { runId: string; conversationId: string; agentKey: string }
+  {
+    runId: string;
+    conversationId: string;
+    agentKey: string;
+    status?: AgentRunStatus;
+    class?: AgentRunClass;
+    metadata?: RequestMetadata | null;
+    routineId?: string | null;
+  }
 >;
-export type WebhookScheduleEvent = WebhookEventEnvelope<
-  'schedule.fired' | 'schedule.failed',
-  { scheduleId: string; agentKey: string; conversationId?: string; error?: string }
+export type WebhookRoutineFiredEvent = WebhookEventEnvelope<
+  'routine.fired',
+  { routineId: string; runId: string; agentKey: string }
+>;
+export type WebhookRoutineFailedEvent = WebhookEventEnvelope<
+  'routine.failed',
+  { routineId: string; agentKey?: string; reason: string }
+>;
+export type WebhookFeedbackRecordedEvent = WebhookEventEnvelope<
+  'feedback.recorded',
+  {
+    conversationId: string;
+    agentKey: string;
+    messageId: string;
+    messageIndex: number;
+    /** `null` when a rating was withdrawn. */
+    rating: string | number | null;
+    reasons: string[];
+    hasComment: boolean;
+    channel: string;
+    portalId: string | null;
+    withdrawn?: true;
+  }
 >;
 export type WebhookTestEvent = WebhookEventEnvelope<'webhook.test', Record<string, never>>;
 
@@ -3333,7 +3901,9 @@ export type KnownWebhookEvent =
   | WebhookActionRequiredEvent
   | WebhookBudgetReachedEvent
   | WebhookAgentRunEvent
-  | WebhookScheduleEvent
+  | WebhookRoutineFiredEvent
+  | WebhookRoutineFailedEvent
+  | WebhookFeedbackRecordedEvent
   | WebhookTestEvent;
 
 /** Body of an event type this SDK version does not know — acknowledge (2xx) and ignore it. */

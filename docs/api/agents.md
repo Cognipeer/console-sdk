@@ -1,6 +1,6 @@
 # Agents API
 
-List, retrieve, and invoke AI agents via the Console SDK. Agents are invoked through the OpenAI Responses API format.
+List, retrieve and run AI agents via the Console SDK: chat-style calls through the OpenAI Responses API format, jobs through the runs API, recurring work through routines.
 
 ## Quick Start
 
@@ -17,7 +17,7 @@ const response = await client.agents.responses.create({
   input: 'How do I reset my password?',
 });
 
-console.log(response.output);
+console.log(response.output_text);
 ```
 
 ## List Agents
@@ -103,6 +103,8 @@ agent and need a bucket; with files off (or on with no bucket) an upload is refu
 ## Invoke Agent (Responses API)
 
 Use `client.agents.responses.create()` to invoke an agent. The request format follows the OpenAI Responses API.
+The agent runs its **published** version (its draft only when it was never published); `version: 3` pins a version and
+`version: 'draft'` runs the draft.
 
 ```typescript
 const response = await client.agents.responses.create({
@@ -110,22 +112,34 @@ const response = await client.agents.responses.create({
   input: 'What are your business hours?',
 });
 
-console.log(response.id);     // "resp_64a1b2c3d4e5f6"
-console.log(response.output); // Assistant response
-console.log(response.usage);  // Token usage
+console.log(response.id);          // "resp_run_66f2..." (the id of its run)
+console.log(response.output_text); // the answer
+console.log(response.usage);       // Token usage
 ```
+
+The agent's own configuration decides instructions, sampling and tools: `instructions`, `temperature`, `top_p` and
+`max_output_tokens` are not part of the agent request (the Console lists ignored parameters in the
+`X-Cognipeer-Ignored-Params` response header).
 
 ### Parameters
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `model` | string | Yes | Agent key |
-| `input` | string \| InputItem[] | Yes | User message |
-| `previous_response_id` | string | No | Continue a conversation (`resp_...` or `run_...`) |
+| `model` | string | Yes | Agent key (`support-bot` or `agent:support-bot`) |
+| `input` | string \| InputItem[] | Yes | User message: text, `input_file` (`file_id`, `file_data`, `file_url`), `input_image` |
+| `previous_response_id` | string | No | Continue a conversation (`resp_<runId>`; legacy `resp_<conversationId>` and `run_...` still work) |
 | `session_id` | string | No | Continue a session (for example one from [`sessions.create()`](#sessions-start-list-delete)); same session as `previous_response_id` |
 | `conversation` | string \| `{ id }` | No | OpenAI-style alias of `session_id` |
-| `version` | number | No | Specific published version |
-| `background` | boolean | No | Queue the turn and return an `AgentRun` — see [Background Runs](#background-runs) |
+| `version` | number \| `'draft'` | No | Pin a published version, or run the draft. Default: the published version |
+| `text.format` | `json_schema` \| `json_object` \| `text` | No | Structured output for this turn: see [Structured output](#structured-output) |
+| `metadata` | Record&lt;string, string&gt; | No | Up to 16 pairs, stored on the run and echoed back |
+| `service_tier` | string | No | `flex` runs the turn as a low-priority `deferred` run |
+| `inputs` | object | No | Values for the inputs the agent declares (`agent.input_schema`) |
+| `background` | boolean | No | Do not wait: answer at once (`202`) with a `queued` / `in_progress` response — see [Long turns](#long-turns-202-and-background) |
+| `stream` | boolean | No | Return an async iterator of `response.*` events — see [Streaming](#streaming) |
+| `callback_url` / `callback_secret` | string | No | Async runs: POST the terminal event there (signed with the secret, min 16 chars) |
+| `reasoning_effort` / `reasoning` | `none`…`high`, `xhigh`, `max` | No | Reasoning effort; the agent's own pick wins |
+| `agent_model`, `runtime_context`, `budget`, `include_reasoning` | | No | As documented on `AgentResponseCreateRequest` |
 
 ### Multi-Turn Conversations
 
@@ -162,106 +176,219 @@ const reply = await client.agents.responses.create({
 });
 ```
 
+### Structured output
+
+`text.format` asks for JSON that fits a schema, replacing the agent's own structured output for this turn.
+The parsed answer is `output_parsed`; an answer that does not fit is `output_error`.
+
+```typescript
+const res = await client.agents.responses.create({
+  model: 'invoice-bot',
+  input: 'Extract the totals from this invoice: ...',
+  text: {
+    format: {
+      type: 'json_schema',
+      name: 'invoice',
+      schema: { type: 'object', properties: { total: { type: 'number' } }, required: ['total'] },
+      strict: true,
+    },
+  },
+});
+
+res.output_parsed; // { total: 42 }
+res.output_text;   // '{"total":42}'
+```
+
+`agents.get(key)` returns `input_schema` and `output_schema` (JSON Schema) when the agent declares inputs or a
+structured output: the agent as a typed function. Pass the inputs with `inputs`.
+
+### Streaming
+
+`stream: true` returns an async iterator of typed `response.*` events (`response.created`, `response.output_text.delta`,
+`response.completed`...). A disconnect cancels the turn unless `background: true`.
+
+```typescript
+const stream = await client.agents.responses.create({ model: 'support-bot', input: 'Hi', stream: true });
+for await (const event of stream) {
+  if (event.type === 'response.output_text.delta') process.stdout.write(event.delta);
+  if (event.type === 'response.completed') console.log(event.response.usage);
+  if (event.type === 'error') throw new Error(event.message);
+}
+```
+
+### Long turns: 202 and background
+
+A call waits for the answer up to the Console's window. When the turn is still going, the Console answers HTTP `202`:
+the SDK does **not** throw, it returns the response with `status: 'in_progress'` (or `'queued'`). The turn keeps
+running. `background: true` asks for that at once.
+
+```typescript
+const res = await client.agents.responses.create({ model: 'research-agent', input: 'Compare these vendors' });
+
+if (res.status === 'queued' || res.status === 'in_progress') {
+  const run = await client.agents.runs.wait(res.cognipeer!.run_id!, { timeoutMs: 15 * 60_000 });
+  console.log(run.output_text, run.output_parsed);
+}
+
+// or read / stop it by response id
+const current = await client.agents.responses.retrieve(res.id);
+await client.agents.responses.cancel(res.id); // POST /responses/{id}/cancel
+```
+
+`retrieve(id)` returns the response as it is now (`queued`, `in_progress`, then final); `cancel(id)` returns the
+`cancelled` response, or `in_progress` while a cooperative stop lands, and the finished response when it already
+ended.
+
 ### Response Type
 
 ```typescript
 interface AgentResponse {
-  id: string;
+  id: string;                     // "resp_<runId>"
   object: 'response';
   model: string;
-  output: ResponseOutput[];
-  status: string;
-  usage: {
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-  };
+  status: 'queued' | 'in_progress' | 'completed' | 'incomplete' | 'failed' | 'cancelled' | 'requires_action';
+  output: ResponseOutputMessage[];
+  output_text?: string;
+  output_parsed?: unknown;        // structured output
+  output_error?: string;
+  output_files?: AgentOutputFile[];
+  incomplete_details?: { reason: string } | null;
+  error?: { message: string } | null;
+  usage: { input_tokens: number; output_tokens: number; total_tokens: number };
   created_at: number;
+  metadata?: Record<string, string> | null;
   previous_response_id: string | null;
-}
-
-interface ResponseOutput {
-  type: 'message';
-  role: 'assistant';
-  content: ResponseContent[];
-}
-
-interface ResponseContent {
-  type: 'output_text';
-  text: string;
+  conversation?: { id: string } | null;
+  version: number | null;
+  cognipeer?: { run_id?: string; session_id?: string; agent_model?: string };
 }
 ```
 
-## Background Runs
+## Runs
 
-Long agent turns (many tool calls, slow downstream services) can outlive
-proxies and HTTP timeouts. Pass `background: true` to queue the turn and get
-an `AgentRun` back immediately (`202`), then poll it or receive a callback.
+`client.agents.runs` is the canonical surface for jobs: start a turn now, later or at low priority, follow it, cancel it.
+Responses, chat completions and A2A are dialects over the same runs.
 
 ```typescript
-const run = await client.agents.responses.create(
+// Hold the call up to 30 s; past that the run is returned as it is (202), never an error.
+const run = await client.agents.runs.create(
+  'research-agent',
   {
-    model: 'research-agent',
     input: 'Compare these three vendors',
-    background: true,
-    callback_url: 'https://example.com/hooks/agent-run', // optional
-    callback_secret: process.env.AGENT_CALLBACK_SECRET,   // optional, min 16 chars
+    inputs: { region: 'EMEA' },                 // the agent's declared inputs
+    class: 'deferred',                          // low-priority queue (default: 'default')
+    delay_seconds: 3600,                        // or run_at: '2026-10-18T06:00:00Z' -> status 'scheduled'
+    metadata: { ticket: 'OPS-12' },
+    callback: { url: 'https://example.com/hooks/agent-run', secret: process.env.AGENT_CALLBACK_SECRET },
+    response_format: { type: 'json_schema', json_schema: { name: 'cmp', schema: { type: 'object' } } },
+    wait: 30,
   },
-  { idempotencyKey: 'vendor-compare-42' },                // optional, sent as Idempotency-Key
+  { idempotencyKey: 'vendor-compare-42' },     // optional; generated when omitted
 );
 
 run.id;     // "run_66f2..."
-run.status; // "queued"
+run.status; // 'succeeded' | 'queued' | 'scheduled' | 'running' | ...
 
-const done = await client.agents.runs.wait(run.id, {
-  pollIntervalMs: 2000, // default 1000
-  timeoutMs: 15 * 60_000, // default: wait until terminal
-});
+const done = await client.agents.runs.wait(run.id, { timeoutMs: 15 * 60_000 });
+if (done.status === 'succeeded') console.log(done.output_text, done.output_parsed);
+else console.log(done.status, done.error); // failed | canceled, { type, message }
+```
 
-if (done.status === 'succeeded') {
-  console.log(done.result?.output[0]?.content[0]?.text);
-  console.log(done.result?.id); // "resp_..."
-} else {
-  console.log(done.status, done.error); // failed | canceled, { type, message }
+### Run methods
+
+```typescript
+await client.agents.runs.create(agentKey, body, { idempotencyKey?, prefer?, signal? });
+await client.agents.runs.get('run_66f2...', { wait: 20 });  // ?wait= long-poll
+await client.agents.runs.wait('run_66f2...', { timeoutMs, signal });
+await client.agents.runs.cancel('run_66f2...');
+await client.agents.runs.queue();                           // running / queued / scheduled per class + limits
+
+const page = await client.agents.runs.list({ agent: 'research-agent', status: ['failed', 'canceled'], limit: 50 });
+page.data; page.has_more; await page.getNextPage();
+for await (const r of client.agents.runs.list({ routine_id: 'rtn_1' })) console.log(r.id); // every page
+
+await client.agents.runs.events('run_66f2...', { after: 10 });          // the run's session events (JSON)
+for await (const event of client.agents.runs.events.stream('run_66f2...')) { /* SSE, resumes with Last-Event-ID */ }
+
+await client.agents.runs.resolveAction('run_66f2...', 'act_1', { decision: 'allow' }); // a pending approval / question
+```
+
+- `create()` returns the `AgentRun`: finished within `wait`, otherwise `queued` / `scheduled` / `running`
+  (HTTP `202`). An `Idempotency-Key` is generated when you pass none, so a retried request never starts a second run;
+  the same key with a different request is `409 idempotency_key_conflict`. `prefer: { wait, respondAsync }` sends the
+  RFC 7240 `Prefer` header. `stream: true` returns an async iterator of `response.*` events instead.
+- `wait()` uses the Console's `?wait=` long-poll (one quiet request lasts `waitSeconds`, default 20, capped below the
+  client timeout) and resolves with the run for `succeeded`, `failed` **and** `canceled` — and for `requires_action`,
+  where the run is paused on an approval or a question and waiting would never end (`run.result.required_action.actions`
+  lists what to answer). It throws `AgentRunWaitTimeoutError` (with `lastRun`) when `timeoutMs` elapses and the
+  signal's reason when `signal` aborts. Neither stops the run; call `cancel()` for that.
+- `cancel()` ends a `scheduled`, `queued` or `requires_action` run at once; a `running` one stops cooperatively (the
+  returned run may still say `running` with `cancel_requested_at` for about a second). Canceling a finished run is a `409`
+  with `errorCode === 'agent_run_already_terminal'`.
+- `list()` filters: `agent`, `status`, `class`, `session_id`, `routine_id`, `channel`, `metadata` (up to 3 exact pairs),
+  `created_after`, `created_before`, `limit` (max 100), `after`. Newest first.
+
+### AgentRun Type
+
+```typescript
+// `requires_action` is not terminal: the run continues once the actions are resolved.
+type AgentRunStatus = 'scheduled' | 'queued' | 'running' | 'requires_action' | 'succeeded' | 'failed' | 'canceled';
+
+interface AgentRun {
+  id: string;                 // "run_..."
+  object: 'agent.run';
+  status: AgentRunStatus;
+  class?: 'default' | 'deferred';
+  agent?: string;
+  version?: number | null;
+  session_id?: string;        // also conversation_id
+  channel?: 'runs' | 'responses' | 'chat_completions' | 'a2a' | 'routine';
+  trigger?: 'request' | 'schedule' | 'once' | 'manual';
+  routine_id?: string | null;
+  metadata?: Record<string, string> | null;
+  stop_reason?: string | null;
+  result?: AgentResponse | null;     // Responses-shaped, when finished (or the requires_action response)
+  output_text?: string | null;
+  output_parsed?: unknown;
+  error?: { type: string; message: string | null } | null;
+  scheduled_for?: number | null;
+  created_at: number;
+  started_at?: number | null;
+  completed_at?: number | null;
+  detached_at?: number | null;       // the caller stopped waiting (a 202)
+  cancel_requested_at?: number | null;
+  callback?: { url: string; status: string | null; attempts: number; signed: boolean } | null;
 }
 ```
 
-### Background Parameters
+## Routines
 
-| Name | Where | Description |
-|------|-------|-------------|
-| `background` | body | `true` queues the turn and returns an `AgentRun` |
-| `callback_url` | body | Webhook the Console POSTs the terminal event to |
-| `callback_secret` | body | Min 16 chars; signs callbacks with HMAC-SHA256 |
-| `idempotencyKey` | 2nd argument | `Idempotency-Key` header. Background only — sending it on a synchronous call is a `400` |
-
-Retrying an identical background request with the same `idempotencyKey`
-returns the original run instead of starting a second one. Reusing the key
-with a different request is a `409 idempotency_key_conflict`.
-
-### Run Methods
+A routine is a prompt an agent runs on a cron schedule (with an IANA timezone), once at a time, or only on demand.
+Every fire is a run (`runs.list({ routine_id })` is the history).
 
 ```typescript
-await client.agents.runs.get('run_66f2...');    // current status
-await client.agents.runs.cancel('run_66f2...'); // request cancellation
-await client.agents.runs.wait('run_66f2...', { signal: controller.signal });
+const routine = await client.agents.routines.create('report-bot', {
+  name: 'Weekday digest',
+  trigger: { type: 'schedule', cron: '0 9 * * 1-5', timezone: 'Europe/Istanbul' },
+  // or { type: 'once', run_at: '...' } | { type: 'once', delay_seconds: 3600 } | { type: 'manual' }
+  prompt: 'Summarise yesterday',
+  inputs: { team: 'ops' },
+  class: 'deferred',
+  metadata: { source: 'routine' },
+});
+
+await client.agents.routines.list('report-bot');
+await client.agents.routines.get('report-bot', routine.id);
+await client.agents.routines.update('report-bot', routine.id, { enabled: false });
+const run = await client.agents.routines.run('report-bot', routine.id, { inputs: { team: 'sales' }, wait: 10 });
+await client.agents.routines.delete('report-bot', routine.id);
 ```
 
-- `wait()` resolves with the run for `succeeded`, `failed` **and** `canceled`
-  — and for `requires_action`, where the run is paused on a tool approval or a
-  question and polling would never end (`run.result.required_action.actions`
-  lists what to answer with `client.agents.sessions.actions.resolve()`) —
-  check `status`. It throws `AgentRunWaitTimeoutError` (with
-  `lastRun`) when `timeoutMs` elapses and the signal's reason when `signal`
-  aborts. Neither stops the run; call `cancel()` for that.
-- `cancel()` is cooperative: the run it returns may still say `running` for
-  about a second before it lands on `canceled`. Canceling a finished run is a
-  `409` with `errorCode === 'agent_run_already_terminal'`.
+Webhook events: `routine.fired` (a run was created) and `routine.failed` (it could not be created).
 
-### Continuing the Conversation
+## Continuing the Conversation
 
-Either the run id (`run_...`) or its result id (`resp_...`) works as
-`previous_response_id`:
+The response id (`resp_<runId>`) or the run id (`run_...`) works as `previous_response_id`:
 
 ```typescript
 const next = await client.agents.responses.create({
@@ -270,31 +397,6 @@ const next = await client.agents.responses.create({
   previous_response_id: done.id,
 });
 ```
-
-### AgentRun Type
-
-```typescript
-// `requires_action` is not terminal: the run continues once the actions are resolved.
-type AgentRunStatus = 'queued' | 'running' | 'requires_action' | 'succeeded' | 'failed' | 'canceled';
-
-interface AgentRun {
-  id: string;                 // "run_..."
-  object: 'agent.run';
-  status: AgentRunStatus;
-  stop_reason?: string | null;  // 'end_turn' | 'limit' | 'requires_action' | 'cancelled' | 'error' | ...
-  agent?: string;
-  conversation_id?: string;
-  result?: AgentResponse | null;                  // when succeeded, or the requires_action response
-  error?: { type: string; message: string | null } | null; // when failed/canceled
-  created_at: number;
-  started_at?: number | null;
-  completed_at?: number | null;
-}
-```
-
-The `202` from `create({ background: true })` is already the full run (`stop_reason`,
-`agent`, `conversation_id`, `callback`... with `result: null` and `error: null` until
-it finishes); `runs.get()` returns the same shape.
 
 ### Error Codes
 
@@ -309,22 +411,22 @@ try {
 } catch (error) {
   if (isAgentRunErrorCode(error, AgentRunErrorCodes.Conflict)) {
     // 409: a run is already queued/running on this conversation
-  } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.SyncTimeout)) {
-    // 504: synchronous turn hit the server ceiling — retry with background: true
   } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.ConcurrencyLimit)) {
-    // 429: too many background runs in flight for this tenant
+    // 429: too many runs in flight for this tenant (or the deferred queue is full)
+  } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.InvalidInputs)) {
+    // 400: `inputs` do not fit agent.input_schema; error.response.error.errors lists the fields
   }
 }
 ```
 
 | `errorCode` | Status | Meaning |
 |-------------|--------|---------|
-| `agent_run_conflict` | 409 | A run is already active on this conversation (sync or background) |
-| `timeout` | 504 | Synchronous turn exceeded the server ceiling. Tool side effects may have happened, so the SDK does **not** retry it |
-| `agent_run_concurrency_limit` | 429 | Tenant's concurrent background-run limit reached |
+| `agent_run_conflict` | 409 | A run is already active on this conversation |
+| `agent_run_concurrency_limit` | 429 | Tenant's concurrent run limit reached (or the deferred queue is full) |
 | `idempotency_key_conflict` | 409 | `Idempotency-Key` reused with a different request |
-| `idempotency_key_sync_not_supported` | 400 | `Idempotency-Key` sent without `background: true` |
-| `agent_run_already_terminal` | 409 | `cancel()` on a finished run |
+| `invalid_inputs` | 400 | `inputs` do not fit the agent's input schema (`errors: [{ field, message }]`) |
+| `invalid_response_format` | 400 | `text.format` / `response_format` cannot be used |
+| `agent_run_already_terminal` | 409 | `runs.cancel()` on a finished run |
 | `action_not_found` / `session_not_found` | 404 | No such action / conversation in this project; `session_not_found` is also a `session_id` / `conversation` of another agent or project |
 | `session_conflict` | 400 | `session_id` / `conversation` and `previous_response_id` of one request name different sessions (`session_id` vs `conversation` alone is a `400 invalid_request`) |
 | `attachments_disabled` | 403 | The agent takes no files: they are off for it, or on with no bucket chosen (`agents.get(key).attachments.enabled` says so in advance) |
@@ -340,7 +442,6 @@ try {
 | `action_forbidden` | 403 | This caller may not answer the request (the Console's `agent.approve` permission, or the agent's approvers setting on a Console without the permission engine) |
 | `invalid_resolution` | 400 | The answer does not fit the action |
 | `invalid_budget` | 400 | The budget is malformed, missing from `sessions.update`, or not above what the session spent |
-| `agent_background_disabled` | 400 | `background: true` / a budget resume on an agent with background execution disabled |
 | `budget_override_forbidden` | 403 | The agent's own session budget binds API callers (they may lower, not raise or remove it) |
 | `budget_reached` | 402 | The session used up its budget (`error.response.error.spent_usd` / `max_cost_usd`) |
 
@@ -538,23 +639,6 @@ and query string removed, `https://host/path?…`), `webhooks.admin` changes any
 the full URL. A call without the permission answers `403` (`forbidden`, with a `decisionId`).
 See the [README](https://github.com/Cognipeer/console-sdk#approvals-and-questions-human-in-the-loop)
 for examples.
-
-## Legacy Chat Method
-
-::: warning Deprecated
-`client.agents.chat()` is deprecated. Use `client.agents.responses.create()` instead.
-:::
-
-```typescript
-// Deprecated — avoid in new code
-const result = await client.agents.chat('support-bot', {
-  message: 'Hello',
-});
-```
-
-An agent that pauses for an approval or a question answers with an empty `content`;
-the result then also carries `status: 'requires_action'` and `pendingActions` (resolve
-them with `client.agents.sessions.actions.resolve()`). A completed turn has neither.
 
 ## See Also
 

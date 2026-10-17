@@ -222,7 +222,7 @@ export class AgentSessionsResource {
   async cancel(conversationId: string, options: { signal?: AbortSignal } = {}): Promise<AgentConversationCancelResult> {
     return this.http.request<AgentConversationCancelResult>(
       'POST',
-      `/api/client/v1/agents/conversations/${encodeURIComponent(conversationId)}/cancel`,
+      sessionPath(conversationId, '/cancel'),
       { signal: options.signal },
     );
   }
@@ -248,8 +248,7 @@ export class AgentSessionsResource {
    * apart with `result.object`.
    *
    * Rejects with `CognipeerAPIError`: 400 `invalid_budget` (malformed, or not
-   * above what the session already spent), 400 `agent_background_disabled`
-   * (a resume needs background execution), 403 `budget_override_forbidden`
+   * above what the session already spent), 403 `budget_override_forbidden`
    * (the agent has its own session budget and does not let API callers raise
    * or remove it; lowering it is allowed), 404 `session_not_found`, 409
    * `agent_run_conflict` (a run is already active).
@@ -272,9 +271,20 @@ export class AgentSessionsResource {
  */
 export class AgentSessionEventsResource {
   private http: HttpClient;
+  private readonly eventsPath: (id: string, suffix: string) => string;
+  private readonly afterParam: string;
 
-  constructor(http: HttpClient) {
+  /**
+   * @param scope - Another event log with the same frames (a run's: `agents.runs.events`):
+   *   its path under the API and the name of its `after` query parameter.
+   */
+  constructor(
+    http: HttpClient,
+    scope: { path?: (id: string, suffix: string) => string; afterParam?: string } = {},
+  ) {
     this.http = http;
+    this.eventsPath = scope.path ?? ((id, suffix) => sessionPath(id, suffix));
+    this.afterParam = scope.afterParam ?? 'after';
   }
 
   /**
@@ -286,9 +296,9 @@ export class AgentSessionEventsResource {
     query: ListSessionEventsQuery = {},
     options: { signal?: AbortSignal } = {},
   ): Promise<SessionEventList> {
-    return this.http.request<SessionEventList>('GET', sessionPath(conversationId, '/events'), {
+    return this.http.request<SessionEventList>('GET', this.eventsPath(conversationId, '/events'), {
       query: {
-        after: query.after,
+        [this.afterParam]: query.after,
         types: query.types?.length ? query.types.join(',') : undefined,
         limit: query.limit,
       },
@@ -374,9 +384,9 @@ export class AgentSessionEventsResource {
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       const resumeFrom = state.lastSeq;
-      const response = await this.http.requestStream('GET', sessionPath(conversationId, '/events/stream'), {
+      const response = await this.http.requestStream('GET', this.eventsPath(conversationId, '/events/stream'), {
         query: {
-          after: resumeFrom > 0 ? resumeFrom : undefined,
+          [this.afterParam]: resumeFrom > 0 ? resumeFrom : undefined,
           types: options.types?.length ? options.types.join(',') : undefined,
         },
         headers: {
@@ -573,7 +583,7 @@ export class AgentSessionActionsResource {
    * approver), 404 `action_not_found` / `session_not_found`, 409
    * `action_not_pending` (already answered), `action_cancelled` (withdrawn before
    * it was answered) or `agent_run_conflict` (a run is active), 410
-   * `action_expired`, 400 `invalid_resolution` / `agent_background_disabled`,
+   * `action_expired`, 400 `invalid_resolution`,
    * 503 `authorization_unavailable` (the Console could not decide; nothing
    * changed, retry). `error.response.error.action_status` carries the final state
    * of a request that is no longer open. See `AgentActionErrorCodes`.

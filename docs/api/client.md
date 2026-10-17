@@ -43,6 +43,19 @@ Chat completions API resource.
 
 See [Chat API](/api/chat) for details.
 
+### `client.models`
+
+Models API resource — `list()` returns the project's models and its active agents (`id: 'agent:<key>'`).
+
+**Type:** `ModelsResource`
+
+```typescript
+import { isAgentModelEntry } from '@cognipeer/console-sdk';
+
+const { data } = await client.models.list();
+const agents = data.filter(isAgentModelEntry); // { id: 'agent:<key>', cognipeer: { kind: 'agent', key } }
+```
+
 ### `client.embeddings`
 
 Embeddings API resource.
@@ -101,7 +114,7 @@ See [Memory API](/api/memory) for details.
 
 ### `client.agents`
 
-Agents API resource — list, retrieve, and invoke agents using the Responses API format.
+Agents API resource — list, retrieve and invoke agents (Responses API), start and follow runs (`agents.runs`), schedule recurring work (`agents.routines`), and manage sessions.
 
 **Type:** `AgentsResource`
 

@@ -30,6 +30,13 @@ describe('package entry point (index.ts)', () => {
     expect((sdk as Record<string, unknown>).verifyWebhook).toBeUndefined();
   });
 
+  it('exports the 4.0 runs / stream helpers', () => {
+    expect(sdk.AgentRunPage).toBeTypeOf('function');
+    expect(sdk.isResponseStreamEvent).toBeTypeOf('function');
+    expect(sdk.isAgentResponseFinal('in_progress')).toBe(false);
+    expect(sdk.isAgentModelEntry).toBeTypeOf('function');
+  });
+
   it('exports the realtime connection helpers', () => {
     expect(sdk.RealtimeConnection).toBeTypeOf('function');
     expect(sdk.RealtimeResource).toBeTypeOf('function');

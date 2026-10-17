@@ -13,7 +13,7 @@ Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com
 - 🚦 **Moderations** - OpenAI-compatible content moderation backed by guardrails
 - 💰 **Spend & Budgets** - Cost reporting and enforced spend caps per tenant/token/model
 - 🎧 **Realtime** - Low-latency voice sessions over WebSocket (binary PCM/G.711 audio, server turn detection, barge-in, first message, latency metrics) and Twilio phone calls
-- 🧑‍✈️ **Agents** - Invoke Console-managed agents via the OpenAI Responses API
+- 🧑‍✈️ **Agents** - Invoke Console-managed agents (OpenAI Responses API, streaming), run async/scheduled/deferred jobs (`agents.runs`) and recurring routines (`agents.routines`)
 - 📊 **Embeddings** - Text vectorization for semantic search
 - 🗄️ **Vector Operations** - Manage vector databases (Pinecone, Chroma, Qdrant, etc.)
 - 📁 **File Management** - Upload, download, and manage files with markdown conversion + file providers
@@ -176,15 +176,19 @@ const client = new ConsoleClient({
 
 ### Available Methods
 
-#### Chat
-- `client.chat.completions.create(params)` - Create chat completion (streaming supported)
+#### Chat and models
+- `client.chat.completions.create(params, { sessionId?, idempotencyKey?, signal? })` - Create chat completion (streaming supported; `response_format`, `stream_options.include_usage`, `service_tier`, `metadata`; `model` may be an agent, `agent:<key>`)
+- `client.models.list()` - The project's models AND active agents (`id: 'agent:<key>'`, `cognipeer.kind === 'agent'`; use `isAgentModelEntry`)
 
 #### Agents
-- `client.agents.responses.create(params, options?)` - Invoke an agent (OpenAI Responses API format)
-- `client.agents.responses.create({ ..., background: true, callback_url?, callback_secret? }, { idempotencyKey? })` - Start a background run; returns an `AgentRun` (`run_...`) immediately
-- `client.agents.runs.get(runId)` - Run status, with `result` once `succeeded` / `error` once `failed`/`canceled`
-- `client.agents.runs.cancel(runId)` - Cooperatively cancel a `queued`/`running` run
-- `client.agents.runs.wait(runId, { pollIntervalMs?, timeoutMs?, signal? })` - Poll until the run is terminal **or `requires_action`** (waiting on an approval/question)
+- `client.agents.responses.create(params, options?)` - Invoke an agent (OpenAI Responses API format). Runs the **published** version (`version: 3` pins, `version: 'draft'` runs the draft); `text.format` structured output (`output_parsed`), `metadata`, `service_tier`, `inputs`; `stream: true` returns an async iterator of typed `response.*` events; a turn past the Console's window answers `202` and **returns** the response with `status: 'queued' | 'in_progress'` (never throws)
+- `client.agents.responses.retrieve(id)` / `.cancel(id)` - Read a response (`resp_<runId>`) / stop its run (`POST /responses/{id}/cancel`)
+- `client.agents.runs.create(agentKey, body, { idempotencyKey?, prefer?, signal? })` - Start a run (`wait`, `class: 'deferred'`, `run_at` / `delay_seconds`, `inputs`, `response_format`, `callback`, `metadata`, `stream`); an `Idempotency-Key` is generated when you pass none
+- `client.agents.runs.list(query)` - Await it for a page (`data`, `has_more`, `last_id`, `getNextPage()`) or `for await` every run; filters `agent`, `status`, `class`, `session_id`, `routine_id`, `channel`, `metadata`, `created_after/before`
+- `client.agents.runs.get(runId, { wait? })` / `.cancel(runId)` / `.queue()` - Run status (optionally long-polled) with `result`, `output_text`, `output_parsed`, `error`; cancel; running/queued/scheduled counters per class
+- `client.agents.runs.wait(runId, { timeoutMs?, waitSeconds?, signal? })` - Uses the `?wait=` long-poll until the run is terminal **or `requires_action`** (waiting on an approval/question)
+- `client.agents.runs.events(runId, { after? })` / `.events.stream(runId)` - The run's session events (JSON, SSE with `Last-Event-ID` resume)
+- `client.agents.routines.list/create/get/update/delete(agentKey, …)` / `.run(agentKey, routineId, body?)` - Recurring prompts: cron schedule (+ IANA timezone), once, or manual; each fire is a run
 - `client.agents.sessions.create({ agent, title?, metadata?, budget? })` - Start an empty session (nothing runs); continue it with `responses.create({ session_id })`
 - `client.agents.sessions.list({ agent?, status?, limit?, after? })` - Await it for a page, or `for await` it for every session (newest first)
 - `client.agents.sessions.delete(conversationId)` - Delete a session with its files, events and open actions
@@ -199,15 +203,32 @@ const client = new ConsoleClient({
 - `verifyWebhook({ rawBody, signatureHeader, secret })` from `@cognipeer/console-sdk/webhooks` (Node.js) - Verify a signed webhook delivery (`verifyAgentRunCallback` is the same check, kept for existing code)
 
 ```typescript
-const run = await client.agents.responses.create(
-  { model: 'research-agent', input: 'Compare these vendors', background: true },
+// Chat-style call, structured output, streaming
+const res = await client.agents.responses.create({ model: 'support-bot', input: 'Hi' });
+console.log(res.status, res.output_text);
+
+for await (const event of await client.agents.responses.create({ model: 'support-bot', input: 'Hi', stream: true })) {
+  if (event.type === 'response.output_text.delta') process.stdout.write(event.delta);
+}
+
+// A job: queued, scheduled or deferred; wait for it with the long-poll
+const run = await client.agents.runs.create(
+  'research-agent',
+  { input: 'Compare these vendors', class: 'deferred', metadata: { ticket: 'OPS-12' } },
   { idempotencyKey: 'job-42' },
 );
 const done = await client.agents.runs.wait(run.id, { timeoutMs: 15 * 60_000 });
-if (done.status === 'succeeded') console.log(done.result?.output[0]?.content[0]?.text);
+if (done.status === 'succeeded') console.log(done.output_text, done.output_parsed);
+
+// A recurring prompt
+await client.agents.routines.create('report-bot', {
+  name: 'Weekday digest',
+  trigger: { type: 'schedule', cron: '0 9 * * 1-5', timezone: 'Europe/Istanbul' },
+  prompt: 'Summarise yesterday',
+});
 ```
 
-See [Agents → Background runs](docs/api/agents.md#background-runs) for callbacks and error codes.
+See [Agents](docs/api/agents.md) for runs, routines, `202` handling, structured output and error codes.
 
 ##### Approvals and questions (human in the loop)
 
@@ -219,7 +240,7 @@ what to answer. Answer with `sessions.actions.resolve()`; the turn continues fro
 const res = await client.agents.responses.create({ model: 'ops-agent', input: 'Clean up staging' });
 
 if (res.status === 'requires_action') {
-  const conversationId = res.id.replace(/^resp_/, '');
+  const conversationId = res.conversation!.id; // also res.cognipeer.session_id
   for (const action of res.required_action!.actions) {
     if (action.kind === 'tool_approval') {
       console.log('Agent wants to run', action.tool_name, action.args);
@@ -318,13 +339,13 @@ Details and the error table: [Agents → Sessions](docs/api/agents.md#sessions-s
 // By conversation (a response id without its `resp_` prefix)...
 const { cancelled, run_ids } = await client.agents.sessions.cancel(conversationId);
 
-// ...or by response id: `resp_<conversationId>` or a background `run_<runId>`.
-await client.agents.responses.cancel(response.id); // { id, conversation_id, cancelled, run_ids }
+// ...or by response id (`resp_<runId>`): answers the response (`cancelled`, or `in_progress` while it lands).
+await client.agents.responses.cancel(response.id);
 ```
 
 Cancellation is cooperative: the turn ends at its next checkpoint. `cancelled: false` means nothing
 was running; an unknown id is a `404`. Closing the connection (`signal`) alone does not stop a
-server-side turn. `agents.runs.cancel(runId)` still stops one background run.
+server-side turn. `agents.runs.cancel(runId)` stops one run.
 
 ##### Choosing a model and reasoning
 

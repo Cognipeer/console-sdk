@@ -83,6 +83,39 @@ Enable streaming responses:
 stream: true
 ```
 
+### `response_format`, `stream_options`, `service_tier`, `metadata`
+
+```typescript
+await client.chat.completions.create({
+  model: 'gpt-4o',
+  messages: [{ role: 'user', content: 'Extract the invoice total' }],
+  // Constrain the answer to JSON that fits a schema (models and agents)
+  response_format: { type: 'json_schema', json_schema: { name: 'invoice', schema: { type: 'object' }, strict: true } },
+  stream: true,
+  stream_options: { include_usage: true }, // a final chunk with `usage`
+  service_tier: 'flex',                    // agents: low-priority deferred run
+  metadata: { ticket: 'OPS-12' },          // agents: stored on the run
+  reasoning_effort: 'xhigh',               // 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+});
+```
+
+## Calling an agent
+
+`model` can name an agent (`agent:support-bot`, or its key when no model has that key): the agent runs its published
+version and its answer is `message.content` (a JSON string with `response_format`). `client.models.list()` lists the
+project's models and agents together (`cognipeer.kind === 'agent'`).
+
+```typescript
+const res = await client.chat.completions.create(
+  { model: 'agent:support-bot', messages: [{ role: 'user', content: 'Hi' }], inputs: { customer: 'acme' } },
+  { sessionId: 'conv_1' }, // continue a session (X-Cognipeer-Session-Id); the answer carries `conversation_id`
+);
+```
+
+A non-streaming agent call that outlives the Console's wait window answers `202` with `choices: []`: it does not
+throw, `res.cognipeer.status` is `'in_progress'` and `res.cognipeer.run_id` is the run to follow with
+`client.agents.runs.wait(run_id)`.
+
 ## Tool Calling (Function Calling)
 
 Define tools (functions) the model can call:

@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-10-17
+
+The agent platform release: runs, routines and the OpenAI dialects over one engine. Needs the Console
+release that ships the agent runs API (`/client/v1/agents/{key}/runs`, routines, `/client/v1/responses` for
+agents with the published version by default). `client.automations` (built-in automations) is unchanged.
+
+### Breaking changes
+
+- **`client.agents.chat()` is removed.** Use `client.agents.responses.create({ model, input })`
+  (`res.output_text`, `res.conversation.id` for the session).
+- **Agents run the published version by default** on `agents.responses.create()` (the draft only when
+  nothing was ever published). Pin with `version: 3`, run the draft with `version: 'draft'`.
+- **`responses.create()` never returns an `AgentRun`.** `background: true` and a turn past the Console's
+  wait window answer HTTP `202`, and the SDK returns the `AgentResponse` with `status: 'queued' | 'in_progress'`
+  (`cognipeer.run_id` is the run to follow). The `AgentBackgroundResponseCreateRequest` type is removed.
+- **Agent request type** (`AgentResponseCreateRequest`) drops `instructions`, `temperature`, `top_p` and
+  `max_output_tokens`: the agent's own configuration applies (the Console ignores them and lists them in
+  `X-Cognipeer-Ignored-Params`). `version` is `number | 'draft'`.
+- **Response ids are `resp_<runId>`.** The session is `res.conversation.id` / `res.cognipeer.session_id`; do not
+  strip a `resp_` prefix to get it. `AgentResponse.status` is now
+  `queued | in_progress | completed | incomplete | failed | cancelled | requires_action`.
+- **`responses.cancel(id)`** posts to `/client/v1/responses/{id}/cancel` and returns the `AgentResponse`
+  (was `{ id, conversation_id, cancelled, run_ids }` from `/agents/responses/{id}/cancel`). `AgentResponseCancelResult`
+  is removed. `sessions.cancel()` uses `/client/v1/agents/sessions/{id}/cancel` (same result; `object`
+  is added, `conversation_id` may be absent).
+- **`runs.wait()`** uses the `?wait=` long-poll instead of 1 s polling: `pollIntervalMs` is now the smallest gap
+  between polls, `waitSeconds` sets one poll's length (default 20, capped below the client timeout).
+- **`AgentRun`** has the new run shape (`class`, `version`, `session_id`, `channel`, `trigger`, `routine_id`,
+  `metadata`, `output_text`, `output_parsed`, `scheduled_for`, `detached_at`); `AgentRunStatus` gains `scheduled`.
+- **Removed:** error codes `agent_background_disabled` (`AgentActionErrorCodes.BackgroundDisabled`),
+  `idempotency_key_sync_not_supported` and the sync `timeout` 504 (`AgentRunErrorCodes.SyncTimeout`,
+  `IdempotencyKeySyncNotSupported`: a turn past the window is a `202` now); webhook events `schedule.fired` /
+  `schedule.failed` and the `WebhookScheduleEvent` type (replaced by routines).
+- Removed the orphan JS Sandbox comment and `examples/js-sandbox-basic.ts` (`client.jsSandbox` no longer exists).
+
+### Added
+
+- **`client.agents.runs`**: `create(agentKey, body, options?)` (`wait`, `class: 'default' | 'deferred'`, `run_at` /
+  `delay_seconds`, `inputs`, `response_format`, `callback`, `metadata`, `session_id`, `version`, `stream`; the
+  `Prefer` header via `options.prefer`; an `Idempotency-Key` is generated when none is given), `list(query)`
+  (OpenAI list envelope, `AgentRunPage` with `getNextPage()` and async iteration), `get(id, { wait })`, `cancel(id)`,
+  `wait(id)`, `events(id)` / `events.stream(id)` (SSE with resume), `queue()`, `resolveAction(runId, actionId, body)`.
+- **`client.agents.routines`**: `list`, `create`, `get`, `update`, `delete`, `run(agentKey, routineId, body?)`:
+  cron (+ IANA timezone), once (`run_at` / `delay_seconds`) and manual triggers; each fire is a run.
+- **`responses.create({ stream: true })`** returns an async iterator of typed `response.*` events
+  (`AgentResponseStreamEvent`, `isResponseStreamEvent`); `responses.retrieve(id)`.
+- Request fields on agent responses: `text.format` (structured output), `metadata`, `service_tier`, `inputs`,
+  `background`, `callback_url` / `callback_secret`, `stream`, `store`; `input_file.file_url`.
+  `AgentResponse` gains `output_text`, `output_parsed`, `output_error`, `output_files`, `error`, `metadata`,
+  `text`, `service_tier`, `background`, `conversation`, `cognipeer.run_id` / `session_id`; `isAgentResponseFinal()`.
+- **`client.models.list()`** typed with the project's models and its active agents (`id: 'agent:<key>'`,
+  `cognipeer.kind === 'agent'`; `isAgentModelEntry`).
+- **Chat completions**: `response_format`, `stream_options.include_usage`, `service_tier`, `metadata`, `inputs`,
+  `conversation_id`; per-call `{ sessionId, idempotencyKey, signal }`; the `202` body (`choices: []`,
+  `cognipeer.status` / `run_id`) and the usage chunk are typed.
+- `ReasoningEffort` accepts `xhigh` and `max`. `Agent.input_schema` / `output_schema`.
+- Webhook events `routine.fired`, `routine.failed` and `feedback.recorded` (typed, in `WEBHOOK_EVENT_TYPES`);
+  `agent_run.*` event data carries `status`, `class`, `metadata`, `routineId`. `verifyAgentRunCallback` and the
+  callback types are unchanged.
+- Error codes `invalid_inputs` and `invalid_response_format` (`AgentRunErrorCodes`); run error reasons
+  `expired` and `interrupted`.
+
 ## [3.2.0] - 2026-10-14
 
 ### Added

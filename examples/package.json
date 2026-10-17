@@ -11,7 +11,6 @@
     "example:audio": "tsx audio-tts-stt.ts",
     "example:crawler": "tsx crawler-adhoc.ts",
     "example:reranker": "tsx reranker-basic.ts",
-    "example:js-sandbox": "tsx js-sandbox-basic.ts",
     "example:mcp-console": "tsx mcp-console.ts",
     "example:tracing-stream": "tsx tracing-stream.ts"
   },
