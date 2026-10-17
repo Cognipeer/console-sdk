@@ -19,6 +19,7 @@ describe('ModelsResource', () => {
         cognipeer: { kind: 'agent', key: 'support-bot' },
       },
     ],
+    models: [{ key: 'gpt-4o', category: 'llm' }],
   };
 
   it('lists models and agents via GET /api/client/v1/models', async () => {

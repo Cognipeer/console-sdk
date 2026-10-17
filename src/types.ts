@@ -188,6 +188,16 @@ export interface ChatChoice {
   finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter';
 }
 
+/** A file the agent produced this turn, as an agent's chat completion reports it (`output_files`). */
+export interface ChatOutputFile {
+  id: string;
+  name: string;
+  mime_type: string;
+  size: number;
+  /** Path of the file's content under the API root. */
+  download_url: string;
+}
+
 export interface ChatCompletionResponse {
   id: string;
   object: string;
@@ -196,14 +206,21 @@ export interface ChatCompletionResponse {
   choices: ChatChoice[];
   usage: Usage;
   request_id?: string;
-  /** Agent targets: the session this turn belongs to (pass it back as `conversation_id`). */
+  /** Agent targets: the session this turn belongs to (pass it back as `conversation_id` or `X-Cognipeer-Session-Id`). */
   conversation_id?: string;
+  /** Agent targets: files the agent produced this turn (also `file_path` annotations on the message). */
+  output_files?: ChatOutputFile[];
+  /** Agent targets: why the run ended without a final answer (`limit`, `cancelled`, ...); absent for a normal answer. */
+  stop_reason?: string;
+  /** Agent targets: the runtime's own wording for `stop_reason`, e.g. which limit. */
+  stop_detail?: string;
   /**
-   * Agent targets. `agent_model` is set when the agent offers several models. A call
-   * that outlives the wait window answers `202` with `choices: []` and
-   * `status: 'in_progress'` + `run_id`: follow it with `client.agents.runs.wait(run_id)`.
+   * Agent targets. `agent_model` is set when the call picked one of the agent's models.
+   * A call that outlives the wait window answers `202` with `choices: []`, no `usage`, and
+   * `status` (`queued` | `in_progress`), `run_id` and `session_id`: follow it with
+   * `client.agents.runs.wait(run_id)`.
    */
-  cognipeer?: { agent_model?: string; status?: AgentRunStatus | 'in_progress'; run_id?: string; session_id?: string };
+  cognipeer?: { agent_model?: string; status?: 'queued' | 'in_progress'; run_id?: string; session_id?: string };
 }
 
 export interface ChatCompletionChunk {
@@ -220,6 +237,10 @@ export interface ChatCompletionChunk {
   usage?: Usage | null;
   /** Agent targets: the session (first and last chunk). */
   conversation_id?: string;
+  /** Agent targets, closing chunk: files the agent produced this turn. */
+  files?: ChatOutputFile[];
+  /** Agent targets, closing chunk: `agent_model`, when the call picked one of the agent's models. */
+  cognipeer?: { agent_model?: string };
 }
 
 // ============================================================================
@@ -242,7 +263,8 @@ export interface ModelListModelEntry {
   supports_tool_calls?: boolean;
   architecture?: { input_modalities?: string[]; output_modalities?: string[] };
   cognipeer?: {
-    kind?: 'model';
+    /** Absent on models (an agent's entry says `agent`). */
+    kind?: undefined;
     schema_version?: string | number;
     canonical_model_id?: string | null;
     capabilities?: Record<string, unknown>;
@@ -260,7 +282,8 @@ export interface ModelListAgentEntry {
   owned_by: 'cognipeer-agent';
   /** The agent's name. */
   name: string;
-  description?: string;
+  /** The agent's description ('' when it has none). */
+  description: string;
   cognipeer: { kind: 'agent'; key: string };
 }
 
@@ -282,9 +305,10 @@ export interface ListModelsQuery {
 /** `GET /api/client/v1/models`: the OpenAI discovery list (`data`, models and agents) and the full registry rows (`models`). */
 export interface ModelList {
   object: 'list';
+  /** The project's LLM models, then (for a token that may read agents, unless `category` is not `llm` or a provider filter is set) its active agents. */
   data: ModelListEntry[];
   /** The project's model registry rows (secrets masked); agents are not in it. */
-  models?: Array<Record<string, unknown>>;
+  models: Array<Record<string, unknown>>;
   /** Present with `includeProviders`. */
   providers?: Array<Record<string, unknown>>;
 }
@@ -2048,6 +2072,16 @@ export interface AgentConfig {
   maxTokens?: number;
   /** False when the agent hides its reasoning text from API responses and session events. Default true. */
   showReasoning?: boolean;
+  /** Sandbox settings, as the authoring calls return them: secret values are never included. */
+  sandbox?: {
+    /**
+     * True when the stored secrets can no longer be decrypted (the encryption key changed): the
+     * secrets list comes back empty and the sandbox tools run without them. Saving the agent with
+     * masked and new values together is `409 sandbox_secrets_unreadable`; enter every secret again.
+     */
+    secretsUnreadable?: boolean;
+    [key: string]: unknown;
+  };
 }
 
 /** One entry of `Agent.models`: a model a caller may pick with `agent_model`. */
@@ -2124,6 +2158,25 @@ export interface AgentAttachmentsInfo {
    * vision family.
    */
   accepts_images: boolean;
+  /**
+   * Files the agent writes for the person (`session_files_create`, listed in the response's
+   * `output_files`). Independent of uploads: an agent with an attachments bucket can write
+   * files while uploads are off. By default outputs are on when uploads are on and a bucket is
+   * set; with uploads off they stay off until turned on.
+   */
+  outputs: AgentOutputsInfo;
+}
+
+/** `Agent.attachments.outputs`. */
+export interface AgentOutputsInfo {
+  /** The agent writes files now: outputs are on, a bucket is chosen and it can take a file. */
+  enabled: boolean;
+  /** Files the agent may write per turn. */
+  max_files_per_turn: number;
+  /** Largest file in MB. */
+  max_file_size_mb: number;
+  /** File extensions it may write, without the dot (`pdf`, `csv`, ...). */
+  types: string[];
 }
 
 export interface ListAgentsQuery {
@@ -2334,6 +2387,16 @@ export interface ResponseOutputMessage {
   content: ResponseOutputText[];
 }
 
+/** The agent's thinking text, when the agent shows its reasoning (`Agent.config.showReasoning`) and the request did not opt out (`include_reasoning: false`). Comes before the message. */
+export interface ResponseReasoningItem {
+  id: string;
+  type: 'reasoning';
+  summary: Array<{ type: 'summary_text'; text: string }>;
+}
+
+/** An item of `AgentResponse.output`. */
+export type ResponseOutputItem = ResponseReasoningItem | ResponseOutputMessage;
+
 /** Token usage information */
 export interface ResponseUsage {
   input_tokens: number;
@@ -2377,8 +2440,8 @@ export interface AgentResponse {
   object: 'response';
   /** Agent key, as requested */
   model: string;
-  /** Output messages from the agent (empty while `queued` / `in_progress`) */
-  output: ResponseOutputMessage[];
+  /** The agent's reasoning item (when shown) and its answer message; empty while `queued` / `in_progress`. */
+  output: ResponseOutputItem[];
   /** The answer text (all output text joined); a JSON string when structured output is set. */
   output_text?: string;
   /** Structured output: the parsed answer when the turn had a schema (`text.format`, or the agent's own). */
@@ -2391,8 +2454,8 @@ export interface AgentResponse {
   status: AgentResponseStatus;
   /** Why a non-`completed` response ended early, OpenAI-style (e.g. `{ reason: 'max_cost' }`). */
   incomplete_details?: { reason: string } | null;
-  /** Set when `status` is `failed`. */
-  error?: { type?: string; code?: string; message: string } | null;
+  /** Set when `status` is `failed`, else null. */
+  error?: { code: string; message: string } | null;
   /**
    * How the agent turn ended: `completed` for a normal answer, `limit`,
    * `cancelled`, or `requires_action` while it waits on a person.
@@ -2402,8 +2465,8 @@ export interface AgentResponse {
   stop_detail?: string;
   /** Present when `status` is `requires_action`: the approvals / questions to resolve. */
   required_action?: AgentRequiredAction;
-  /** Token usage */
-  usage: ResponseUsage;
+  /** Token usage; null while the turn has no answer yet. */
+  usage: ResponseUsage | null;
   /** Unix timestamp (seconds) */
   created_at: number;
   /** Request `metadata`, echoed. */
@@ -2411,7 +2474,7 @@ export interface AgentResponse {
   /** The structured-output format the turn used, when any. */
   text?: { format?: ResponsesTextFormat };
   service_tier?: ServiceTier;
-  /** Whether the call asked for `background: true`. */
+  /** True for a run started with `background: true` (also with `stream: true`) or the `X-Cognipeer-Background` header; `retrieve()` reports it too. */
   background?: boolean;
   /** Previous response ID if this is a follow-up */
   previous_response_id: string | null;
@@ -2428,7 +2491,7 @@ export interface AgentResponseCognipeer {
   /** `run_<id>`: follow with `agents.runs.get()` / `wait()` / `events`. */
   run_id?: string;
   session_id?: string;
-  /** Present when the agent offers several models: the one that answered. */
+  /** Present when the call picked one of the agent's models (`agent_model`). */
   agent_model?: string;
 }
 
@@ -2458,7 +2521,7 @@ export type ResponseLifecycleEvent = {
 export type ResponseOutputItemEvent = {
   [T in 'response.output_item.added' | 'response.output_item.done']: ResponseEventBase<T> & {
     output_index: number;
-    item: ResponseOutputMessage | { id: string; type: 'reasoning'; summary?: unknown[] };
+    item: ResponseOutputMessage | { id: string; type: 'reasoning'; summary: Array<{ type: 'summary_text'; text: string }> };
   };
 }['response.output_item.added' | 'response.output_item.done'];
 
@@ -2511,13 +2574,15 @@ export type ResponseReasoningSummaryEvent =
       text: string;
     });
 
-/** The stream failed: `message` says why. The stream ends after it. */
+/** The stream failed: `message` says why. A `response.failed` event with the failed response may follow; the stream ends after it. */
 export interface ResponseErrorEvent {
   type: 'error';
   sequence_number?: number;
   code?: string | null;
   message: string;
   param?: string | null;
+  /** The error's type (`server_error`, `invalid_request_error`, ...). */
+  error_type?: string;
 }
 
 /** An event type this SDK version does not know: ignore it. */
@@ -2550,11 +2615,11 @@ export function isResponseStreamEvent<T extends KnownResponseStreamEvent['type']
 
 /** What `sessions.cancel()` answers (200). */
 export interface AgentConversationCancelResult {
-  object?: 'agent.session.cancel';
-  conversation_id?: string;
-  /** Whether a running turn was asked to stop. */
+  object: 'agent.session.cancel';
+  session_id: string;
+  /** Whether a running turn was asked to stop (false: nothing was running, not an error). */
   cancelled: boolean;
-  /** Ids of the runs that were cancelled. */
+  /** `run_<id>` of the runs that were stopped. */
   run_ids: string[];
 }
 
@@ -2656,7 +2721,7 @@ export type AgentRunClass = 'default' | 'deferred';
 export type AgentRunChannel = 'runs' | 'responses' | 'chat_completions' | 'a2a' | 'routine' | (string & {});
 
 /** What started a run. */
-export type AgentRunTrigger = 'request' | 'schedule' | 'once' | 'manual' | (string & {});
+export type AgentRunTrigger = 'request' | 'schedule' | 'once' | 'manual' | 'webhook' | (string & {});
 
 /**
  * A run of an agent turn (`object: 'agent.run'`): what `agents.runs.*`,
@@ -2698,6 +2763,8 @@ export interface AgentRun {
   output_text?: string | null;
   /** The structured answer, when the run had a schema. */
   output_parsed?: unknown;
+  /** Why the answer does not fit the schema (parsing or validation), when it had one. */
+  output_error?: string | null;
   /** Set when `failed` or `canceled`. */
   error?: AgentRunError | null;
   /** Unix seconds a `scheduled` run starts at. */
@@ -2781,7 +2848,7 @@ export interface AgentRunCreateRequest {
   run_at?: string;
   /** Start in this many seconds. */
   delay_seconds?: number;
-  /** Hold the call up to this many seconds for the answer (default 0: answer at once with the queued run; capped by the Console's window). */
+  /** Hold the call up to this many seconds for the answer (default 0: answer at once with the queued run; capped by the Console's window, 10 minutes by default). */
   wait?: number;
   /** `true`: stream `response.*` events (see {@link AgentResponseStreamEvent}). */
   stream?: boolean;
@@ -2815,6 +2882,8 @@ export interface ListAgentRunsQuery {
   session_id?: string;
   routine_id?: string;
   channel?: AgentRunChannel;
+  /** What started the run. */
+  trigger?: AgentRunTrigger;
   /** Exact match on up to 3 metadata pairs. */
   metadata?: RequestMetadata;
   /** Unix seconds, ISO 8601 string or Date. */
@@ -2864,8 +2933,14 @@ export const AgentRunErrorCodes = {
   Conflict: 'agent_run_conflict',
   /** 409: cancel was called on a run that already finished (runs API). */
   AlreadyTerminal: 'agent_run_already_terminal',
-  /** 429: the tenant hit its concurrent run limit (or the deferred queue is full). */
+  /** 429 (with `Retry-After`): the tenant hit its concurrent run limit (or the deferred queue is full). */
   ConcurrencyLimit: 'agent_run_concurrency_limit',
+  /** 429 (with `Retry-After`): a spend limit is used up. */
+  SpendLimitExceeded: 'spend_limit_exceeded',
+  /** 429 (with `Retry-After`): the plan's agent quota is used up. */
+  QuotaExceeded: 'agent_quota_exceeded',
+  /** 400: the agent is not active. */
+  AgentInactive: 'agent_inactive',
   /** 409: the Idempotency-Key was reused with a different request. */
   IdempotencyKeyConflict: 'idempotency_key_conflict',
   /** 400: `inputs` do not fit the agent's input schema; `error.response.error.errors` lists the fields. */
@@ -2874,10 +2949,21 @@ export const AgentRunErrorCodes = {
   InvalidResponseFormat: 'invalid_response_format',
 } as const;
 
+/** Machine-readable `error.code` values of the agent authoring calls (`agents.create()` / `update()`). */
+export const AgentConfigErrorCodes = {
+  /**
+   * 409: the stored sandbox secrets cannot be decrypted (the encryption key changed), and the
+   * save mixes masked values with new ones. Enter every secret again to replace them.
+   */
+  SandboxSecretsUnreadable: 'sandbox_secrets_unreadable',
+} as const;
+
+export type AgentConfigErrorCode = (typeof AgentConfigErrorCodes)[keyof typeof AgentConfigErrorCodes];
+
 export type AgentRunErrorCode = (typeof AgentRunErrorCodes)[keyof typeof AgentRunErrorCodes];
 
 /** True when `error` is a `CognipeerAPIError` carrying the given `error.code`. */
-export function isAgentRunErrorCode(error: unknown, code: AgentRunErrorCode): error is CognipeerAPIError {
+export function isAgentRunErrorCode(error: unknown, code: AgentRunErrorCode | AgentConfigErrorCode): error is CognipeerAPIError {
   return error instanceof CognipeerAPIError && error.errorCode === code;
 }
 
@@ -2899,6 +2985,7 @@ export class AgentRunWaitTimeoutError extends CognipeerError {
  * (`verifyAgentRunCallback`) on the raw body before trusting it.
  */
 export interface AgentRunCallbackEvent {
+  /** `evt_<runId>_<event>`: stable across retries of the same event. */
   id: string;
   /**
    * `agent_run.succeeded` | `agent_run.failed` | `agent_run.canceled`, and
@@ -2906,10 +2993,11 @@ export interface AgentRunCallbackEvent {
    */
   event: `agent_run.${'succeeded' | 'failed' | 'canceled' | 'requires_action'}` | (string & {});
   createdAt: string;
+  /** `run_<id>`. */
   runId: string;
-  tenantId?: string;
-  projectId?: string;
-  conversationId?: string;
+  sessionId: string;
+  /** Same as `sessionId`. */
+  conversationId: string;
   /**
    * `{ result }` on success and on `requires_action` (the result carries
    * `required_action`), `{ errorReason, message? }` on failure, `{}` on cancel.
@@ -2921,85 +3009,262 @@ export interface AgentRunCallbackEvent {
 // Agent Routines
 // ============================================================================
 
+/** Sender presets of a webhook trigger: they set the auth modes and how the event name and delivery id are read. */
+export type AgentRoutineWebhookPreset = 'github' | 'gitlab' | 'azure_devops' | 'generic';
+
 /**
- * When a routine fires: on a cron `schedule` (5 fields, IANA `timezone`, default
- * `UTC`), `once` at a time, or only `manual`ly (`routines.run()`).
+ * How a webhook delivery proves itself. Per preset (first = default): `github` takes
+ * `github_signature`; `gitlab` `gitlab_token` or `standard_webhooks`; `azure_devops` `basic`
+ * (the password is the secret) or `header`; `generic` `bearer`, `signature`
+ * (`x-cognipeer-signature`, see `signRoutineWebhook()`), `header` or `standard_webhooks`.
+ */
+export type AgentRoutineWebhookAuth =
+  | 'github_signature'
+  | 'gitlab_token'
+  | 'basic'
+  | 'header'
+  | 'bearer'
+  | 'signature'
+  | 'standard_webhooks';
+
+/** One rule of a webhook trigger's `filter` (all must match). Paths: `payload.action`, `payload.pull_request.labels.*.name`, `headers.x-github-event`, `event`. */
+export interface AgentRoutineFilterRule {
+  path: string;
+  op: 'eq' | 'neq' | 'in' | 'not_in' | 'exists' | 'not_exists' | 'contains' | 'starts_with' | 'glob';
+  /** A string, number or boolean; a list for `in` / `not_in`; none for `exists` / `not_exists`. */
+  value?: string | number | boolean | Array<string | number | boolean>;
+}
+
+/** A webhook trigger as a routine returns it: the URL to post to, never the secret. */
+export interface AgentRoutineWebhookTrigger {
+  type: 'webhook';
+  /** The public URL a sender posts to. */
+  url: string;
+  preset: AgentRoutineWebhookPreset;
+  auth: AgentRoutineWebhookAuth;
+  /** The header that carries the secret, for auth `header`; else null. */
+  header_name: string | null;
+  /** The last 4 characters of the secret. */
+  secret_hint: string;
+  /** `generated` by the Console, or `provided` (the sender's Standard Webhooks secret). */
+  secret_source: 'generated' | 'provided';
+  /** Unix seconds until which the previous secret is still accepted (after `rotateWebhookSecret()` with a grace), else null. */
+  previous_secret_valid_until: number | null;
+  /** Event names to accept; empty = every event. */
+  events: string[];
+  filter: AgentRoutineFilterRule[];
+  /** The event payload (JSON) is appended to the message. */
+  include_payload: boolean;
+}
+
+/**
+ * When a routine fires, as a routine returns it: on a cron `schedule`, `once` at a time,
+ * `manual`ly (`routines.run()`), or when an authenticated delivery reaches its `webhook` URL.
  */
 export type AgentRoutineTrigger =
-  | { type: 'schedule'; cron: string; timezone?: string }
+  | { type: 'schedule'; cron: string; timezone: string }
   | { type: 'once'; run_at: string }
-  | { type: 'manual' };
+  | { type: 'manual' }
+  | AgentRoutineWebhookTrigger;
 
-/** Trigger of a create / update: a `once` trigger may also say `delay_seconds` instead of `run_at`. */
+/**
+ * Trigger of a create / update. `schedule`: 5-field cron, IANA `timezone` (default `UTC`).
+ * `once`: `run_at` (ISO 8601 or unix seconds, not in the past) or `delay_seconds`, one of them.
+ * `webhook`: a new one gets a URL and a generated secret (shown once, in `AgentRoutine.webhook`),
+ * except with `standard_webhooks`, where `secret` is the sender's `whsec_...` secret.
+ */
 export type AgentRoutineTriggerInput =
   | { type: 'schedule'; cron: string; timezone?: string }
-  | { type: 'once'; run_at?: string; delay_seconds?: number }
-  | { type: 'manual' };
+  | { type: 'once'; run_at?: string | number; delay_seconds?: number }
+  | { type: 'manual' }
+  | {
+      type: 'webhook';
+      preset: AgentRoutineWebhookPreset;
+      /** Default: the first mode of the preset. */
+      auth?: AgentRoutineWebhookAuth;
+      /** For auth `header`: `x-...`, default `x-cognipeer-token`. */
+      header_name?: string;
+      /** `standard_webhooks` only: the sender's secret. */
+      secret?: string;
+      events?: string[] | null;
+      filter?: AgentRoutineFilterRule[] | null;
+      include_payload?: boolean;
+    };
 
 /** A routine of an agent (`object: 'agent.routine'`): a prompt the agent runs on a trigger. Each fire is an {@link AgentRun}. */
 export interface AgentRoutine {
+  /** The routine's id (no prefix). */
   id: string;
   object: 'agent.routine';
   /** Agent key. */
   agent: string;
   name: string;
-  description?: string | null;
+  description: string | null;
   enabled: boolean;
   trigger: AgentRoutineTrigger;
-  /** The message each fire sends. */
+  /** The message each fire sends; for a webhook trigger a Mustache template over the event (`{{payload.action}}`). */
   prompt: string;
-  inputs?: Record<string, unknown> | null;
+  /** For a webhook trigger: input name -> value or `{{path}}` template. */
+  inputs: Record<string, unknown> | null;
   /** Pinned version; null = the published one. */
-  version?: number | null;
-  class?: AgentRunClass;
+  version: number | null;
+  class: AgentRunClass;
   /** Copied onto every run. */
-  metadata?: RequestMetadata | null;
+  metadata: RequestMetadata;
   /** Where each run's terminal event goes; the secret is never returned. */
-  callback?: { url: string; signed: boolean } | null;
-  response_format?: ChatResponseFormat | null;
-  /** ISO 8601; null for `manual` and a finished `once`. */
-  next_fire_at?: string | null;
-  last_fire_at?: string | null;
-  last_run_id?: string | null;
-  last_status?: 'started' | 'failed' | null;
-  last_error?: string | null;
-  created_at?: string;
-  updated_at?: string;
+  callback: { url: string; signed: boolean } | null;
+  response_format: ChatResponseFormat | null;
+  /** Unix seconds; null for `manual`, `webhook` and a finished `once`. */
+  next_fire_at: number | null;
+  last_fire_at: number | null;
+  /** `run_<id>` of the last fire that started a run. */
+  last_run_id: string | null;
+  last_status: 'started' | 'failed' | null;
+  last_error: string | null;
+  created_at: number;
+  updated_at: number;
+  /** Only in the answer that created the routine or gave its webhook trigger a new generated secret: the secret is shown once. */
+  webhook?: { url: string; secret: string };
 }
 
-/** Body of `routines.create()`. The prompt is required unless the agent declares inputs and they are given. */
+/** `routines.list()`: every routine of the agent (`has_more` is always false). */
+export interface AgentRoutineList {
+  object: 'list';
+  data: AgentRoutine[];
+  has_more: boolean;
+}
+
+/**
+ * Body of `routines.create()`. A routine without a `trigger` is `manual`. The prompt is
+ * required unless the agent declares inputs and they are given (a webhook routine: unless
+ * it includes the event payload or gives inputs).
+ */
 export interface AgentRoutineCreateRequest {
   name: string;
   description?: string | null;
   /** Default true. */
   enabled?: boolean;
-  trigger: AgentRoutineTriggerInput;
+  trigger?: AgentRoutineTriggerInput;
   prompt?: string;
   inputs?: Record<string, unknown> | null;
-  /** Pin a version (omitted = the published one). */
+  /** Pin a version (omitted or null = the published one). */
   version?: number | null;
   class?: AgentRunClass;
   metadata?: RequestMetadata | null;
+  /** `secret` is write-only: omitted keeps the stored one, `''` removes it. */
   callback?: { url: string; secret?: string } | null;
   response_format?: ChatResponseFormat | null;
 }
 
-/** Body of `routines.update()`: any field of the create body. */
+/** Body of `routines.update()`: any field of the create body; the omitted ones stay. */
 export type AgentRoutineUpdateRequest = Partial<AgentRoutineCreateRequest>;
 
 /** Body of `routines.run()`: overrides for this one fire. */
 export interface AgentRoutineRunRequest {
+  /** Merged over the routine's inputs. */
   inputs?: Record<string, unknown>;
   metadata?: RequestMetadata;
-  /** Hold the call up to this many seconds for the answer (see `AgentRunCreateRequest.wait`). */
+  /** Webhook routines: a sample event payload (a JSON object or array), built into the turn like a delivery. */
+  payload?: Record<string, unknown> | unknown[];
+  /** Webhook routines: sample delivery headers (`x-github-event`, ...), for the event name and delivery id. */
+  headers?: Record<string, string>;
+  /** Webhook routines: evaluate the event filter and the turn, create nothing, answer an {@link AgentRoutineDryRun}. */
+  dry_run?: boolean;
+}
+
+/** Per-call options of `routines.run()`. */
+export interface AgentRoutineRunOptions extends AgentRunCreateOptions {
+  /** Hold the call up to this many seconds for the answer (default 0: the run answers `202` when it did not finish; capped by the Console's window). */
   wait?: number;
+}
+
+/** What `routines.run(..., { dry_run: true })` answers (200): the turn a delivery would build, nothing created. */
+export interface AgentRoutineDryRun {
+  object: 'agent.routine.dry_run';
+  /** The event passed the trigger's `events` and `filter`. */
+  matched: boolean;
+  /** Why it did not match, else null. */
+  reason: string | null;
+  event: string | null;
+  delivery_id: string | null;
+  /** The message the run would get (null when the turn cannot be built: see `errors`). */
+  prompt: string | null;
+  inputs: Record<string, unknown> | null;
+  errors: Array<{ field: string; message: string }>;
 }
 
 /** `routines.delete()` answer. */
 export interface AgentRoutineDeleted {
   id: string;
-  object: 'agent.routine';
+  object: 'agent.routine.deleted';
   deleted: true;
+}
+
+/** Body of `routines.rotateWebhookSecret()`. */
+export interface AgentRoutineRotateSecretRequest {
+  /** Seconds (0 to 86400, default 0) the current secret stays accepted. */
+  grace_seconds?: number;
+  /** `standard_webhooks` only (required there): the sender's new `whsec_...` secret. */
+  secret?: string;
+}
+
+/** `routines.rotateWebhookSecret()` answer. */
+export interface AgentRoutineWebhookSecret {
+  object: 'agent.routine.webhook_secret';
+  /** The new secret, shown once; absent for `standard_webhooks`, where you gave it. */
+  secret?: string;
+  secret_hint: string;
+  /** Unix seconds the previous secret is accepted until, else null. */
+  previous_valid_until: number | null;
+}
+
+/**
+ * What became of a delivery: `accepted` started a run; `duplicate` repeated one; `filtered`
+ * did not pass `events` / `filter`; `ignored` was a ping, a test or for a disabled routine;
+ * `unauthorized` failed the auth check; `rejected` was refused by a rate or run limit;
+ * `failed` was not valid JSON or could not start a run.
+ */
+export type AgentRoutineDeliveryOutcome =
+  | 'accepted'
+  | 'duplicate'
+  | 'filtered'
+  | 'ignored'
+  | 'unauthorized'
+  | 'rejected'
+  | 'failed';
+
+/** One request to a webhook trigger's URL, as the delivery log keeps it: outcome and normalized ids only, never the payload. */
+export interface AgentRoutineDelivery {
+  id: string;
+  object: 'agent.routine.delivery';
+  /** Unix seconds. */
+  received_at: number;
+  outcome: AgentRoutineDeliveryOutcome;
+  /** What the Console answered the sender. */
+  http_status: number;
+  event: string | null;
+  delivery_id: string | null;
+  /** `run_<id>` of the run it started. */
+  run_id: string | null;
+  /** A fixed reason text (`signature mismatch`, `event "x" is not selected`, ...). */
+  reason: string | null;
+  /** Size of the request body. */
+  bytes: number;
+}
+
+/** `routines.deliveries()`: newest first. */
+export interface AgentRoutineDeliveryList {
+  object: 'list';
+  data: AgentRoutineDelivery[];
+  has_more: boolean;
+}
+
+/** Query of `routines.deliveries()`. */
+export interface ListAgentRoutineDeliveriesQuery {
+  /** A delivery id: the page starts after it (the last `id` of the previous page). */
+  before?: string;
+  /** 1 to 100, default 20. */
+  limit?: number;
 }
 
 // ============================================================================
@@ -3138,7 +3403,7 @@ export interface ResolveActionOptions {
  * an agent and its runtime state.
  */
 export interface AgentSession {
-  /** The conversation id (the `<id>` of `resp_<id>`); pass it as `session_id`. */
+  /** The session (conversation) id; pass it as `session_id`. */
   id: string;
   object: 'agent.session';
   /** Agent key. */
@@ -3859,7 +4124,10 @@ export type WebhookAgentRunEvent = WebhookEventEnvelope<
   | 'agent_run.canceled'
   | 'agent_run.requires_action',
   {
+    /** `run_<id>`. */
     runId: string;
+    sessionId: string;
+    /** Same as `sessionId`. */
     conversationId: string;
     agentKey: string;
     status?: AgentRunStatus;
@@ -3868,13 +4136,31 @@ export type WebhookAgentRunEvent = WebhookEventEnvelope<
     routineId?: string | null;
   }
 >;
+/** What started a routine fire: a `schedule` tick, `once`, a `manual` run-now, or a `webhook` delivery. */
+type WebhookRoutineTrigger = 'schedule' | 'once' | 'manual' | 'webhook';
 export type WebhookRoutineFiredEvent = WebhookEventEnvelope<
   'routine.fired',
-  { routineId: string; runId: string; agentKey: string }
+  {
+    routineId: string;
+    agentKey: string;
+    trigger: WebhookRoutineTrigger;
+    /** `run_<id>` of the run it started. */
+    runId: string;
+    /** The webhook event name, for a `webhook` trigger. */
+    event?: string;
+  }
 >;
+/** Sent at most once per routine and reason per hour. */
 export type WebhookRoutineFailedEvent = WebhookEventEnvelope<
   'routine.failed',
-  { routineId: string; agentKey?: string; reason: string }
+  {
+    routineId: string;
+    agentKey: string;
+    trigger: WebhookRoutineTrigger;
+    event?: string;
+    /** A fixed text: `agent run limit reached`, `spend limit reached`, `quota exceeded`, `agent is not active`, `internal error`, ... */
+    reason: string;
+  }
 >;
 export type WebhookFeedbackRecordedEvent = WebhookEventEnvelope<
   'feedback.recorded',

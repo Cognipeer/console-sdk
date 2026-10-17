@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   AgentActionErrorCodes,
+  AgentConfigErrorCodes,
   AgentRunErrorCodes,
   CognipeerError,
   CognipeerAPIError,
@@ -209,6 +210,17 @@ describe('SDK 4.0 contract helpers', () => {
     expect(codes).not.toContain('timeout');
     expect(AgentRunErrorCodes.InvalidInputs).toBe('invalid_inputs');
     expect(Object.values(AgentActionErrorCodes) as string[]).not.toContain('agent_background_disabled');
+  });
+
+  it('error code constants spell the codes the Console sends', () => {
+    expect(AgentRunErrorCodes).toMatchObject({
+      InvalidResponseFormat: 'invalid_response_format',
+      SpendLimitExceeded: 'spend_limit_exceeded',
+      QuotaExceeded: 'agent_quota_exceeded',
+      AgentInactive: 'agent_inactive',
+    });
+    const unreadable = new CognipeerAPIError('x', 409, 'invalid_request_error', undefined, undefined, 'sandbox_secrets_unreadable');
+    expect(isAgentRunErrorCode(unreadable, AgentConfigErrorCodes.SandboxSecretsUnreadable)).toBe(true);
   });
 
   it('scheduled runs are not settled', () => {

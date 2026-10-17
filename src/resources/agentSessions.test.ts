@@ -423,6 +423,19 @@ describe('AgentSessionsResource.delete', () => {
   });
 });
 
+describe('AgentSessionsResource.cancel', () => {
+  it('stops the turn via POST /agents/sessions/{id}/cancel and returns the cancel result', async () => {
+    const http = createMockHttp();
+    const cancelResult = { object: 'agent.session.cancel', session_id: 'conv_1', cancelled: true, run_ids: ['run_abc'] };
+    http.request.mockResolvedValue(cancelResult);
+
+    const result = await new AgentSessionsResource(http).cancel('conv_1');
+
+    expect(result).toBe(cancelResult);
+    expect(http.request).toHaveBeenCalledWith('POST', `${SESSION_PATH}/cancel`, { signal: undefined });
+  });
+});
+
 describe('AgentSessionEventsResource.list', () => {
   it('lists events with after / types / limit query params', async () => {
     const http = createMockHttp();

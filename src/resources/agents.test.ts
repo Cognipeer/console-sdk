@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { AgentsResource, AgentResponsesResource, AgentRunsResource, AgentRoutinesResource } from './agents';
+import { AgentsResource, AgentResponsesResource, AgentRunsResource } from './agents';
+import { AgentRoutinesResource } from './agentRoutines';
 import {
   AgentActionErrorCodes,
   AgentRunWaitTimeoutError,
@@ -16,8 +17,6 @@ import type {
   AgentResponse,
   AgentResponseCreateRequest,
   AgentResponseStreamEvent,
-  AgentRoutine,
-  AgentRoutineCreateRequest,
   AgentRun,
   AgentRunCreateRequest,
   AgentUpdateRequest,
@@ -88,6 +87,7 @@ describe('AgentsResource', () => {
       max_file_size_mb: 20,
       allowed_mime_types: ['image/*', 'application/pdf'],
       accepts_images: true,
+      outputs: { enabled: true, max_files_per_turn: 5, max_file_size_mb: 10, types: ['pdf', 'csv'] },
     };
     http.request.mockResolvedValue({ agent: makeAgent({ attachments }) });
 
@@ -426,6 +426,27 @@ describe('AgentResponsesResource (v4: published default, 202, structured output)
     expect(res.cognipeer?.run_id).toBe('run_abc');
     expect(isAgentResponseFinal(res.status)).toBe(false);
     expect(isAgentResponseFinal('cancelled')).toBe(true);
+  });
+
+  it('reads a queued response (no usage yet) and a reasoning item before the answer', async () => {
+    const http = createMockHttp();
+    const queued = makeResponse({ status: 'queued', usage: null, background: true });
+    const answered = makeResponse({
+      output: [
+        { id: 'rs_1', type: 'reasoning', summary: [{ type: 'summary_text', text: 'Thinking' }] },
+        { id: 'msg_1', type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Done' }] },
+      ],
+      output_text: 'Done',
+    });
+    http.request.mockResolvedValueOnce(queued).mockResolvedValueOnce(answered);
+    const resource = new AgentResponsesResource(http);
+
+    const early = await resource.retrieve('resp_run_abc');
+    const late = await resource.retrieve('resp_run_abc');
+
+    expect(early.background).toBe(true);
+    expect(early.usage).toBeNull();
+    expect(late.output.map((item) => item.type)).toEqual(['reasoning', 'message']);
   });
 
   it('carries output_parsed / output_error / output_files on the response type', async () => {
@@ -769,7 +790,7 @@ describe('AgentRunsResource (v4)', () => {
     expect(http.request.mock.calls[0][2].body.wait).toBe(30);
   });
 
-  it('create() with stream: true yields response.* events and sends no automatic key', async () => {
+  it('create() with stream: true yields response.* events and still sends an Idempotency-Key', async () => {
     const http = createMockHttp();
     http.stream.mockReturnValue(
       fromArray([{ type: 'response.completed', sequence_number: 1, response: makeResponse() }] as AgentResponseStreamEvent[]),
@@ -782,6 +803,7 @@ describe('AgentRunsResource (v4)', () => {
     expect(seen).toEqual(['response.completed']);
     expect(http.stream).toHaveBeenCalledWith('POST', '/api/client/v1/agents/bot/runs', {
       body: { input: 'x', stream: true, on_disconnect: 'cancel' },
+      headers: { 'Idempotency-Key': expect.stringMatching(/\S{8,}/) },
       signal: undefined,
     });
   });
@@ -948,96 +970,18 @@ describe('AgentRunsResource (v4)', () => {
 
     expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/agents/runs/run_abc/actions/act_1', {
       body: { decision: 'allow' },
+      signal: undefined,
     });
   });
-});
 
-describe('AgentRoutinesResource', () => {
-  const routine: AgentRoutine = {
-    id: 'rtn_1',
-    object: 'agent.routine',
-    agent: 'report-bot',
-    name: 'Weekday digest',
-    enabled: true,
-    trigger: { type: 'schedule', cron: '0 9 * * 1-5', timezone: 'Europe/Istanbul' },
-    prompt: 'Summarise yesterday',
-  };
-
-  it('lists routines of an agent (data envelope)', async () => {
+  it('resolveAction() with background: true asks for the queued run (202)', async () => {
     const http = createMockHttp();
-    http.request.mockResolvedValue({ object: 'list', data: [routine] });
+    const queued = makeRun({ status: 'queued' });
+    http.request.mockResolvedValue(queued);
 
-    const out = await new AgentRoutinesResource(http).list('report-bot');
+    const out = await new AgentRunsResource(http).resolveAction('run_abc', 'act_1', { decision: 'deny' }, { background: true });
 
-    expect(out).toEqual([routine]);
-    expect(http.request).toHaveBeenCalledWith('GET', '/api/client/v1/agents/report-bot/routines', {});
-  });
-
-  it('creates a routine via POST and returns it', async () => {
-    const http = createMockHttp();
-    http.request.mockResolvedValue(routine);
-    const body: AgentRoutineCreateRequest = {
-      name: 'Weekday digest',
-      trigger: { type: 'schedule', cron: '0 9 * * 1-5', timezone: 'Europe/Istanbul' },
-      prompt: 'Summarise yesterday',
-      class: 'deferred',
-    };
-
-    const out = await new AgentRoutinesResource(http).create('report-bot', body);
-
-    expect(out).toBe(routine);
-    expect(http.request).toHaveBeenCalledWith('POST', '/api/client/v1/agents/report-bot/routines', { body });
-  });
-
-  it('accepts a once trigger with delay_seconds and unwraps a { routine } envelope', async () => {
-    const http = createMockHttp();
-    http.request.mockResolvedValue({ routine });
-
-    const out = await new AgentRoutinesResource(http).create('report-bot', {
-      name: 'later',
-      trigger: { type: 'once', delay_seconds: 3600 },
-      prompt: 'x',
-    });
-
-    expect(out).toBe(routine);
-  });
-
-  it('gets, updates and deletes by routine id (encoded)', async () => {
-    const http = createMockHttp();
-    http.request
-      .mockResolvedValueOnce(routine)
-      .mockResolvedValueOnce(routine)
-      .mockResolvedValueOnce({ id: 'rtn_1', object: 'agent.routine', deleted: true });
-    const resource = new AgentRoutinesResource(http);
-
-    await resource.get('report-bot', 'rtn/1');
-    await resource.update('report-bot', 'rtn_1', { enabled: false });
-    const deleted = await resource.delete('report-bot', 'rtn_1');
-
-    expect(http.request).toHaveBeenNthCalledWith(1, 'GET', '/api/client/v1/agents/report-bot/routines/rtn%2F1', {});
-    expect(http.request).toHaveBeenNthCalledWith(2, 'PATCH', '/api/client/v1/agents/report-bot/routines/rtn_1', { body: { enabled: false } });
-    expect(http.request).toHaveBeenNthCalledWith(3, 'DELETE', '/api/client/v1/agents/report-bot/routines/rtn_1', {});
-    expect(deleted.deleted).toBe(true);
-  });
-
-  it('run() fires it manually with overrides, an Idempotency-Key and Prefer', async () => {
-    const http = createMockHttp();
-    const run = makeRun({ status: 'queued', routine_id: 'rtn_1', trigger: 'manual', channel: 'routine' });
-    http.request.mockResolvedValue(run);
-
-    const out = await new AgentRoutinesResource(http).run(
-      'report-bot',
-      'rtn_1',
-      { inputs: { team: 'ops' }, wait: 10 },
-      { prefer: { wait: 10 } },
-    );
-
-    expect(out).toBe(run);
-    const [method, path, request] = http.request.mock.calls[0];
-    expect(method).toBe('POST');
-    expect(path).toBe('/api/client/v1/agents/report-bot/routines/rtn_1/run');
-    expect(request.body).toEqual({ inputs: { team: 'ops' }, wait: 10 });
-    expect(request.headers.Prefer).toBe('wait=10');
-    expect(request.headers['Idempotency-Key']).toBeTruthy();
+    expect(out.status).toBe('queued');
+    expect(http.request.mock.calls[0][2].body).toEqual({ decision: 'deny', background: true });
   });
 });

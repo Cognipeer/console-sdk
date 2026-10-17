@@ -17,6 +17,7 @@ import {
   ListAgentRunsQuery,
   ListSessionEventsQuery,
   ResolveActionBody,
+  ResolveActionOptions,
   SessionEventList,
   SessionEventStreamOptions,
   SessionStreamEvent,
@@ -29,7 +30,7 @@ function runPath(runId: string, suffix = ''): string {
   return `${RUNS_PATH}/${encodeURIComponent(runId)}${suffix}`;
 }
 
-/** Default seconds one `wait()` long-poll asks the Console to hold the request. */
+/** Default seconds one `wait()` long-poll asks the Console to hold the request (its own window is longer: 10 minutes by default). */
 const DEFAULT_WAIT_SECONDS = 20;
 
 /** Headroom kept between a long-poll and the client's request timeout. */
@@ -177,7 +178,8 @@ export class AgentRunsResource {
    * request the client retries never starts a second run.
    *
    * With `stream: true` the call returns an async iterator of `response.*` events
-   * instead (no automatic key).
+   * instead. A stream that closes early does not stop the run (`on_disconnect`: `continue`,
+   * the default); follow it with `wait()` or `events.stream()`.
    *
    * Rejects with `CognipeerAPIError`: 400 (`invalid_inputs`, `invalid_response_format`...),
    * 404 (`agent_not_found`), 409 (`agent_run_conflict`, `idempotency_key_conflict`),
@@ -205,14 +207,12 @@ export class AgentRunsResource {
   ): Promise<AgentRun | AsyncGenerator<AgentResponseStreamEvent, void, undefined>> {
     const path = `/api/client/v1/agents/${encodeURIComponent(agentKey)}/runs`;
     const prefer = preferHeader(options.prefer);
-    const idempotencyKey = options.idempotencyKey ?? (body.stream ? undefined : newIdempotencyKey());
-    const headers: Record<string, string> = {
-      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
-      ...(prefer ? { Prefer: prefer } : {}),
-    };
     const request = {
       body,
-      ...(Object.keys(headers).length > 0 ? { headers } : {}),
+      headers: {
+        'Idempotency-Key': options.idempotencyKey ?? newIdempotencyKey(),
+        ...(prefer ? { Prefer: prefer } : {}),
+      },
       signal: options.signal,
     };
     if (body.stream) {
@@ -238,6 +238,7 @@ export class AgentRunsResource {
       session_id: query.session_id,
       routine_id: query.routine_id,
       channel: query.channel,
+      trigger: query.trigger,
       created_after: timeQuery(query.created_after),
       created_before: timeQuery(query.created_before),
       limit: query.limit,
@@ -330,18 +331,42 @@ export class AgentRunsResource {
 
   /**
    * Answer an approval or a question of a `requires_action` run; the run continues.
-   * Same body and answer as `sessions.actions.resolve()`.
+   * Same body and answer as `sessions.actions.resolve()`: the continuation's Response (`200`),
+   * a `requires_action` response while other actions of the pause are open (`200`), or with
+   * `background: true` the {@link AgentRun} (`202`). 404 `action_not_found` for an action that
+   * is not one of this run's.
    */
   async resolveAction(
     runId: string,
     actionId: string,
     body: ResolveActionBody,
-    options: { signal?: AbortSignal } = {},
+    options: ResolveActionOptions & { background: true },
+  ): Promise<AgentRun>;
+  async resolveAction(
+    runId: string,
+    actionId: string,
+    body: ResolveActionBody,
+    options?: ResolveActionOptions & { background?: false },
+  ): Promise<AgentResponse | AgentActionsPendingResponse>;
+  async resolveAction(
+    runId: string,
+    actionId: string,
+    body: ResolveActionBody,
+    options?: ResolveActionOptions,
+  ): Promise<AgentResponse | AgentActionsPendingResponse | AgentRun>;
+  async resolveAction(
+    runId: string,
+    actionId: string,
+    body: ResolveActionBody,
+    options: ResolveActionOptions = {},
   ): Promise<AgentResponse | AgentActionsPendingResponse | AgentRun> {
     return this.http.request<AgentResponse | AgentActionsPendingResponse | AgentRun>(
       'POST',
       runPath(runId, `/actions/${encodeURIComponent(actionId)}`),
-      { body, signal: options.signal },
+      {
+        body: options.background === undefined ? body : { ...body, background: options.background },
+        signal: options.signal,
+      },
     );
   }
 }

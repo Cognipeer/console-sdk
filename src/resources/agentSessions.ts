@@ -122,8 +122,7 @@ export type AgentSessionListCall = Promise<AgentSessionPage> & AsyncIterable<Age
  * const res = await client.agents.responses.create({ model: 'ops-agent', input: 'Clean up the staging DB' });
  * if (res.status === 'requires_action') {
  *   const [action] = res.required_action!.actions;
- *   const conversationId = res.id.replace(/^resp_/, '');
- *   const next = await client.agents.sessions.actions.resolve(conversationId, action.id, { decision: 'allow' });
+ *   const next = await client.agents.sessions.actions.resolve(res.cognipeer!.session_id!, action.id, { decision: 'allow' });
  * }
  * ```
  */
@@ -211,13 +210,14 @@ export class AgentSessionsResource {
   }
 
   /**
-   * Stop the turn running on a conversation (and its queued or running
-   * background runs). Cooperative: the turn ends at its next checkpoint.
-   * Open approvals / questions are cancelled too when the caller may answer them.
-   * `cancelled: false` means nothing was running.
+   * Stop the turn running on a session: the way to stop an inline call (`responses.create`,
+   * chat completions, A2A) from a second request. Its queued or running runs stop too.
+   * Cooperative: the turn ends at its next checkpoint, keeping what it had streamed
+   * (`stop_reason: cancelled`). Open approvals / questions are cancelled when the caller may
+   * answer them. `cancelled: false` means nothing was running (not an error).
    *
-   * Rejects with `CognipeerAPIError` 404 when the conversation is not found.
-   * @param conversationId - The conversation id (a response id without its `resp_` prefix)
+   * Rejects with `CognipeerAPIError` 404 `session_not_found`.
+   * @param conversationId - The session id (`session_id` of a run, `cognipeer.session_id` or `conversation.id` of a response)
    */
   async cancel(conversationId: string, options: { signal?: AbortSignal } = {}): Promise<AgentConversationCancelResult> {
     return this.http.request<AgentConversationCancelResult>(
