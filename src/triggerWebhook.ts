@@ -59,7 +59,7 @@ function hmacSha256Hex(key: Uint8Array, message: Uint8Array): string {
   return Array.from(sha256(outer), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export interface SignRoutineWebhookOptions {
+export interface SignTriggerWebhookOptions {
   /** Unix seconds the signature is made at (default: now). The Console accepts one within 5 minutes. */
   timestamp?: number;
   /**
@@ -74,23 +74,23 @@ export interface SignRoutineWebhookOptions {
 /**
  * The headers that authenticate a delivery to a webhook trigger with auth `signature` (preset
  * `generic`): send them with the exact `body` you sign (`string`, or bytes) as the request body.
- * The signature is `t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<body>">` with the routine's
+ * The signature is `t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<body>">` with the trigger's
  * secret, the scheme the Console uses for its own deliveries (`verifyWebhook()`).
  *
  * @example
  * ```typescript
  * const body = JSON.stringify({ event: 'deploy.failed', service: 'api' });
- * await fetch(routine.trigger.url, {
+ * await fetch(trigger.webhook.url, {
  *   method: 'POST',
- *   headers: { 'content-type': 'application/json', ...signRoutineWebhook(secret, body) },
+ *   headers: { 'content-type': 'application/json', ...signTriggerWebhook(secret, body) },
  *   body,
  * });
  * ```
  */
-export function signRoutineWebhook(
+export function signTriggerWebhook(
   secret: string,
   body: string | Uint8Array,
-  options: SignRoutineWebhookOptions = {},
+  options: SignTriggerWebhookOptions = {},
 ): Record<string, string> {
   const encoder = new TextEncoder();
   const timestamp = Math.floor(options.timestamp ?? Date.now() / 1000);

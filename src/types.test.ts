@@ -213,8 +213,8 @@ describe('WEBHOOK_EVENT_TYPES', () => {
 });
 
 describe('SDK 4.0 contract helpers', () => {
-  it('the webhook catalog has routine and feedback events and no schedule events', () => {
-    expect(WEBHOOK_EVENT_TYPES).toEqual(expect.arrayContaining(['routine.fired', 'routine.failed', 'feedback.recorded']));
+  it('the webhook catalog has trigger and feedback events and no schedule events', () => {
+    expect(WEBHOOK_EVENT_TYPES).toEqual(expect.arrayContaining(['trigger.fired', 'trigger.failed', 'feedback.recorded']));
     expect(WEBHOOK_EVENT_TYPES).not.toContain('schedule.fired');
     expect(WEBHOOK_EVENT_TYPES).not.toContain('schedule.failed');
   });
@@ -223,7 +223,7 @@ describe('SDK 4.0 contract helpers', () => {
     const codes = Object.values(AgentRunErrorCodes) as string[];
     expect(codes).not.toContain('idempotency_key_sync_not_supported');
     expect(codes).not.toContain('timeout');
-    expect(AgentRunErrorCodes.InvalidInputs).toBe('invalid_inputs');
+    expect(AgentRunErrorCodes.InvalidVariables).toBe('invalid_variables');
     expect(Object.values(AgentActionErrorCodes) as string[]).not.toContain('agent_background_disabled');
   });
 

@@ -107,11 +107,13 @@ project's models and agents together (`cognipeer.kind === 'agent'`); a token tha
 (`models: []`, no providers). `version` pins a published version (a positive integer or numeric string) or runs the draft
 (`'draft'`); anything else is `400 invalid_version`. The agent continues a session from a resent transcript only when
 exactly one of the caller's sessions matches it, and the match covers file and image references and the `user` field, so
-different end users start separate sessions.
+different end users start separate sessions. `variables` carries values for the agent's [variables](/api/agents#variables)
+next to the message. Chat clients usually send none, so an agent that is also used in chat should keep its variables optional
+or give each a default: a required variable without a default makes the call fail with `400 invalid_variables`.
 
 ```typescript
 const res = await client.chat.completions.create(
-  { model: 'agent:support-bot', messages: [{ role: 'user', content: 'Hi' }], inputs: { customer: 'acme' } },
+  { model: 'agent:support-bot', messages: [{ role: 'user', content: 'Hi' }], variables: { customer: 'acme' } },
   { sessionId: 'conv_1' }, // continue a session (X-Cognipeer-Session-Id); the answer carries `conversation_id`
 );
 res.conversation_id; // the session: pass it back as `conversation_id` in the body or as `sessionId`

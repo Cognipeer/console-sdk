@@ -129,7 +129,7 @@ describe('ChatCompletionsResource', () => {
 });
 
 describe('ChatCompletionsResource (v4 request fields)', () => {
-  it('passes response_format, stream_options, service_tier, metadata and inputs through untouched', async () => {
+  it('passes response_format, stream_options, service_tier, metadata and variables through untouched', async () => {
     const http = createMockHttp();
     vi.mocked(http.request).mockResolvedValue({ id: 'c', object: 'chat.completion', created: 1, model: 'agent:bot', choices: [], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } });
     const params: ChatCompletionRequest = {
@@ -139,7 +139,7 @@ describe('ChatCompletionsResource (v4 request fields)', () => {
       stream_options: { include_usage: true },
       service_tier: 'flex',
       metadata: { ticket: 'OPS-12' },
-      inputs: { team: 'ops' },
+      variables: { team: 'ops' },
       reasoning_effort: 'max',
     };
 

@@ -1,6 +1,6 @@
 # Agents API
 
-List, retrieve and run AI agents via the Console SDK: chat-style calls through the OpenAI Responses API format, jobs through the runs API, recurring work through routines.
+List, retrieve and run AI agents via the Console SDK: chat-style calls through the OpenAI Responses API format, jobs through the runs API, and work that starts on its own (a schedule, a set time, a webhook) through triggers.
 
 ## Quick Start
 
@@ -70,6 +70,12 @@ console.log(agent.name, agent.config.modelKey);
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `agentKey` | string | Yes | Unique agent key |
+
+### Variables and output: `agent.variables_schema`, `agent.output_schema`
+
+The single-agent lookup (not `list()`) describes the agent as a typed function: `variables_schema` is the JSON Schema of the
+[variables](#variables) a caller may send (`null` when the agent declares none), `output_schema` the schema of its structured
+answer (`null` for a plain-text agent).
 
 ### Files: `agent.attachments`
 
@@ -147,7 +153,7 @@ The agent's own configuration decides instructions, sampling and tools: `instruc
 | `text.format` | `json_schema` \| `json_object` \| `text` | No | Structured output for this turn: see [Structured output](#structured-output) |
 | `metadata` | Record&lt;string, string&gt; | No | Up to 16 pairs, stored on the run and echoed back |
 | `service_tier` | string | No | `flex` runs the turn as a low-priority `deferred` run |
-| `inputs` | object | No | Values for the inputs the agent declares (`agent.input_schema`) |
+| `variables` | object | No | Values for the variables the agent declares (`agent.variables_schema`), sent next to the message: see [Variables](#variables) |
 | `background` | boolean | No | Do not wait: answer at once (`202`) with a `queued` / `in_progress` response (also `X-Cognipeer-Background: true`) — see [Long turns](#long-turns-202-and-background) |
 | `stream` | boolean | No | Return an async iterator of `response.*` events — see [Streaming](#streaming) |
 | `callback_url` / `callback_secret` | string | No | Async runs: POST the terminal event there (signed with the secret, min 16 chars) |
@@ -212,8 +218,8 @@ res.output_parsed; // { total: 42 }
 res.output_text;   // '{"total":42}'
 ```
 
-`agents.get(key)` returns `input_schema` and `output_schema` (JSON Schema) when the agent declares inputs or a
-structured output: the agent as a typed function. Pass the inputs with `inputs`.
+`agents.get(key)` returns `variables_schema` and `output_schema` (JSON Schema) when the agent declares variables or a
+structured output: the agent as a typed function. Pass the variables with `variables` ([Variables](#variables)).
 
 ### Streaming
 
@@ -304,6 +310,43 @@ interface AgentResponse {
 }
 ```
 
+## Variables
+
+An agent can declare **variables**: named, typed values that a caller sends **next to** the message. A variable has a name and
+a type (`string` for text, `number`, `integer`, `boolean` for yes/no, or `json`), is required or optional, and may have a label,
+a list of allowed values and a default (**Configure → Variables** in the Console; up to 32 per agent).
+
+- **They are checked before the model is called.** A missing required value, an unknown name, a wrong type or a value outside
+  the allowed ones is a `400 invalid_variables` with `errors: [{ field, message }]`, and nothing is spent. Defaults are applied;
+  each text value is at most 8 KiB and all values together at most 32 KiB.
+- **The agent sees them twice.** Its instructions can use them as <code v-pre>{{variables.&lt;name&gt;}}</code>, and every value is also added to the
+  user message as a `Variables` JSON block, so the model reads them even when the instructions do not mention them.
+- **They are published.** `agents.get(key).variables_schema` is a JSON Schema of the agent's variables (`null` when it has none),
+  so n8n, CI scripts, other agents and forms know what to send.
+
+```typescript
+const agent = await client.agents.get('report-bot');
+agent.variables_schema; // { type: 'object', properties: { team: { type: 'string' }, ... }, required: ['team'] }
+
+await client.agents.runs.create('report-bot', {
+  input: 'Weekly numbers',                       // the message
+  variables: { team: 'ops', region: 'EMEA' },    // the variables, next to it
+});
+```
+
+**Best for programs and automation.** Use variables for runs that a program starts: the runs API, [triggers](#triggers) (a schedule trigger with
+fixed values, a webhook trigger that maps event fields into them, like <code v-pre>{{payload.pull_request.number}}</code>), n8n or CI pipelines, an agent
+that another agent calls as a tool, forms. `variables` is accepted by `runs.create()`, `responses.create()`, chat completions,
+A2A data parts and `triggers.run()`.
+
+**Careful in chat.** Chat clients (Open WebUI, other OpenAI-compatible apps, the portal chat UI) send only the person's text and
+never fill variables. A **required variable without a default makes every chat message fail with `400 invalid_variables`**, so
+for an agent that is also used in chat keep its variables optional, or give each one a default.
+
+Values belong to the turn that sends them. A follow-up turn of the same session sends them again (an optional one left out
+falls back to its default), and the `Variables` block of a turn stays in that turn's message in the session history, so
+sending the same values on every turn repeats the block there.
+
 ## Runs
 
 `client.agents.runs` is the canonical surface for jobs: start a turn now, later or at low priority, follow it, cancel it.
@@ -315,7 +358,7 @@ const run = await client.agents.runs.create(
   'research-agent',
   {
     input: 'Compare these three vendors',
-    inputs: { region: 'EMEA' },                 // the agent's declared inputs
+    variables: { region: 'EMEA' },              // the agent's variables, next to the message
     class: 'deferred',                          // low-priority queue (default: 'default')
     delay_seconds: 3600,                        // or run_at: '2026-10-18T06:00:00Z' -> status 'scheduled'
     metadata: { ticket: 'OPS-12' },
@@ -345,7 +388,7 @@ await client.agents.runs.queue();                           // running / queued 
 
 const page = await client.agents.runs.list({ agent: 'research-agent', status: ['failed', 'canceled'], limit: 50 });
 page.data; page.has_more; await page.getNextPage();
-for await (const r of client.agents.runs.list({ routine_id: 'rtn_1' })) console.log(r.id); // every page
+for await (const r of client.agents.runs.list({ trigger_id: 'trg_1' })) console.log(r.id); // every page
 
 await client.agents.runs.events('run_66f2...', { after: 10 });          // the run's session events (JSON)
 for await (const event of client.agents.runs.events.stream('run_66f2...')) { /* SSE, resumes with Last-Event-ID */ }
@@ -368,7 +411,7 @@ await client.agents.runs.resolveAction('run_66f2...', 'act_1', { decision: 'allo
 - `cancel()` ends a `scheduled`, `queued` or `requires_action` run at once; a `running` one stops cooperatively (the
   returned run may still say `running` with `cancel_requested_at` for about a second). Canceling a finished run is a `409`
   with `errorCode === 'agent_run_already_terminal'`.
-- `list()` filters: `agent`, `status`, `class`, `session_id`, `routine_id`, `channel`, `trigger`, `metadata` (up to 3 exact pairs),
+- `list()` filters: `agent`, `status`, `class`, `session_id`, `trigger_id`, `channel`, `trigger`, `metadata` (up to 3 exact pairs),
   `created_after`, `created_before`, `limit` (max 100), `after`. Newest first.
 
 A2A `message/stream` runs the task on the same engine: a client disconnect does not cancel it, and `tasks/resubscribe`
@@ -389,9 +432,9 @@ interface AgentRun {
   agent?: string;
   version?: number | null;
   session_id?: string;        // also conversation_id
-  channel?: 'runs' | 'responses' | 'chat_completions' | 'a2a' | 'routine';
-  trigger?: 'request' | 'schedule' | 'once' | 'manual' | 'webhook';
-  routine_id?: string | null;
+  channel?: 'runs' | 'responses' | 'chat_completions' | 'a2a' | 'trigger';
+  trigger?: 'request' | 'schedule' | 'once' | 'manual' | 'webhook';  // what started the run
+  trigger_id?: string | null;        // the trigger that fired it
   metadata?: Record<string, string> | null;
   stop_reason?: string | null;
   result?: AgentResponse | null;     // Responses-shaped, when finished (or the requires_action response)
@@ -409,75 +452,90 @@ interface AgentRun {
 }
 ```
 
-## Routines
+## Triggers
 
-A routine is a saved prompt (and inputs) with a trigger. Every fire is an ordinary run (`channel: 'routine'`,
-`runs.list({ routine_id })` is the history), unattended: approvals follow the agent's unattended policy.
+A trigger starts an agent on its own: on a schedule, once at a set time, by hand, or when an external system posts a webhook.
+An agent can have several triggers (a schedule trigger and a webhook trigger, say), and each trigger has **one type**, with
+the settings of that type in the sub-object named after it. A trigger saves a prompt (and [variables](#variables)). Every fire is
+an ordinary run (`channel: 'trigger'`, `runs.list({ trigger_id })` is the history), unattended: approvals follow the agent's
+unattended policy.
 
-| `trigger.type` | Body | Fires |
-|----------------|------|-------|
-| `schedule` | `cron` (5 fields), `timezone` (IANA, default `UTC`) | on every cron tick |
-| `once` | `run_at` (ISO 8601 or unix seconds, not in the past) **or** `delay_seconds` | once; `run_at` is returned as an ISO string |
-| `manual` | | only with `routines.run()` (the default when a routine has no trigger) |
-| `webhook` | `preset`, `auth`, `header_name`, `secret`, `events`, `filter`, `include_payload` | when an authenticated delivery reaches the routine's URL: [Webhook triggers](#webhook-triggers) |
+| `type` | Settings | Fires |
+|--------|----------|-------|
+| `schedule` | `schedule`: `cron` (5 fields), `timezone` (IANA, default `UTC`) | on every cron tick |
+| `once` | `once`: `run_at` (ISO 8601 or unix seconds, not in the past) **or** `delay_seconds` | once; `run_at` is returned as an ISO string |
+| `manual` | none | only with `triggers.run()` |
+| `webhook` | `webhook`: `preset`, `auth`, `header_name`, `secret`, `events`, `filter`, `include_payload` | when an authenticated delivery reaches the trigger's URL: [Webhook triggers](#webhook-triggers) |
 
 ```typescript
-const routine = await client.agents.routines.create('report-bot', {
+const trigger = await client.agents.triggers.create('report-bot', {
   name: 'Weekday digest',
-  trigger: { type: 'schedule', cron: '0 9 * * 1-5', timezone: 'Europe/Istanbul' },
-  // or { type: 'once', run_at: '2026-12-01T09:00:00Z' } | { type: 'once', delay_seconds: 3600 } | { type: 'manual' }
-  prompt: 'Summarise yesterday',      // required unless the agent declares inputs and `inputs` gives them
-  inputs: { team: 'ops' },            // the agent's declared inputs
+  type: 'schedule',
+  schedule: { cron: '0 9 * * 1-5', timezone: 'Europe/Istanbul' },
+  // or type: 'once' with once: { run_at: '2026-12-01T09:00:00Z' } | once: { delay_seconds: 3600 }, or type: 'manual' (no sub-object)
+  prompt: 'Summarise yesterday',      // required unless the agent has variables and `variables` gives them
+  variables: { team: 'ops' },         // values for the agent's variables
   class: 'deferred',                  // 'default' | 'deferred'
   version: 3,                         // pin a version; omitted / null = the published one
-  metadata: { source: 'routine' },    // copied onto every run
+  metadata: { source: 'trigger' },    // copied onto every run
   callback: { url: 'https://example.com/hooks/digest', secret: process.env.DIGEST_SECRET }, // write-only secret
   response_format: { type: 'json_object' },
 });
 
-routine.id;           // a bare id, no prefix
-routine.next_fire_at; // unix seconds (null for manual, webhook and a finished once)
-routine.last_run_id;  // "run_..." of the last fire that started a run
-routine.last_status;  // 'started' | 'failed' | null (with `last_error`)
+trigger.id;           // a bare id, no prefix
+trigger.type;         // 'schedule' | 'once' | 'manual' | 'webhook'
+if (trigger.type === 'schedule') trigger.schedule.cron; // only the sub-object named after the type is present
+trigger.next_fire_at; // unix seconds (null for manual, webhook and a finished once)
+trigger.last_run_id;  // "run_..." of the last fire that started a run
+trigger.last_status;  // 'started' | 'failed' | null (with `last_error`)
 
-await client.agents.routines.list('report-bot');   // { object: 'list', data: AgentRoutine[], has_more: false }
-await client.agents.routines.get('report-bot', routine.id);
-await client.agents.routines.update('report-bot', routine.id, { enabled: false }); // PATCH: omitted fields stay
-await client.agents.routines.delete('report-bot', routine.id);                     // { id, object: 'agent.routine.deleted', deleted: true }
+// An agent can have several triggers: add a webhook trigger next to the schedule one.
+await client.agents.triggers.create('report-bot', {
+  name: 'On deploy',
+  type: 'webhook',
+  webhook: { preset: 'generic' },
+  prompt: 'Summarise the deploy',
+});
+
+await client.agents.triggers.list('report-bot');   // { object: 'list', data: AgentTrigger[], has_more: false }: both
+await client.agents.triggers.get('report-bot', trigger.id);
+await client.agents.triggers.update('report-bot', trigger.id, { enabled: false }); // PATCH: omitted fields stay
+await client.agents.triggers.delete('report-bot', trigger.id);                     // { id, object: 'agent.trigger.deleted', deleted: true }
 ```
 
-Timestamps are unix seconds, except `trigger.run_at` (ISO). `create()` answers HTTP `201`. Errors: `400 invalid_routine`
-(`error.response.error.errors` lists `{ field, message }`: a bad cron, timezone or trigger, a missing prompt, inputs that
-do not fit the agent, an unknown `version`), `404 routine_not_found`, `404 agent_not_found`.
+Timestamps are unix seconds, except `once.run_at` (ISO). `create()` answers HTTP `201`. To change the type of a trigger, or
+the settings of its type, `update()` takes `type` together with the sub-object. Errors: `400 invalid_trigger`
+(`error.response.error.errors` lists `{ field, message }`: a bad cron, timezone or type, a missing prompt, variables that
+do not fit the agent, an unknown `version`), `404 trigger_not_found`, `404 agent_not_found`.
 
 ### Run now
 
 ```typescript
-const run = await client.agents.routines.run(
+const run = await client.agents.triggers.run(
   'report-bot',
-  routine.id,
-  { inputs: { team: 'sales' }, metadata: { requested_by: 'anil' } },   // merged over the routine's inputs / metadata
-  { wait: 10, idempotencyKey: 'digest-2026-10-17' },                    // idempotencyKey is generated when omitted
+  trigger.id,
+  { variables: { team: 'sales' }, metadata: { requested_by: 'anil' } },   // merged over the trigger's variables / metadata
+  { wait: 10, idempotencyKey: 'digest-2026-10-17' },                       // idempotencyKey is generated when omitted
 );
 run.status; // 'succeeded' (HTTP 200) | 'queued' | 'running' (HTTP 202: never an error, follow it with runs.wait)
 ```
 
 `wait` holds the call up to that many seconds (capped by the Console's window); `prefer: { wait, respondAsync }` sends the
-`Prefer` header instead. Errors: `400` `invalid_inputs`, `invalid_metadata`, `agent_inactive`; `404 routine_not_found`;
+`Prefer` header instead. Errors: `400` `invalid_variables`, `invalid_metadata`, `agent_inactive`; `404 trigger_not_found`;
 `409 idempotency_key_conflict` (the key was used by another request); `429` with a `Retry-After` header and
 `agent_run_concurrency_limit`, `spend_limit_exceeded` or `agent_quota_exceeded`.
 
 ### Webhook triggers
 
-A webhook trigger gives the routine a public URL. A sender posts JSON to it, the Console checks the delivery's
-credentials, applies the trigger's `events` and `filter`, builds the turn from the routine's `prompt` and `inputs`
-(templates over the event) and starts a run. Senders need no API token.
+A webhook trigger has a public URL. A sender posts JSON to it, the Console checks the delivery's credentials, applies the
+trigger's `events` and `filter`, builds the turn from the trigger's `prompt` and `variables` (templates over the event) and
+starts a run. Senders need no API token.
 
 ```typescript
-const routine = await client.agents.routines.create('pr-reviewer', {
+const trigger = await client.agents.triggers.create('pr-reviewer', {
   name: 'Review pull requests',
-  trigger: {
-    type: 'webhook',
+  type: 'webhook',
+  webhook: {
     preset: 'github',                                   // github | gitlab | azure_devops | generic
     events: ['pull_request'],                           // event names to accept; empty / omitted = all
     filter: [                                           // all must match
@@ -489,12 +547,16 @@ const routine = await client.agents.routines.create('pr-reviewer', {
   prompt: 'Review pull request #{{payload.pull_request.number}} ({{payload.pull_request.html_url}})',
 });
 
-routine.webhook;  // { url, secret }: only in the answer that created the routine (or gave it a new secret)
-routine.trigger;  // { type: 'webhook', url, preset, auth, header_name, secret_hint, secret_source, previous_secret_valid_until, events, filter, include_payload }
+if (trigger.type === 'webhook') {
+  trigger.webhook.url;     // the URL to give the sender
+  trigger.webhook.secret;  // only in the answer that created the trigger (or gave it a new secret): shown once
+  // every later read: { url, preset, auth, header_name, secret_hint, secret_source, previous_secret_valid_until, events, filter, include_payload }
+}
 ```
 
-The secret is generated by the Console and shown once; afterwards only `trigger.secret_hint` (its last 4 characters).
-With `standard_webhooks` the sender generates it: pass the sender's `whsec_...` as `trigger.secret`.
+The secret is generated by the Console and shown once, in `webhook.secret` of the answer that created the trigger; afterwards
+only `webhook.secret_hint` (its last 4 characters). With `standard_webhooks` the sender generates it: pass the sender's
+`whsec_...` as `webhook.secret`. (`AgentTriggerWithSecret` is the type of a webhook trigger that carries its secret.)
 
 | Preset | `auth` (first = default) | The sender sends | Event name | Delivery id |
 |--------|--------------------------|------------------|------------|-------------|
@@ -503,26 +565,26 @@ With `standard_webhooks` the sender generates it: pass the sender's `whsec_...` 
 | `azure_devops` | `basic`, `header` | Basic auth with the secret as the password, or `header_name` (default `x-cognipeer-token`) | payload `eventType` | payload `id` |
 | `generic` | `bearer`, `signature`, `header`, `standard_webhooks` | `Authorization: Bearer <secret>`, a signature (below), or `header_name` | payload `event` or `type`, or `X-Cognipeer-Event` | `X-Cognipeer-Event-Id`, `webhook-id` or `Idempotency-Key` |
 
-**Prompt and inputs are templates** (Mustache) over `payload`, `headers`, `event`, `delivery_id`, `preset`, `received_at`,
-`routine` and `agent`. Every value taken from the event is inserted as JSON text (a string comes quoted), and the turn tells
-the agent that everything from the event is external data. An input whose value is exactly one tag (<code v-pre>"{{payload.number}}"</code>)
-keeps the value's type. A webhook routine needs a prompt unless it includes the payload or gives inputs.
+**Prompt and variables are templates** (Mustache) over `payload`, `headers`, `event`, `delivery_id`, `preset`, `received_at`,
+`trigger` and `agent`. Every value taken from the event is inserted as JSON text (a string comes quoted), and the turn tells
+the agent that everything from the event is external data. A variable whose value is exactly one tag (<code v-pre>"{{payload.number}}"</code>)
+keeps the value's type. A webhook trigger needs a prompt unless it includes the payload or gives variables.
 `filter` rules read `payload.*`, `headers.*` (an allow-list per preset), `event`; ops: `eq`, `neq`, `in`, `not_in`,
 `exists`, `not_exists`, `contains`, `starts_with`, `glob`; `*` in a path matches every list item. The `events` list is a
 convenience filter on a name the sender (or its header) supplies: conditions that matter belong in `payload.*` filter rules.
 
-**Sign a delivery** (auth `signature`, preset `generic`) with `signRoutineWebhook`, exported from the package root (it
+**Sign a delivery** (auth `signature`, preset `generic`) with `signTriggerWebhook`, exported from the package root (it
 needs no Node.js APIs):
 
 ```typescript
-import { signRoutineWebhook } from '@cognipeer/console-sdk';
+import { signTriggerWebhook } from '@cognipeer/console-sdk';
 
 const body = JSON.stringify({ event: 'deploy.failed', service: 'api' });
-await fetch(routine.webhook!.url, {
+await fetch(url, {                  // url and secret: `trigger.webhook.url` / `.secret` of the answer that created the trigger
   method: 'POST',
   headers: {
     'content-type': 'application/json',
-    ...signRoutineWebhook(routine.webhook!.secret, body, { eventId: 'deploy-42' }),
+    ...signTriggerWebhook(secret, body, { eventId: 'deploy-42' }),
   },
   body, // the exact string that was signed
 });
@@ -532,26 +594,26 @@ It returns `x-cognipeer-signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, 
 of the Console's clock), `x-cognipeer-event-id` (yours, or a random one: the Console treats the same id with the same body
 as a duplicate and starts no second run, so reuse yours when retrying) and, with `{ event }`, `x-cognipeer-event`.
 
-**Try it without a sender.** On a webhook routine `run()` takes a sample `payload` and `headers` and builds the turn the way
+**Try it without a sender.** On a webhook trigger `run()` takes a sample `payload` and `headers` and builds the turn the way
 a delivery would (the `events` and `filter` checks are not applied, and the sample's own text is never treated as a template).
-With `dry_run: true` nothing starts: it answers an `AgentRoutineDryRun`.
+With `dry_run: true` nothing starts: it answers an `AgentTriggerDryRun`.
 
 ```typescript
-const dry = await client.agents.routines.run('pr-reviewer', routine.id, {
+const dry = await client.agents.triggers.run('pr-reviewer', trigger.id, {
   payload: { action: 'opened', pull_request: { number: 7, draft: false } },
   headers: { 'x-github-event': 'pull_request' },
   dry_run: true,
 });
-dry.matched; // does it pass `events` and `filter`? (`dry.reason` says why not)
-dry.prompt;  // the message the run would get
-dry.inputs;  // the resolved inputs; `dry.errors` lists `{ field, message }` when the turn cannot be built
+dry.matched;   // does it pass `events` and `filter`? (`dry.reason` says why not)
+dry.prompt;    // the message the run would get
+dry.variables; // the resolved variables; `dry.errors` lists `{ field, message }` when the turn cannot be built
 ```
 
 **Rotate the secret** with `rotateWebhookSecret`; `grace_seconds` (0 to 86400, default 0) keeps the current secret
-accepted that long, so senders can switch over. Standard Webhooks routines pass the sender's new `secret`.
+accepted that long, so senders can switch over. Standard Webhooks triggers pass the sender's new `secret`.
 
 ```typescript
-const rotated = await client.agents.routines.rotateWebhookSecret('pr-reviewer', routine.id, { grace_seconds: 3600 });
+const rotated = await client.agents.triggers.rotateWebhookSecret('pr-reviewer', trigger.id, { grace_seconds: 3600 });
 rotated.secret;                // the new secret, shown once (not returned with standard_webhooks)
 rotated.previous_valid_until;  // unix seconds the old one is accepted until
 ```
@@ -559,18 +621,18 @@ rotated.previous_valid_until;  // unix seconds the old one is accepted until
 **The delivery log** shows what became of each request to the URL (kept 7 days), never its payload:
 
 ```typescript
-const page = await client.agents.routines.deliveries('pr-reviewer', routine.id, { limit: 50 });
+const page = await client.agents.triggers.deliveries('pr-reviewer', trigger.id, { limit: 50 });
 for (const d of page.data) console.log(d.received_at, d.outcome, d.http_status, d.event, d.run_id, d.reason);
-if (page.has_more) await client.agents.routines.deliveries('pr-reviewer', routine.id, { before: page.data.at(-1)!.id });
+if (page.has_more) await client.agents.triggers.deliveries('pr-reviewer', trigger.id, { before: page.data.at(-1)!.id });
 ```
 
-`outcome` is `accepted` (a run started), `duplicate`, `filtered`, `ignored` (a ping, a test, a disabled routine),
+`outcome` is `accepted` (a run started), `duplicate`, `filtered`, `ignored` (a ping, a test, a disabled trigger),
 `unauthorized`, `rejected` (a rate or run limit) or `failed`; `reason` is a fixed text such as `signature mismatch` or
-`event "x" is not selected`. Errors: `400 routine_not_webhook` (`rotateWebhookSecret` on another trigger), `400 invalid_limit`.
+`event "x" is not selected`. Errors: `400 trigger_not_webhook` (`rotateWebhookSecret` on a trigger of another type), `400 invalid_limit`.
 
-Webhook subscriptions (`client.webhooks`) receive `routine.fired` (`data`: `routineId`, `agentKey`, `trigger`
-(`schedule` | `once` | `manual` | `webhook`), `runId`, and `event` for a webhook delivery) and `routine.failed` (`routineId`,
-`agentKey`, `trigger`, `event?`, `reason`; sent at most once per routine and reason per hour).
+Webhook subscriptions (`client.webhooks`) receive `trigger.fired` (`data`: `triggerId`, `agentKey`, `trigger` (what started
+the fire: `schedule` | `once` | `manual` | `webhook`), `runId`, and `event` for a webhook delivery) and `trigger.failed`
+(`triggerId`, `agentKey`, `trigger`, `event?`, `reason`; sent at most once per trigger and reason per hour).
 
 ## Continuing the Conversation
 
@@ -599,8 +661,8 @@ try {
     // 409: a run is already queued/running on this conversation
   } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.ConcurrencyLimit)) {
     // 429: too many runs in flight for this tenant (or the deferred queue is full)
-  } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.InvalidInputs)) {
-    // 400: `inputs` do not fit agent.input_schema; error.response.error.errors lists the fields
+  } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.InvalidVariables)) {
+    // 400: `variables` do not fit agent.variables_schema (or a chat call lacks a required one); error.response.error.errors lists the fields
   } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.SpendLimitExceeded)) {
     // 429: wait `Retry-After` seconds
   } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.Interrupted)) {
@@ -613,18 +675,18 @@ try {
 |-------------|--------|---------|
 | `agent_run_conflict` | 409 | A run is already active on this conversation |
 | `agent_run_concurrency_limit` | 429 | Tenant's concurrent run limit reached (or the deferred queue is full); `Retry-After` says when to retry (30 s). A stream is refused before it opens, so this is the call's plain error |
-| `spend_limit_exceeded` / `agent_quota_exceeded` | 429 | A spend limit or the plan's agent quota is used up (`Retry-After`, 60 s for the quota); the same on `routines.run()`. A run uses a quota unit only once it is admitted |
+| `spend_limit_exceeded` / `agent_quota_exceeded` | 429 | A spend limit or the plan's agent quota is used up (`Retry-After`, 60 s for the quota); the same on `triggers.run()`. A run uses a quota unit only once it is admitted |
 | `agent_run_interrupted` | 503 | The run the call waited on was ended elsewhere (the server shut down, the worker was lost) before it finished; no answer. `retryable` and `side_effects_possible` are both `true` in the body |
 | `invalid_json` | 400 | The body of `runs.create()` / `responses.create()` is not a JSON object |
 | `invalid_version` | 400 | `version` is not a positive integer, a numeric string or `'draft'` (an unknown version is `404 version_not_found`) |
 | `attachment_unreachable` | 400 | A remote file or image URL could not be fetched, or did not arrive within the outbound timeout |
-| `agent_inactive` | 400 | The agent (of a run or a routine) is not active |
-| `invalid_routine` | 400 | A routine write was refused; `error.response.error.errors` lists `{ field, message }` |
-| `routine_not_found` / `routine_not_webhook` | 404 / 400 | No such routine; `rotateWebhookSecret()` on a routine without a webhook trigger |
-| `invalid_payload` / `invalid_headers` | 400 | `routines.run()` sample `payload` is not a JSON object or array / `headers` is not an object of strings |
+| `agent_inactive` | 400 | The agent (of a run or a trigger) is not active |
+| `invalid_trigger` | 400 | A trigger write was refused; `error.response.error.errors` lists `{ field, message }` |
+| `trigger_not_found` / `trigger_not_webhook` | 404 / 400 | No such trigger; `rotateWebhookSecret()` on a trigger that is not a webhook trigger |
+| `invalid_payload` / `invalid_headers` | 400 | `triggers.run()` sample `payload` is not a JSON object or array / `headers` is not an object of strings |
 | `sandbox_secrets_unreadable` | 409 | Saving an agent whose stored sandbox secrets cannot be decrypted (the encryption key changed) with masked values mixed with new ones; enter every secret again to replace them. Until then reads of the agent's sandbox config carry `sandbox.secretsUnreadable: true` with an empty secrets list, and the sandbox tools run without secrets and say so in their result |
 | `idempotency_key_conflict` | 409 | `Idempotency-Key` reused with a different request |
-| `invalid_inputs` | 400 | `inputs` do not fit the agent's input schema (`errors: [{ field, message }]`) |
+| `invalid_variables` | 400 | `variables` do not fit the agent's `variables_schema`: a required one is missing (also on a chat call, which never sends them), a wrong type, a value outside the allowed ones (`errors: [{ field, message }]`) |
 | `invalid_response_format` | 400 | `text.format` / `response_format` cannot be used |
 | `agent_run_already_terminal` | 409 | `runs.cancel()` on a finished run |
 | `action_not_found` / `session_not_found` | 404 | No such action / conversation in this project; `session_not_found` is also a `session_id` / `conversation` of another agent or project |

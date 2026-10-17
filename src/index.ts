@@ -34,9 +34,9 @@ export type {
 export { AgentRunPage } from './resources/agentRuns';
 export type { AgentRunListCall, AgentRunEvents } from './resources/agentRuns';
 
-// Routines: signs a delivery to a webhook trigger (auth `signature`)
-export { signRoutineWebhook } from './routineWebhook';
-export type { SignRoutineWebhookOptions } from './routineWebhook';
+// Triggers: signs a delivery to a webhook trigger (auth `signature`)
+export { signTriggerWebhook } from './triggerWebhook';
+export type { SignTriggerWebhookOptions } from './triggerWebhook';
 
 // Sessions: the page `agents.sessions.list()` resolves to
 export { AgentSessionPage } from './resources/agentSessions';

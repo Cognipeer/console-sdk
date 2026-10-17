@@ -1,7 +1,7 @@
 import { HttpClient } from '../http';
-import { AgentRoutinesResource } from './agentRoutines';
 import { AgentRunsResource } from './agentRuns';
 import { AgentSessionsResource } from './agentSessions';
+import { AgentTriggersResource } from './agentTriggers';
 import {
   Agent,
   AgentCreateRequest,
@@ -16,13 +16,14 @@ import {
 } from '../types';
 
 export { AgentRunsResource } from './agentRuns';
-export { AgentRoutinesResource } from './agentRoutines';
+export { AgentTriggersResource } from './agentTriggers';
 
 /**
  * Agents API resource
  *
  * Create, list and run AI agents: the OpenAI Responses API format for chat-style
- * calls, the runs API for jobs (async, scheduled, deferred) and routines for recurring work.
+ * calls, the runs API for jobs (async, scheduled, deferred) and triggers for work that starts on its own
+ * (a schedule, a set time, a webhook).
  *
  * @example
  * ```typescript
@@ -55,14 +56,14 @@ export class AgentsResource {
   private http: HttpClient;
   public readonly responses: AgentResponsesResource;
   public readonly runs: AgentRunsResource;
-  public readonly routines: AgentRoutinesResource;
+  public readonly triggers: AgentTriggersResource;
   public readonly sessions: AgentSessionsResource;
 
   constructor(http: HttpClient) {
     this.http = http;
     this.responses = new AgentResponsesResource(http);
     this.runs = new AgentRunsResource(http);
-    this.routines = new AgentRoutinesResource(http);
+    this.triggers = new AgentTriggersResource(http);
     this.sessions = new AgentSessionsResource(http);
   }
 

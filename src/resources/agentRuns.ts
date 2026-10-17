@@ -137,6 +137,7 @@ export interface AgentRunEvents {
  * // Fire and forget: queued, answered later (callback or wait).
  * const run = await client.agents.runs.create('report-bot', {
  *   input: 'Weekly numbers',
+ *   variables: { team: 'ops' }, // values for the agent's variables, next to the message
  *   class: 'deferred',
  *   metadata: { ticket: 'OPS-12' },
  * });
@@ -181,7 +182,7 @@ export class AgentRunsResource {
    * instead. A stream that closes early does not stop the run (`on_disconnect`: `continue`,
    * the default); follow it with `wait()` or `events.stream()`.
    *
-   * Rejects with `CognipeerAPIError`: 400 (`invalid_inputs`, `invalid_response_format`...),
+   * Rejects with `CognipeerAPIError`: 400 (`invalid_variables`, `invalid_response_format`...),
    * 404 (`agent_not_found`), 409 (`agent_run_conflict`, `idempotency_key_conflict`),
    * 429 (`agent_run_concurrency_limit`, `agent_quota_exceeded`; also for `stream: true`, which is
    * checked before the stream opens, so it is the plain error of the call, with `retryAfterMs`).
@@ -234,7 +235,7 @@ export class AgentRunsResource {
    *
    * ```typescript
    * const page = await client.agents.runs.list({ status: ['queued', 'running'], limit: 50 });
-   * for await (const run of client.agents.runs.list({ routine_id: 'rtn_1' })) console.log(run.id);
+   * for await (const run of client.agents.runs.list({ trigger_id: 'trg_1' })) console.log(run.id);
    * ```
    */
   list(query: ListAgentRunsQuery = {}, options: { signal?: AbortSignal } = {}): AgentRunListCall {
@@ -243,7 +244,7 @@ export class AgentRunsResource {
       status: Array.isArray(query.status) ? query.status.join(',') : query.status,
       class: query.class,
       session_id: query.session_id,
-      routine_id: query.routine_id,
+      trigger_id: query.trigger_id,
       channel: query.channel,
       trigger: query.trigger,
       created_after: timeQuery(query.created_after),

@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.0.0] - 2026-10-17
 
-The agent platform release: runs, routines (cron, once, manual and webhook triggers) and the OpenAI dialects over
-one engine. Needs the Console
-release that ships the agent runs API (`/client/v1/agents/{key}/runs`, routines, `/client/v1/responses` for
+The agent platform release: runs, triggers (schedule, once, manual and webhook; an agent can have several) and the
+OpenAI dialects over one engine. Needs the Console
+release that ships the agent runs API (`/client/v1/agents/{key}/runs`, triggers, `/client/v1/responses` for
 agents with the published version by default). `client.automations` (built-in automations) is unchanged.
 
 ### Breaking changes
@@ -33,45 +33,51 @@ agents with the published version by default). `client.automations` (built-in au
   `{ object: 'agent.session.cancel', session_id, cancelled, run_ids }` (`conversation_id` is gone; `run_ids` are `run_<id>`).
 - **`AgentResponse.output`** is `(ResponseReasoningItem | ResponseOutputMessage)[]`: the reasoning item comes first when
   the agent shows its reasoning. `usage` is `null` until the turn has an answer; `error` is `{ code, message }`.
-- **Routine shapes follow the Console**: `routines.list()` returns the list envelope `{ object: 'list', data, has_more }`
-  (not an array); ids are bare (no prefix), timestamps unix seconds (only `trigger.run_at` is ISO), `delete()` answers
-  `{ id, object: 'agent.routine.deleted', deleted: true }`, `AgentRoutineRunRequest.wait` moved to the call options
-  (`routines.run(agentKey, routineId, body, { wait })`).
 - **`ModelList.models`** (the registry rows) is always present; an agent entry's `description` is always a string.
 - **`AgentRunCallbackEvent`** carries `sessionId` and `conversationId`; the never-sent `tenantId` / `projectId` are removed.
 - **`runs.wait()`** uses the `?wait=` long-poll instead of 1 s polling: `pollIntervalMs` is now the smallest gap
   between polls, `waitSeconds` sets one poll's length (default 20, capped below the client timeout).
-- **`AgentRun`** has the new run shape (`class`, `version`, `session_id`, `channel`, `trigger`, `routine_id`,
+- **`AgentRun`** has the new run shape (`class`, `version`, `session_id`, `channel`, `trigger`, `trigger_id`,
   `metadata`, `output_text`, `output_parsed`, `scheduled_for`, `detached_at`); `AgentRunStatus` gains `scheduled`.
 - **Removed:** error codes `agent_background_disabled` (`AgentActionErrorCodes.BackgroundDisabled`),
   `idempotency_key_sync_not_supported` and the sync `timeout` 504 (`AgentRunErrorCodes.SyncTimeout`,
   `IdempotencyKeySyncNotSupported`: a turn past the window is a `202` now); webhook events `schedule.fired` /
-  `schedule.failed` and the `WebhookScheduleEvent` type (replaced by routines).
+  `schedule.failed` and the `WebhookScheduleEvent` type (replaced by `trigger.fired` / `trigger.failed`).
 - Removed the orphan JS Sandbox comment and `examples/js-sandbox-basic.ts` (`client.jsSandbox` no longer exists).
 
 ### Added
 
 - **`client.agents.runs`**: `create(agentKey, body, options?)` (`wait`, `class: 'default' | 'deferred'`, `run_at` /
-  `delay_seconds`, `inputs`, `response_format`, `callback`, `metadata`, `session_id`, `version`, `stream`; the
+  `delay_seconds`, `variables`, `response_format`, `callback`, `metadata`, `session_id`, `version`, `stream`; the
   `Prefer` header via `options.prefer`; an `Idempotency-Key` is generated when none is given), `list(query)`
   (OpenAI list envelope, `AgentRunPage` with `getNextPage()` and async iteration), `get(id, { wait })`, `cancel(id)`,
   `wait(id)`, `events(id)` / `events.stream(id)` (SSE with resume), `queue()`, `resolveAction(runId, actionId, body)`.
-- **`client.agents.routines`**: `list`, `create`, `get`, `update`, `delete`, `run(agentKey, routineId, body?, options?)`:
-  cron (+ IANA timezone), once (`run_at` / `delay_seconds`), manual and **webhook** triggers; each fire is a run.
-  `run()` answers the run (`200`, or `202` while it goes) and an `Idempotency-Key` is generated when none is given;
-  `429` carries `Retry-After`.
-- **Webhook triggers** (`trigger: { type: 'webhook', preset, auth, events, filter, include_payload }`; presets `github`,
-  `gitlab`, `azure_devops`, `generic`): a new routine comes back with `webhook: { url, secret }` (shown once);
-  `routines.rotateWebhookSecret(agentKey, routineId, { grace_seconds?, secret? })`;
-  `routines.deliveries(agentKey, routineId, { before?, limit? })` (the delivery log);
-  `routines.run(..., { payload, headers, dry_run })` builds the turn from a sample event, or with `dry_run: true`
-  answers an `AgentRoutineDryRun` and starts nothing.
-- **`signRoutineWebhook(secret, body, { timestamp?, eventId?, event? })`**, exported from the package root (no Node.js
+- **`client.agents.triggers`**: `list`, `create`, `get`, `update`, `delete`, `run(agentKey, triggerId, body?, options?)`.
+  A trigger starts an agent with a prompt on its own: on a cron schedule (+ IANA timezone), once, by hand, or on a
+  **webhook**. An agent can have several triggers; each has one `type` (`schedule`, `once`, `manual`, `webhook`) and the
+  settings of that type in the sub-object named after it (`schedule`, `once`, `webhook`). `list()` returns the list
+  envelope `{ object: 'list', data, has_more }`, ids are bare (no prefix), timestamps unix seconds (only `once.run_at` is
+  ISO), `delete()` answers `{ id, object: 'agent.trigger.deleted', deleted: true }`. Each fire is a run
+  (`channel: 'trigger'`, `runs.list({ trigger_id })`). `run()` answers the run (`200`, or `202` while it goes), takes `wait`
+  in the call options, and an `Idempotency-Key` is generated when none is given; `429` carries `Retry-After`.
+- **Webhook triggers** (`type: 'webhook'`, `webhook: { preset, auth, events, filter, include_payload }`; presets `github`,
+  `gitlab`, `azure_devops`, `generic`): a new trigger comes back with `webhook.secret` (shown once;
+  `AgentTriggerWithSecret`); `triggers.rotateWebhookSecret(agentKey, triggerId, { grace_seconds?, secret? })`;
+  `triggers.deliveries(agentKey, triggerId, { before?, limit? })` (the delivery log);
+  `triggers.run(..., { payload, headers, dry_run })` builds the turn from a sample event, or with `dry_run: true`
+  answers an `AgentTriggerDryRun` and starts nothing.
+- **`signTriggerWebhook(secret, body, { timestamp?, eventId?, event? })`**, exported from the package root (no Node.js
   APIs): the `x-cognipeer-signature` / `x-cognipeer-event-id` / `x-cognipeer-event` headers for a webhook trigger with
   auth `signature`. Tested against the Console's verifier.
+- **Variables**: an agent's declared variables are sent as `variables` next to the message (`runs.create()`,
+  `responses.create()`, chat completions, `triggers.create()` / `update()` / `run()`) and published as
+  `Agent.variables_schema`; a missing required value or a wrong type is `400 invalid_variables`
+  (`AgentRunErrorCodes.InvalidVariables`). Best for runs a program starts (the runs API, triggers, n8n / CI, an agent called
+  as a tool); chat clients never send them, so a required variable without a default fails every chat call. The README
+  and the Agents API page (Variables) explain it.
 - **`responses.create({ stream: true })`** returns an async iterator of typed `response.*` events
   (`AgentResponseStreamEvent`, `isResponseStreamEvent`); `responses.retrieve(id)`.
-- Request fields on agent responses: `text.format` (structured output), `metadata`, `service_tier`, `inputs`,
+- Request fields on agent responses: `text.format` (structured output), `metadata`, `service_tier`, `variables`,
   `background`, `callback_url` / `callback_secret`, `stream`, `store`; `input_file.file_url`.
   `AgentResponse` gains `output_text`, `output_parsed`, `output_error`, `output_files`, `error`, `metadata`,
   `text`, `service_tier`, `background` (also reported by `retrieve()` for a run started with `background: true`,
@@ -80,21 +86,22 @@ agents with the published version by default). `client.automations` (built-in au
   `response.failed`; the `error` event carries `error_type`.
 - **`client.models.list()`** typed with the project's models and its active agents (`id: 'agent:<key>'`,
   `cognipeer.kind === 'agent'`; `isAgentModelEntry`).
-- **Chat completions**: `response_format`, `stream_options.include_usage`, `service_tier`, `metadata`, `inputs`,
+- **Chat completions**: `response_format`, `stream_options.include_usage`, `service_tier`, `metadata`, `variables`,
   `conversation_id`; per-call `{ sessionId, idempotencyKey, signal }`; the `202` body (`choices: []`,
   `cognipeer.status` `queued | in_progress`, `run_id`, `session_id`), `output_files` / `stop_reason` / `stop_detail`
   and the usage chunk are typed.
-- `ReasoningEffort` accepts `xhigh` and `max`. `Agent.input_schema` / `output_schema`. `Agent.attachments.outputs`
+- `ReasoningEffort` accepts `xhigh` and `max`. `Agent.variables_schema` / `output_schema`. `Agent.attachments.outputs`
   (`enabled`, `max_files_per_turn`, `max_file_size_mb`, `types`): files the agent writes for the person work with uploads
   off when the agent has an attachments bucket. `AgentConfig.sandbox.secretsUnreadable`: stored sandbox secrets that can
   no longer be decrypted (see `AgentConfigErrorCodes.SandboxSecretsUnreadable`, `409 sandbox_secrets_unreadable`).
 - `runs.create({ stream: true })` sends an `Idempotency-Key` like every other run call (the Console accepts it on streams);
   `runs.resolveAction()` takes `{ background: true }` and answers the queued run; `runs.list({ trigger })` (a run's
   `trigger` is also `webhook`); `AgentRun.output_error`.
-- Webhook events `routine.fired`, `routine.failed` and `feedback.recorded` (typed, in `WEBHOOK_EVENT_TYPES`; routine
-  events carry `routineId`, `agentKey`, `trigger`, `runId` / `reason`, `event`); `agent_run.*` event data carries
-  `sessionId`, `status`, `class`, `metadata`, `routineId`. `verifyAgentRunCallback` and the callback types are unchanged.
-- Error codes `invalid_inputs` and `invalid_response_format`, `spend_limit_exceeded`, `agent_quota_exceeded` and
+- Webhook events `trigger.fired`, `trigger.failed` and `feedback.recorded` (typed, in `WEBHOOK_EVENT_TYPES`; trigger
+  events carry `triggerId`, `agentKey`, `trigger` (what started the fire), `runId` / `reason`, `event`); `agent_run.*` event
+  data carries `sessionId`, `status`, `class`, `metadata`, `triggerId`. `verifyAgentRunCallback` and the callback types are
+  unchanged.
+- Error codes `invalid_variables` and `invalid_response_format`, `spend_limit_exceeded`, `agent_quota_exceeded` and
   `agent_inactive` (`AgentRunErrorCodes`); run error reasons `expired` and `interrupted`.
 - Error codes `agent_run_interrupted` (503: the run a waiting call is attached to was ended elsewhere; retry with an
   idempotency key), `invalid_json`, `invalid_version` and `attachment_unreachable` (`AgentRunErrorCodes.Interrupted`,

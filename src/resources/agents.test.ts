@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { AgentsResource, AgentResponsesResource, AgentRunsResource } from './agents';
-import { AgentRoutinesResource } from './agentRoutines';
+import { AgentTriggersResource } from './agentTriggers';
 import {
   AgentActionErrorCodes,
   AgentRunWaitTimeoutError,
@@ -216,10 +216,10 @@ describe('AgentsResource', () => {
     expect((new AgentsResource(createMockHttp()) as unknown as Record<string, unknown>).chat).toBeUndefined();
   });
 
-  it('exposes runs, routines and sessions', () => {
+  it('exposes runs, triggers and sessions', () => {
     const resource = new AgentsResource(createMockHttp());
     expect(resource.runs).toBeInstanceOf(AgentRunsResource);
-    expect(resource.routines).toBeInstanceOf(AgentRoutinesResource);
+    expect(resource.triggers).toBeInstanceOf(AgentTriggersResource);
     expect(resource.sessions).toBeDefined();
   });
 });
@@ -387,7 +387,7 @@ describe('AgentResponsesResource (v4: published default, 202, structured output)
       text: { format: { type: 'json_schema', name: 'invoice', schema: { type: 'object' }, strict: true } },
       metadata: { ticket: 'OPS-12' },
       service_tier: 'flex',
-      inputs: { customer: 'acme' },
+      variables: { customer: 'acme' },
       reasoning: { effort: 'xhigh' },
     };
 
@@ -741,7 +741,7 @@ describe('AgentRunsResource (v4)', () => {
     http.request.mockResolvedValue(queued);
     const body: AgentRunCreateRequest = {
       input: 'Weekly numbers',
-      inputs: { team: 'ops' },
+      variables: { team: 'ops' },
       class: 'deferred',
       version: 'draft',
       delay_seconds: 3600,
@@ -844,6 +844,17 @@ describe('AgentRunsResource (v4)', () => {
     expect(http.request.mock.calls[1][2].query.after).toBe('run_2');
     expect(await next?.getNextPage()).toBeNull();
     expect(page.toJSON()).toMatchObject({ object: 'list', last_id: 'run_2', has_more: true });
+  });
+
+  it("list() filters a trigger's history with trigger_id (what started a run is `trigger`, where it came from `channel`)", async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ object: 'list', data: [makeRun({ id: 'run_1', trigger_id: 'trg_1', channel: 'trigger', trigger: 'webhook' })], first_id: 'run_1', last_id: 'run_1', has_more: false });
+
+    const page = await new AgentRunsResource(http).list({ trigger_id: 'trg_1', channel: 'trigger', trigger: 'webhook' });
+
+    expect(page.data[0].trigger_id).toBe('trg_1');
+    // exactly these filters: nothing else is sent (an unset filter is undefined, so it is left out of the URL)
+    expect(http.request.mock.calls[0][2].query).toEqual({ trigger_id: 'trg_1', channel: 'trigger', trigger: 'webhook' });
   });
 
   it('list() is an async iterator over every run of every page', async () => {

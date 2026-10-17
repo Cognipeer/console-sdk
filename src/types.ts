@@ -165,8 +165,11 @@ export interface ChatCompletionRequest {
   service_tier?: ServiceTier;
   /** Stored on the agent run (agents) / echoed (models). */
   metadata?: RequestMetadata;
-  /** Agent targets: values for the agent's declared inputs (`Agent.input_schema`). */
-  inputs?: Record<string, unknown>;
+  /**
+   * Agent targets: values for the agent's variables (`Agent.variables_schema`). Checked before the model is called
+   * (`400 invalid_variables`); a variable that is required and has no default makes every call without it fail.
+   */
+  variables?: Record<string, unknown>;
   /** Agent targets: continue this agent session (also `X-Cognipeer-Session-Id`). */
   conversation_id?: string;
   /**
@@ -2135,11 +2138,12 @@ export interface Agent {
    */
   models?: AgentModelChoice[];
   /**
-   * JSON Schema of the inputs the agent declares (`inputs` of a request, run or routine),
+   * JSON Schema of the variables the agent declares (the `variables` of a request, run or trigger),
    * "the agent as a typed function". Only on the single-agent lookup, and only when the
-   * agent declares inputs.
+   * agent declares variables. A chat client never fills them, so a required variable without a
+   * default makes chat calls fail with `400 invalid_variables`.
    */
-  input_schema?: Record<string, unknown> | null;
+  variables_schema?: Record<string, unknown> | null;
   /** JSON Schema of the agent's structured output (`output_parsed`). Only on the single-agent lookup, when it has one. */
   output_schema?: Record<string, unknown> | null;
 }
@@ -2321,8 +2325,8 @@ export interface AgentResponseCreateRequest {
   metadata?: RequestMetadata;
   /** `flex` runs the turn as a low-priority `deferred` run; every other value is the default class. */
   service_tier?: ServiceTier;
-  /** Values for the inputs the agent declares (`Agent.input_schema`). */
-  inputs?: Record<string, unknown>;
+  /** Values for the variables the agent declares (`Agent.variables_schema`). They belong to this turn: send them again on a follow-up turn. */
+  variables?: Record<string, unknown>;
   /** OpenAI compatibility. The turn is always stored; the value is ignored. */
   store?: boolean;
   /** Runtime context (downstream headers/metadata) for this invocation */
@@ -2692,7 +2696,7 @@ export interface AgentRequiredAction {
 
 /**
  * Lifecycle of an agent run. `scheduled` waits for its start time (`run_at` /
- * `delay_seconds`, a routine); `queued` waits for a worker. `succeeded`/`failed`/`canceled` are
+ * `delay_seconds`, a trigger); `queued` waits for a worker. `succeeded`/`failed`/`canceled` are
  * terminal. `requires_action` is NOT terminal: the run paused on an approval or
  * a question (its `result.required_action` lists them) and continues once they
  * are resolved.
@@ -2750,14 +2754,14 @@ export interface AgentRunError {
 export type AgentRunClass = 'default' | 'deferred';
 
 /** Where a run came from. */
-export type AgentRunChannel = 'runs' | 'responses' | 'chat_completions' | 'a2a' | 'routine' | (string & {});
+export type AgentRunChannel = 'runs' | 'responses' | 'chat_completions' | 'a2a' | 'trigger' | (string & {});
 
 /** What started a run. */
 export type AgentRunTrigger = 'request' | 'schedule' | 'once' | 'manual' | 'webhook' | (string & {});
 
 /**
  * A run of an agent turn (`object: 'agent.run'`): what `agents.runs.*`,
- * `agents.routines.run()` and the `202` of the runs API return. `result` is the
+ * `agents.triggers.run()` and the `202` of the runs API return. `result` is the
  * Responses-shaped answer once the run finished; `output_text` / `output_parsed`
  * are lifted from it for convenience.
  */
@@ -2777,8 +2781,8 @@ export interface AgentRun {
   conversation_id?: string;
   channel?: AgentRunChannel | null;
   trigger?: AgentRunTrigger | null;
-  /** The routine that fired it. */
-  routine_id?: string | null;
+  /** The trigger that fired it. */
+  trigger_id?: string | null;
   /** Request metadata. */
   metadata?: RequestMetadata | null;
   /**
@@ -2850,7 +2854,7 @@ export interface AgentRunPrefer {
   respondAsync?: boolean;
 }
 
-/** Per-call options of `runs.create()` and `routines.run()`. */
+/** Per-call options of `runs.create()` and `triggers.run()`. */
 export interface AgentRunCreateOptions {
   /**
    * Sent as `Idempotency-Key`. `runs.create()` generates one when you give none, so a
@@ -2868,8 +2872,8 @@ export interface AgentRunCreateOptions {
 export interface AgentRunCreateRequest {
   /** The user message: text, or Responses input items (`input_text`, `input_file`, `input_image`). */
   input?: string | ResponseInputItem[];
-  /** Values for the inputs the agent declares (`Agent.input_schema`). */
-  inputs?: Record<string, unknown>;
+  /** Values for the variables the agent declares (`Agent.variables_schema`). */
+  variables?: Record<string, unknown>;
   /** Continue this session; omitted starts a new one (its id is in the run). */
   session_id?: string;
   /** A version number, or `'draft'`. Omitted = the published version. */
@@ -2913,7 +2917,7 @@ export interface ListAgentRunsQuery {
   status?: AgentRunStatus | AgentRunStatus[];
   class?: AgentRunClass;
   session_id?: string;
-  routine_id?: string;
+  trigger_id?: string;
   channel?: AgentRunChannel;
   /** What started the run. */
   trigger?: AgentRunTrigger;
@@ -2991,8 +2995,8 @@ export const AgentRunErrorCodes = {
   AgentInactive: 'agent_inactive',
   /** 409: the Idempotency-Key was reused with a different request. */
   IdempotencyKeyConflict: 'idempotency_key_conflict',
-  /** 400: `inputs` do not fit the agent's input schema; `error.response.error.errors` lists the fields. */
-  InvalidInputs: 'invalid_inputs',
+  /** 400: `variables` do not fit the agent's `variables_schema` (a required one is missing, a wrong type, a value outside the allowed ones); `error.response.error.errors` lists the fields. */
+  InvalidVariables: 'invalid_variables',
   /** 400: the response format (`response_format` / `text.format`) cannot be used. */
   InvalidResponseFormat: 'invalid_response_format',
 } as const;
@@ -3058,19 +3062,23 @@ export interface AgentRunCallbackEvent {
 }
 
 // ============================================================================
-// Agent Routines
+// Agent Triggers
 // ============================================================================
+//
+// A trigger starts an agent on its own: on a cron schedule, once at a set time, by hand, or when
+// an external system posts a webhook. An agent can have several triggers; each one has ONE type, and
+// the settings of that type sit in the sub-object named after it (`schedule`, `once`, `webhook`).
 
 /** Sender presets of a webhook trigger: they set the auth modes and how the event name and delivery id are read. */
-export type AgentRoutineWebhookPreset = 'github' | 'gitlab' | 'azure_devops' | 'generic';
+export type AgentTriggerWebhookPreset = 'github' | 'gitlab' | 'azure_devops' | 'generic';
 
 /**
  * How a webhook delivery proves itself. Per preset (first = default): `github` takes
  * `github_signature`; `gitlab` `gitlab_token` or `standard_webhooks`; `azure_devops` `basic`
  * (the password is the secret) or `header`; `generic` `bearer`, `signature`
- * (`x-cognipeer-signature`, see `signRoutineWebhook()`), `header` or `standard_webhooks`.
+ * (`x-cognipeer-signature`, see `signTriggerWebhook()`), `header` or `standard_webhooks`.
  */
-export type AgentRoutineWebhookAuth =
+export type AgentTriggerWebhookAuth =
   | 'github_signature'
   | 'gitlab_token'
   | 'basic'
@@ -3080,20 +3088,38 @@ export type AgentRoutineWebhookAuth =
   | 'standard_webhooks';
 
 /** One rule of a webhook trigger's `filter` (all must match). Paths: `payload.action`, `payload.pull_request.labels.*.name`, `headers.x-github-event`, `event`. */
-export interface AgentRoutineFilterRule {
+export interface AgentTriggerWebhookFilterRule {
   path: string;
   op: 'eq' | 'neq' | 'in' | 'not_in' | 'exists' | 'not_exists' | 'contains' | 'starts_with' | 'glob';
   /** A string, number or boolean; a list for `in` / `not_in`; none for `exists` / `not_exists`. */
   value?: string | number | boolean | Array<string | number | boolean>;
 }
 
-/** A webhook trigger as a routine returns it: the URL to post to, never the secret. */
-export interface AgentRoutineWebhookTrigger {
-  type: 'webhook';
+/**
+ * What starts a trigger. A trigger has one type: `schedule` fires on a cron schedule, `once` at one
+ * time, `manual` only when you run it (`triggers.run()`), `webhook` when an authenticated delivery
+ * reaches its URL.
+ */
+export type AgentTriggerType = 'schedule' | 'once' | 'manual' | 'webhook';
+
+/** `AgentTrigger.schedule` (type `schedule`): a 5-field cron expression, read in an IANA timezone. */
+export interface AgentTriggerSchedule {
+  cron: string;
+  timezone: string;
+}
+
+/** `AgentTrigger.once` (type `once`): the one time it fires. */
+export interface AgentTriggerOnce {
+  /** ISO 8601. */
+  run_at: string;
+}
+
+/** `AgentTrigger.webhook` (type `webhook`): the URL to post to. The secret is never part of a read: only its last 4 characters (`secret_hint`). */
+export interface AgentTriggerWebhook {
   /** The public URL a sender posts to. */
   url: string;
-  preset: AgentRoutineWebhookPreset;
-  auth: AgentRoutineWebhookAuth;
+  preset: AgentTriggerWebhookPreset;
+  auth: AgentTriggerWebhookAuth;
   /** The header that carries the secret, for auth `header`; else null. */
   header_name: string | null;
   /** The last 4 characters of the secret. */
@@ -3104,60 +3130,31 @@ export interface AgentRoutineWebhookTrigger {
   previous_secret_valid_until: number | null;
   /** Event names to accept; empty = every event. */
   events: string[];
-  filter: AgentRoutineFilterRule[];
+  filter: AgentTriggerWebhookFilterRule[];
   /** The event payload (JSON) is appended to the message. */
   include_payload: boolean;
+  /**
+   * Only in the answer that created the trigger or gave it a new generated secret
+   * ({@link AgentTriggerWithSecret}): the secret is shown once and cannot be read again. Absent with
+   * `standard_webhooks`, where you gave the secret yourself.
+   */
+  secret?: string;
 }
 
-/**
- * When a routine fires, as a routine returns it: on a cron `schedule`, `once` at a time,
- * `manual`ly (`routines.run()`), or when an authenticated delivery reaches its `webhook` URL.
- */
-export type AgentRoutineTrigger =
-  | { type: 'schedule'; cron: string; timezone: string }
-  | { type: 'once'; run_at: string }
-  | { type: 'manual' }
-  | AgentRoutineWebhookTrigger;
-
-/**
- * Trigger of a create / update. `schedule`: 5-field cron, IANA `timezone` (default `UTC`).
- * `once`: `run_at` (ISO 8601 or unix seconds, not in the past) or `delay_seconds`, one of them.
- * `webhook`: a new one gets a URL and a generated secret (shown once, in `AgentRoutine.webhook`),
- * except with `standard_webhooks`, where `secret` is the sender's `whsec_...` secret.
- */
-export type AgentRoutineTriggerInput =
-  | { type: 'schedule'; cron: string; timezone?: string }
-  | { type: 'once'; run_at?: string | number; delay_seconds?: number }
-  | { type: 'manual' }
-  | {
-      type: 'webhook';
-      preset: AgentRoutineWebhookPreset;
-      /** Default: the first mode of the preset. */
-      auth?: AgentRoutineWebhookAuth;
-      /** For auth `header`: `x-...`, default `x-cognipeer-token`. */
-      header_name?: string;
-      /** `standard_webhooks` only: the sender's secret. */
-      secret?: string;
-      events?: string[] | null;
-      filter?: AgentRoutineFilterRule[] | null;
-      include_payload?: boolean;
-    };
-
-/** A routine of an agent (`object: 'agent.routine'`): a prompt the agent runs on a trigger. Each fire is an {@link AgentRun}. */
-export interface AgentRoutine {
-  /** The routine's id (no prefix). */
+/** What every trigger carries, whatever its type. */
+export interface AgentTriggerBase {
+  /** The trigger's id (no prefix). */
   id: string;
-  object: 'agent.routine';
+  object: 'agent.trigger';
   /** Agent key. */
   agent: string;
   name: string;
   description: string | null;
   enabled: boolean;
-  trigger: AgentRoutineTrigger;
   /** The message each fire sends; for a webhook trigger a Mustache template over the event (`{{payload.action}}`). */
   prompt: string;
-  /** For a webhook trigger: input name -> value or `{{path}}` template. */
-  inputs: Record<string, unknown> | null;
+  /** Values for the agent's variables; for a webhook trigger: variable name -> value or `{{path}}` template. */
+  variables: Record<string, unknown> | null;
   /** Pinned version; null = the published one. */
   version: number | null;
   class: AgentRunClass;
@@ -3175,30 +3172,81 @@ export interface AgentRoutine {
   last_error: string | null;
   created_at: number;
   updated_at: number;
-  /** Only in the answer that created the routine or gave its webhook trigger a new generated secret: the secret is shown once. */
-  webhook?: { url: string; secret: string };
-}
-
-/** `routines.list()`: every routine of the agent (`has_more` is always false). */
-export interface AgentRoutineList {
-  object: 'list';
-  data: AgentRoutine[];
-  has_more: boolean;
 }
 
 /**
- * Body of `routines.create()`. A routine without a `trigger` is `manual`. The prompt is
- * required unless the agent declares inputs and they are given (a webhook routine: unless
- * it includes the event payload or gives inputs).
+ * A trigger of an agent (`object: 'agent.trigger'`): a prompt the agent runs when the trigger
+ * fires. Each fire is an {@link AgentRun}. Check `type`: only the sub-object named after it is present
+ * (`schedule`, `once` or `webhook`; a `manual` trigger has none).
  */
-export interface AgentRoutineCreateRequest {
+export type AgentTrigger =
+  | (AgentTriggerBase & { type: 'schedule'; schedule: AgentTriggerSchedule })
+  | (AgentTriggerBase & { type: 'once'; once: AgentTriggerOnce })
+  | (AgentTriggerBase & { type: 'manual' })
+  | (AgentTriggerBase & { type: 'webhook'; webhook: AgentTriggerWebhook });
+
+/**
+ * A webhook trigger in the one answer that carries its generated secret (`webhook.secret`, shown once):
+ * the one that created it, or the one that replaced the secret (`update()` moving it to another auth mode).
+ */
+export type AgentTriggerWithSecret = Extract<AgentTrigger, { type: 'webhook' }> & { webhook: { secret: string } };
+
+/** `triggers.list()`: every trigger of the agent (`has_more` is always false). */
+export interface AgentTriggerList {
+  object: 'list';
+  data: AgentTrigger[];
+  has_more: boolean;
+}
+
+/** `schedule` of a create / update: 5-field cron, IANA `timezone` (default `UTC`). */
+export interface AgentTriggerScheduleInput {
+  cron: string;
+  timezone?: string;
+}
+
+/** `once` of a create / update: `run_at` (ISO 8601 or unix seconds, not in the past) or `delay_seconds`, one of them. */
+export interface AgentTriggerOnceInput {
+  run_at?: string | number;
+  delay_seconds?: number;
+}
+
+/**
+ * `webhook` of a create / update. A new webhook trigger gets a URL and a generated secret (shown once, in
+ * `webhook.secret` of the answer), except with `standard_webhooks`, where `secret` is the sender's `whsec_...` secret.
+ */
+export interface AgentTriggerWebhookInput {
+  preset: AgentTriggerWebhookPreset;
+  /** Default: the first mode of the preset. */
+  auth?: AgentTriggerWebhookAuth;
+  /** For auth `header`: `x-...`, default `x-cognipeer-token`. */
+  header_name?: string;
+  /** `standard_webhooks` only: the sender's secret. */
+  secret?: string;
+  events?: string[] | null;
+  filter?: AgentTriggerWebhookFilterRule[] | null;
+  include_payload?: boolean;
+}
+
+/** The type of a trigger and the settings of that type, as a create or update sends them: `type` with the sub-object named after it. */
+export type AgentTriggerTypeInput =
+  | { type: 'schedule'; schedule: AgentTriggerScheduleInput }
+  | { type: 'once'; once: AgentTriggerOnceInput }
+  | { type: 'manual' }
+  | { type: 'webhook'; webhook: AgentTriggerWebhookInput };
+
+/** The fields of a create or update that do not depend on the trigger's type. */
+export interface AgentTriggerWriteBase {
   name: string;
   description?: string | null;
   /** Default true. */
   enabled?: boolean;
-  trigger?: AgentRoutineTriggerInput;
+  /**
+   * The message each fire sends. Required unless the agent has variables and `variables` gives them (a webhook
+   * trigger: unless it includes the event payload or gives variables).
+   */
   prompt?: string;
-  inputs?: Record<string, unknown> | null;
+  /** Values for the agent's variables (`Agent.variables_schema`); for a webhook trigger: variable name -> value or `{{path}}` template. */
+  variables?: Record<string, unknown> | null;
   /** Pin a version (omitted or null = the published one). */
   version?: number | null;
   class?: AgentRunClass;
@@ -3208,31 +3256,37 @@ export interface AgentRoutineCreateRequest {
   response_format?: ChatResponseFormat | null;
 }
 
-/** Body of `routines.update()`: any field of the create body; the omitted ones stay. */
-export type AgentRoutineUpdateRequest = Partial<AgentRoutineCreateRequest>;
+/** Body of `triggers.create()`: one `type` and the sub-object named after it (`manual` has none). */
+export type AgentTriggerCreateRequest = AgentTriggerWriteBase & AgentTriggerTypeInput;
 
-/** Body of `routines.run()`: overrides for this one fire. */
-export interface AgentRoutineRunRequest {
-  /** Merged over the routine's inputs. */
-  inputs?: Record<string, unknown>;
+/**
+ * Body of `triggers.update()`: any field of the create body; the omitted ones stay. To change the type, or the
+ * settings of the type, send `type` together with its sub-object.
+ */
+export type AgentTriggerUpdateRequest = Partial<AgentTriggerWriteBase> & (AgentTriggerTypeInput | { type?: undefined });
+
+/** Body of `triggers.run()`: overrides for this one fire. */
+export interface AgentTriggerRunRequest {
+  /** Merged over the trigger's variables. */
+  variables?: Record<string, unknown>;
   metadata?: RequestMetadata;
-  /** Webhook routines: a sample event payload (a JSON object or array), built into the turn like a delivery. */
+  /** Webhook triggers: a sample event payload (a JSON object or array), built into the turn like a delivery. */
   payload?: Record<string, unknown> | unknown[];
-  /** Webhook routines: sample delivery headers (`x-github-event`, ...), for the event name and delivery id. */
+  /** Webhook triggers: sample delivery headers (`x-github-event`, ...), for the event name and delivery id. */
   headers?: Record<string, string>;
-  /** Webhook routines: evaluate the event filter and the turn, create nothing, answer an {@link AgentRoutineDryRun}. */
+  /** Webhook triggers: evaluate the event filter and the turn, create nothing, answer an {@link AgentTriggerDryRun}. */
   dry_run?: boolean;
 }
 
-/** Per-call options of `routines.run()`. */
-export interface AgentRoutineRunOptions extends AgentRunCreateOptions {
+/** Per-call options of `triggers.run()`. */
+export interface AgentTriggerRunOptions extends AgentRunCreateOptions {
   /** Hold the call up to this many seconds for the answer (default 0: the run answers `202` when it did not finish; capped by the Console's window). */
   wait?: number;
 }
 
-/** What `routines.run(..., { dry_run: true })` answers (200): the turn a delivery would build, nothing created. */
-export interface AgentRoutineDryRun {
-  object: 'agent.routine.dry_run';
+/** What `triggers.run(..., { dry_run: true })` answers (200): the turn a delivery would build, nothing created. */
+export interface AgentTriggerDryRun {
+  object: 'agent.trigger.dry_run';
   /** The event passed the trigger's `events` and `filter`. */
   matched: boolean;
   /** Why it did not match, else null. */
@@ -3241,28 +3295,29 @@ export interface AgentRoutineDryRun {
   delivery_id: string | null;
   /** The message the run would get (null when the turn cannot be built: see `errors`). */
   prompt: string | null;
-  inputs: Record<string, unknown> | null;
+  /** The resolved variables the run would get. */
+  variables: Record<string, unknown> | null;
   errors: Array<{ field: string; message: string }>;
 }
 
-/** `routines.delete()` answer. */
-export interface AgentRoutineDeleted {
+/** `triggers.delete()` answer. */
+export interface AgentTriggerDeleted {
   id: string;
-  object: 'agent.routine.deleted';
+  object: 'agent.trigger.deleted';
   deleted: true;
 }
 
-/** Body of `routines.rotateWebhookSecret()`. */
-export interface AgentRoutineRotateSecretRequest {
+/** Body of `triggers.rotateWebhookSecret()`. */
+export interface AgentTriggerRotateSecretRequest {
   /** Seconds (0 to 86400, default 0) the current secret stays accepted. */
   grace_seconds?: number;
   /** `standard_webhooks` only (required there): the sender's new `whsec_...` secret. */
   secret?: string;
 }
 
-/** `routines.rotateWebhookSecret()` answer. */
-export interface AgentRoutineWebhookSecret {
-  object: 'agent.routine.webhook_secret';
+/** `triggers.rotateWebhookSecret()` answer. */
+export interface AgentTriggerWebhookSecret {
+  object: 'agent.trigger.webhook_secret';
   /** The new secret, shown once; absent for `standard_webhooks`, where you gave it. */
   secret?: string;
   secret_hint: string;
@@ -3272,11 +3327,11 @@ export interface AgentRoutineWebhookSecret {
 
 /**
  * What became of a delivery: `accepted` started a run; `duplicate` repeated one; `filtered`
- * did not pass `events` / `filter`; `ignored` was a ping, a test or for a disabled routine;
+ * did not pass `events` / `filter`; `ignored` was a ping, a test or for a disabled trigger;
  * `unauthorized` failed the auth check; `rejected` was refused by a rate or run limit;
  * `failed` was not valid JSON or could not start a run.
  */
-export type AgentRoutineDeliveryOutcome =
+export type AgentTriggerDeliveryOutcome =
   | 'accepted'
   | 'duplicate'
   | 'filtered'
@@ -3286,12 +3341,12 @@ export type AgentRoutineDeliveryOutcome =
   | 'failed';
 
 /** One request to a webhook trigger's URL, as the delivery log keeps it: outcome and normalized ids only, never the payload. */
-export interface AgentRoutineDelivery {
+export interface AgentTriggerDelivery {
   id: string;
-  object: 'agent.routine.delivery';
+  object: 'agent.trigger.delivery';
   /** Unix seconds. */
   received_at: number;
-  outcome: AgentRoutineDeliveryOutcome;
+  outcome: AgentTriggerDeliveryOutcome;
   /** What the Console answered the sender. */
   http_status: number;
   event: string | null;
@@ -3304,15 +3359,15 @@ export interface AgentRoutineDelivery {
   bytes: number;
 }
 
-/** `routines.deliveries()`: newest first. */
-export interface AgentRoutineDeliveryList {
+/** `triggers.deliveries()`: newest first. */
+export interface AgentTriggerDeliveryList {
   object: 'list';
-  data: AgentRoutineDelivery[];
+  data: AgentTriggerDelivery[];
   has_more: boolean;
 }
 
-/** Query of `routines.deliveries()`. */
-export interface ListAgentRoutineDeliveriesQuery {
+/** Query of `triggers.deliveries()`. */
+export interface ListAgentTriggerDeliveriesQuery {
   /** A delivery id: the page starts after it (the last `id` of the previous page). */
   before?: string;
   /** 1 to 100, default 20. */
@@ -4012,8 +4067,8 @@ export type WebhookEventType =
   | 'agent_run.failed'
   | 'agent_run.canceled'
   | 'agent_run.requires_action'
-  | 'routine.fired'
-  | 'routine.failed'
+  | 'trigger.fired'
+  | 'trigger.failed'
   | 'feedback.recorded'
   | 'webhook.test'
   | (string & {});
@@ -4028,8 +4083,8 @@ export const WEBHOOK_EVENT_TYPES = [
   'agent_run.failed',
   'agent_run.canceled',
   'agent_run.requires_action',
-  'routine.fired',
-  'routine.failed',
+  'trigger.fired',
+  'trigger.failed',
   'feedback.recorded',
   'webhook.test',
 ] as const;
@@ -4185,30 +4240,30 @@ export type WebhookAgentRunEvent = WebhookEventEnvelope<
     status?: AgentRunStatus;
     class?: AgentRunClass;
     metadata?: RequestMetadata | null;
-    routineId?: string | null;
+    triggerId?: string | null;
   }
 >;
-/** What started a routine fire: a `schedule` tick, `once`, a `manual` run-now, or a `webhook` delivery. */
-type WebhookRoutineTrigger = 'schedule' | 'once' | 'manual' | 'webhook';
-export type WebhookRoutineFiredEvent = WebhookEventEnvelope<
-  'routine.fired',
+/** What started a trigger fire: a `schedule` tick, `once`, a `manual` run-now (any trigger type), or a `webhook` delivery. */
+type WebhookTriggerFireSource = 'schedule' | 'once' | 'manual' | 'webhook';
+export type WebhookTriggerFiredEvent = WebhookEventEnvelope<
+  'trigger.fired',
   {
-    routineId: string;
+    triggerId: string;
     agentKey: string;
-    trigger: WebhookRoutineTrigger;
+    trigger: WebhookTriggerFireSource;
     /** `run_<id>` of the run it started. */
     runId: string;
     /** The webhook event name, for a `webhook` trigger. */
     event?: string;
   }
 >;
-/** Sent at most once per routine and reason per hour. */
-export type WebhookRoutineFailedEvent = WebhookEventEnvelope<
-  'routine.failed',
+/** Sent at most once per trigger and reason per hour. */
+export type WebhookTriggerFailedEvent = WebhookEventEnvelope<
+  'trigger.failed',
   {
-    routineId: string;
+    triggerId: string;
     agentKey: string;
-    trigger: WebhookRoutineTrigger;
+    trigger: WebhookTriggerFireSource;
     event?: string;
     /** A fixed text: `agent run limit reached`, `spend limit reached`, `quota exceeded`, `agent is not active`, `internal error`, ... */
     reason: string;
@@ -4239,8 +4294,8 @@ export type KnownWebhookEvent =
   | WebhookActionRequiredEvent
   | WebhookBudgetReachedEvent
   | WebhookAgentRunEvent
-  | WebhookRoutineFiredEvent
-  | WebhookRoutineFailedEvent
+  | WebhookTriggerFiredEvent
+  | WebhookTriggerFailedEvent
   | WebhookFeedbackRecordedEvent
   | WebhookTestEvent;
 

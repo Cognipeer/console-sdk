@@ -114,7 +114,7 @@ See [Memory API](/api/memory) for details.
 
 ### `client.agents`
 
-Agents API resource — list, retrieve and invoke agents (Responses API), start and follow runs (`agents.runs`), run prompts on a schedule or from webhook events (`agents.routines`), and manage sessions.
+Agents API resource — list, retrieve and invoke agents (Responses API), start and follow runs (`agents.runs`), start agents on a schedule, at a set time or from a webhook (`agents.triggers`), and manage sessions.
 
 **Type:** `AgentsResource`
 
