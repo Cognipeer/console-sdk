@@ -579,6 +579,11 @@ export class AgentSessionActionsResource {
    * {@link AgentRun} comes back right away (`202`); follow it with
    * `agents.runs.wait()`.
    *
+   * The `id` of an inline answer is `resp_<runId>` of the run that paused (also while other
+   * actions of the pause are open): `responses.retrieve(id)` reads it, and the run's events
+   * (`agents.runs.events`) include the continuation. Only a pause that no run owns (one raised
+   * on the dashboard) keeps an id built from the session.
+   *
    * Rejects with `CognipeerAPIError`: 403 `action_forbidden` (not an allowed
    * approver), 404 `action_not_found` / `session_not_found`, 409
    * `action_not_pending` (already answered), `action_cancelled` (withdrawn before

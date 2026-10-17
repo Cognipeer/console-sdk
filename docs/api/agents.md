@@ -91,7 +91,7 @@ interface AgentAttachmentsInfo {
   max_files: number;             // files one session holds (0 while off)
   max_file_size_mb: number;      // largest file (0 while off)
   allowed_mime_types: string[];  // `image/*` wildcards allowed; empty = any
-  accepts_images: boolean;       // the agent's model reads images
+  accepts_images: boolean;       // uploads are on (`enabled`) AND the agent's model reads images; false while uploads are off
   outputs: {                     // files the agent writes for the person (see below)
     enabled: boolean;            // outputs are on, a bucket is set and it can take a file now
     max_files_per_turn: number;
@@ -151,7 +151,7 @@ The agent's own configuration decides instructions, sampling and tools: `instruc
 | `background` | boolean | No | Do not wait: answer at once (`202`) with a `queued` / `in_progress` response (also `X-Cognipeer-Background: true`) — see [Long turns](#long-turns-202-and-background) |
 | `stream` | boolean | No | Return an async iterator of `response.*` events — see [Streaming](#streaming) |
 | `callback_url` / `callback_secret` | string | No | Async runs: POST the terminal event there (signed with the secret, min 16 chars) |
-| `reasoning_effort` / `reasoning` | `none`…`high`, `xhigh`, `max` | No | Reasoning effort; the agent's own pick wins |
+| `reasoning_effort` / `reasoning` | `none`…`high`, `xhigh`, `max` | No | Reasoning effort; the agent's own pick wins. Applied when the run executes inside the request (a waited call or a stream); a queued run (`background: true`, `service_tier: 'flex'`) uses the agent's own effort |
 | `agent_model`, `runtime_context`, `budget`, `include_reasoning` | | No | As documented on `AgentResponseCreateRequest` |
 
 ### Multi-Turn Conversations
@@ -245,7 +245,14 @@ or the run as it stands. `: ping` comments keep idle connections open and are sk
 A call waits for the answer up to the Console's window (10 minutes by default; the plan may shorten it). When the turn is
 still going, the Console answers HTTP `202`: the SDK does **not** throw, it returns the response with
 `status: 'in_progress'` (or `'queued'`). The turn keeps running. `background: true` asks for that at once, and
-`retrieve()` then reports `background: true` (also for a run started with `stream: true`).
+`retrieve()` then reports `background: true` (also for a run started with `stream: true`). `background` is what the request
+asked for: a `service_tier: 'flex'` call is queued but reads `background: false`.
+
+If the run a waiting call is attached to is ended elsewhere before it finishes (the server shut down and handed its runs over,
+or the worker was lost), the call throws a `503` `CognipeerAPIError` with `errorCode === 'agent_run_interrupted'`
+(`AgentRunErrorCodes.Interrupted`) instead of returning a partial answer; tool calls may have run, so retry with an
+`idempotencyKey`. A `stream: true` call is checked against the run caps and the agent quota before it opens: over a limit it
+throws the plain `429` of the call (`retryAfterMs` set), not an event on the stream.
 
 
 ```typescript
@@ -282,12 +289,14 @@ interface AgentResponse {
   output_files?: AgentOutputFile[];
   incomplete_details?: { reason: string } | null;
   error?: { code: string; message: string } | null;   // when status is 'failed'
-  usage: { input_tokens: number; output_tokens: number; total_tokens: number } | null;   // null before there is an answer
+  usage: ResponseUsage | null;   // null before there is an answer; the two detail objects below are always present (0 when not reported)
+  //   ResponseUsage = { input_tokens, input_tokens_details: { cached_tokens }, output_tokens,
+  //                     output_tokens_details: { reasoning_tokens }, total_tokens }   (reasoning_tokens is 0 for an agent run)
   created_at: number;
   metadata?: Record<string, string> | null;
   text?: { format?: ResponsesTextFormat };
   service_tier?: string;          // 'flex' for a deferred run
-  background?: boolean;           // the run was started with background: true
+  background?: boolean;           // what the request asked for: true for background: true (flex reads false)
   previous_response_id: string | null;
   conversation?: { id: string } | null;
   version: number | null;
@@ -594,6 +603,8 @@ try {
     // 400: `inputs` do not fit agent.input_schema; error.response.error.errors lists the fields
   } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.SpendLimitExceeded)) {
     // 429: wait `Retry-After` seconds
+  } else if (isAgentRunErrorCode(error, AgentRunErrorCodes.Interrupted)) {
+    // 503: the run was ended elsewhere (shutdown, lost worker); retry with an idempotency key
   }
 }
 ```
@@ -601,8 +612,12 @@ try {
 | `errorCode` | Status | Meaning |
 |-------------|--------|---------|
 | `agent_run_conflict` | 409 | A run is already active on this conversation |
-| `agent_run_concurrency_limit` | 429 | Tenant's concurrent run limit reached (or the deferred queue is full); `Retry-After` says when to retry |
-| `spend_limit_exceeded` / `agent_quota_exceeded` | 429 | A spend limit or the plan's agent quota is used up (`Retry-After`); the same on `routines.run()` |
+| `agent_run_concurrency_limit` | 429 | Tenant's concurrent run limit reached (or the deferred queue is full); `Retry-After` says when to retry (30 s). A stream is refused before it opens, so this is the call's plain error |
+| `spend_limit_exceeded` / `agent_quota_exceeded` | 429 | A spend limit or the plan's agent quota is used up (`Retry-After`, 60 s for the quota); the same on `routines.run()`. A run uses a quota unit only once it is admitted |
+| `agent_run_interrupted` | 503 | The run the call waited on was ended elsewhere (the server shut down, the worker was lost) before it finished; no answer. `retryable` and `side_effects_possible` are both `true` in the body |
+| `invalid_json` | 400 | The body of `runs.create()` / `responses.create()` is not a JSON object |
+| `invalid_version` | 400 | `version` is not a positive integer, a numeric string or `'draft'` (an unknown version is `404 version_not_found`) |
+| `attachment_unreachable` | 400 | A remote file or image URL could not be fetched, or did not arrive within the outbound timeout |
 | `agent_inactive` | 400 | The agent (of a run or a routine) is not active |
 | `invalid_routine` | 400 | A routine write was refused; `error.response.error.errors` lists `{ field, message }` |
 | `routine_not_found` / `routine_not_webhook` | 404 / 400 | No such routine; `rotateWebhookSecret()` on a routine without a webhook trigger |

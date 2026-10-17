@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { HttpClient } from './http';
-import { CognipeerAPIError, CognipeerError } from './types';
+import { AgentRunErrorCodes, CognipeerAPIError, CognipeerError, isAgentRunErrorCode } from './types';
 import { SDK_VERSION } from './version';
 
 function jsonResponse(
@@ -415,6 +415,43 @@ describe('HttpClient', () => {
         errorCode: 'timeout',
       });
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('surfaces a 503 agent_run_interrupted with its code and Retry-After', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              type: 'server_error',
+              code: 'agent_run_interrupted',
+              message: 'The agent run was stopped before it finished. It was not completed; retry it.',
+              retryable: true,
+              side_effects_possible: true,
+            },
+          },
+          { status: 503 },
+        ),
+      );
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+
+      const error = (await http.request('POST', '/v1/responses', { body: {} }).catch((e: unknown) => e)) as CognipeerAPIError;
+      expect(error).toBeInstanceOf(CognipeerAPIError);
+      expect(error.statusCode).toBe(503);
+      expect(isAgentRunErrorCode(error, AgentRunErrorCodes.Interrupted)).toBe(true);
+    });
+
+    it('surfaces the 429 of a stream refused before it opened, with retryAfterMs', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(
+          { error: { type: 'rate_limit_error', code: 'agent_quota_exceeded', message: 'quota' } },
+          { status: 429, headers: { 'retry-after': '60' } },
+        ),
+      );
+      const http = new HttpClient('https://api.test', 'key', 5000, 0, fetchMock);
+
+      const error = (await http.request('POST', '/v1/responses', { body: { stream: true } }).catch((e: unknown) => e)) as CognipeerAPIError;
+      expect(isAgentRunErrorCode(error, AgentRunErrorCodes.QuotaExceeded)).toBe(true);
+      expect(error.retryAfterMs).toBe(60_000);
     });
 
     it('F-16: does not retry a 429 past maxRetries', async () => {

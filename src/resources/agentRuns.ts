@@ -183,7 +183,14 @@ export class AgentRunsResource {
    *
    * Rejects with `CognipeerAPIError`: 400 (`invalid_inputs`, `invalid_response_format`...),
    * 404 (`agent_not_found`), 409 (`agent_run_conflict`, `idempotency_key_conflict`),
-   * 429 (`agent_run_concurrency_limit`).
+   * 429 (`agent_run_concurrency_limit`, `agent_quota_exceeded`; also for `stream: true`, which is
+   * checked before the stream opens, so it is the plain error of the call, with `retryAfterMs`).
+   * A body that is not a JSON object is 400 `invalid_json`. A call refused before its run
+   * exists leaves no session behind.
+   *
+   * A retry of a `stream: true` call with the same idempotency key is answered as a stream too
+   * (the stored terminal event of a finished run, or a further `response.in_progress` while it
+   * still goes on). `reasoning` applies to a streamed run; a queued run uses the agent's own effort.
    */
   async create(
     agentKey: string,
@@ -275,7 +282,10 @@ export class AgentRunsResource {
   /**
    * Request cancellation. A `scheduled` / `queued` / `requires_action` run is `canceled`
    * at once; a `running` one asks the executor to stop, so the returned run may still read
-   * `running` (with `cancel_requested_at`) until it lands: use `wait()` to see it.
+   * `running` (with `cancel_requested_at`) until it lands: use `wait()` to see it. A paused run
+   * also ends `canceled` (`canceled_by_caller`, with its callback and `agent_run.canceled` event) when
+   * its pause is dropped another way: a new message to an agent set to cancel pending requests, a
+   * session truncate, or a timeout of `onTimeout: 'cancel'`.
    *
    * Throws `CognipeerAPIError` with `errorCode === 'agent_run_already_terminal'`
    * (409) if the run already finished, and a 404 if it does not exist.

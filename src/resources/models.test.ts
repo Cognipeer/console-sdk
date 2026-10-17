@@ -49,6 +49,18 @@ describe('ModelsResource', () => {
     });
   });
 
+  it('passes an agents-only list through: agents in data, no registry rows, no providers', async () => {
+    const http = createMockHttp();
+    const agentsOnly: ModelList = { object: 'list', data: [list.data[1]], models: [] };
+    http.request.mockResolvedValue(agentsOnly);
+
+    const result = await new ModelsResource(http).list({ includeProviders: true });
+
+    expect(result.models).toEqual([]);
+    expect(result.providers).toBeUndefined();
+    expect(result.data.every(isAgentModelEntry)).toBe(true);
+  });
+
   it('tells agent entries from model entries', () => {
     const agents = list.data.filter(isAgentModelEntry);
     expect(agents.map((a) => a.cognipeer.key)).toEqual(['support-bot']);

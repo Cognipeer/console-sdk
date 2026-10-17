@@ -130,7 +130,11 @@ export interface ChatCompletionRequest {
   agent_model?: string;
   /** Reasoning effort. Model Hub / agent picks win over it; an invalid value is `400 invalid_reasoning`. */
   reasoning_effort?: ReasoningEffort;
-  /** Same as `reasoning_effort` in the Responses shape; the object wins when both are sent. */
+  /**
+   * Same as `reasoning_effort` in the Responses shape; the object wins when both are sent.
+   * For an agent it applies when the run executes inside the request; a queued run
+   * (`service_tier: 'flex'`) uses the agent's own effort.
+   */
   reasoning?: { effort?: ReasoningEffort };
   messages: ChatMessage[];
   temperature?: number;
@@ -140,6 +144,7 @@ export interface ChatCompletionRequest {
   stop?: string | string[];
   presence_penalty?: number;
   frequency_penalty?: number;
+  /** Opaque end-user id. For an agent it also takes part in the transcript match that continues a session: two end users with the same transcript start separate sessions. */
   user?: string;
   request_id?: string;
   tools?: Tool[];
@@ -164,6 +169,12 @@ export interface ChatCompletionRequest {
   inputs?: Record<string, unknown>;
   /** Agent targets: continue this agent session (also `X-Cognipeer-Session-Id`). */
   conversation_id?: string;
+  /**
+   * Agent targets: the agent version to run. A positive integer (a numeric string is accepted too)
+   * pins a published version, `'draft'` runs the draft; omitted = the published version. Anything else
+   * is `400 invalid_version`, a version that does not exist `404 version_not_found`.
+   */
+  version?: AgentRunVersion;
 }
 
 /** Per-call options of `chat.completions.create()`. */
@@ -302,14 +313,19 @@ export interface ListModelsQuery {
   includeProviders?: boolean;
 }
 
-/** `GET /api/client/v1/models`: the OpenAI discovery list (`data`, models and agents) and the full registry rows (`models`). */
+/**
+ * `GET /api/client/v1/models`: the OpenAI discovery list (`data`, models and agents) and the full registry rows (`models`).
+ * The route admits a token that holds the `models` OR the `agents` service (read) and shows each its own part: a token
+ * with `agents` read only gets the agent entries in `data`, `models: []` and no `providers`; a token with `models` read
+ * only gets no agents; a token with neither is rejected (`403`).
+ */
 export interface ModelList {
   object: 'list';
-  /** The project's LLM models, then (for a token that may read agents, unless `category` is not `llm` or a provider filter is set) its active agents. */
+  /** The project's LLM models (for a token that may read models), then (for a token that may read agents, unless `category` is not `llm` or a provider filter is set) its active agents. */
   data: ModelListEntry[];
-  /** The project's model registry rows (secrets masked); agents are not in it. */
+  /** The project's model registry rows (secrets masked); agents are not in it. Empty for a token that can only read agents. */
   models: Array<Record<string, unknown>>;
-  /** Present with `includeProviders`. */
+  /** Present with `includeProviders`, for a token that may read models. */
   providers?: Array<Record<string, unknown>>;
 }
 
@@ -2152,10 +2168,11 @@ export interface AgentAttachmentsInfo {
   /** Accepted MIME types (`image/*` style wildcards allowed); empty = any. */
   allowed_mime_types: string[];
   /**
-   * The agent's model accepts image input. When false, an attached image is
-   * replaced by a note saying so (the model never sees it). A chat model with no
-   * stored setting is taken to accept images when its id belongs to a known
-   * vision family.
+   * The agent can take an image now: uploads are on and the bucket can take a file
+   * (`enabled`) AND the agent's model accepts image input. It is `false` whenever uploads are
+   * off or the bucket is unusable, whatever the model can read. When false, an attached image
+   * is replaced by a note saying so (the model never sees it). A chat model with no stored
+   * setting is taken to accept images when its id belongs to a known vision family.
    */
   accepts_images: boolean;
   /**
@@ -2344,7 +2361,11 @@ export interface AgentResponseCreateRequest {
    * Not offered: `400 model_not_allowed`.
    */
   agent_model?: string;
-  /** Reasoning effort; the agent's own pick and the Model Hub default win over it. */
+  /**
+   * Reasoning effort; the agent's own pick and the Model Hub default win over it. Applied when the run
+   * executes inside the request (a waited call or a stream); a queued run (`background: true`,
+   * `service_tier: 'flex'`) uses the agent's own effort.
+   */
   reasoning_effort?: ReasoningEffort;
   /** Same as `reasoning_effort` in the Responses shape; the object wins when both are sent. */
   reasoning?: { effort?: ReasoningEffort };
@@ -2397,10 +2418,17 @@ export interface ResponseReasoningItem {
 /** An item of `AgentResponse.output`. */
 export type ResponseOutputItem = ResponseReasoningItem | ResponseOutputMessage;
 
-/** Token usage information */
+/**
+ * Token usage of an agent response. The two detail objects are always present (`0` when a
+ * detail was not reported by the run).
+ */
 export interface ResponseUsage {
   input_tokens: number;
+  /** `cached_tokens`: the cached slice of `input_tokens`. */
+  input_tokens_details: { cached_tokens: number };
   output_tokens: number;
+  /** `reasoning_tokens`: the reasoning slice of `output_tokens`; always `0` for an agent run (the platform has no source for it). */
+  output_tokens_details: { reasoning_tokens: number };
   total_tokens: number;
 }
 
@@ -2474,7 +2502,11 @@ export interface AgentResponse {
   /** The structured-output format the turn used, when any. */
   text?: { format?: ResponsesTextFormat };
   service_tier?: ServiceTier;
-  /** True for a run started with `background: true` (also with `stream: true`) or the `X-Cognipeer-Background` header; `retrieve()` reports it too. */
+  /**
+   * What the request asked for: `true` for a run started with `background: true` (also with
+   * `stream: true`) or the `X-Cognipeer-Background` header; `retrieve()` reports it too. A
+   * `service_tier: 'flex'` call is queued but was not a background request, so it reads `false`.
+   */
   background?: boolean;
   /** Previous response ID if this is a follow-up */
   previous_response_id: string | null;
@@ -2860,6 +2892,7 @@ export interface AgentRunCreateRequest {
   /** Structured output for this run. */
   response_format?: ChatResponseFormat;
   runtime_context?: RuntimeContext;
+  /** Applied to a streamed run only: a queued run (the default, `deferred`, scheduled) uses the agent's own effort. */
   reasoning?: { effort?: ReasoningEffort };
   agent_model?: string;
   budget?: AgentSessionBudget;
@@ -2933,12 +2966,27 @@ export const AgentRunErrorCodes = {
   Conflict: 'agent_run_conflict',
   /** 409: cancel was called on a run that already finished (runs API). */
   AlreadyTerminal: 'agent_run_already_terminal',
-  /** 429 (with `Retry-After`): the tenant hit its concurrent run limit (or the deferred queue is full). */
+  /**
+   * 429 (`Retry-After: 30`): the tenant hit its concurrent run limit (or the deferred queue is full).
+   * A stream is checked before it opens, so this is the plain `429` of the call, not an event on the stream.
+   */
   ConcurrencyLimit: 'agent_run_concurrency_limit',
   /** 429 (with `Retry-After`): a spend limit is used up. */
   SpendLimitExceeded: 'spend_limit_exceeded',
-  /** 429 (with `Retry-After`): the plan's agent quota is used up. */
+  /** 429 (`Retry-After: 60` on a stream): the plan's agent quota is used up. A run counts a unit only once admitted. */
   QuotaExceeded: 'agent_quota_exceeded',
+  /**
+   * 503 (`retryable: true`, `side_effects_possible: true`): the run the call waited on was ended elsewhere
+   * (the server shut down and handed its runs over, or the worker was lost) before it finished, so there is
+   * no answer. Read the run or send the request again (use an `Idempotency-Key`: tool calls may have run).
+   */
+  Interrupted: 'agent_run_interrupted',
+  /** 400: the body of the call is not a JSON object. */
+  InvalidJson: 'invalid_json',
+  /** 400: `version` is not a positive integer, a numeric string or `'draft'` (an unknown version is 404 `version_not_found`). */
+  InvalidVersion: 'invalid_version',
+  /** 400: a remote file or image URL could not be fetched, or did not arrive within the outbound timeout. */
+  AttachmentUnreachable: 'attachment_unreachable',
   /** 400: the agent is not active. */
   AgentInactive: 'agent_inactive',
   /** 409: the Idempotency-Key was reused with a different request. */
@@ -2985,7 +3033,11 @@ export class AgentRunWaitTimeoutError extends CognipeerError {
  * (`verifyAgentRunCallback`) on the raw body before trusting it.
  */
 export interface AgentRunCallbackEvent {
-  /** `evt_<runId>_<event>`: stable across retries of the same event. */
+  /**
+   * `evt_<runId>_<event>`: stable across retries of the same event. After the run was resumed from a pause
+   * the id carries the run's generation, `evt_<runId>_<event>_<generation>` from the second outcome on, so
+   * every outcome has its own id.
+   */
   id: string;
   /**
    * `agent_run.succeeded` | `agent_run.failed` | `agent_run.canceled`, and

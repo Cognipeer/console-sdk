@@ -77,6 +77,21 @@ describe('agent run error helpers', () => {
   });
 });
 
+describe('agent run error codes of the platform fixes', () => {
+  it('names the codes the Console answers with', () => {
+    expect(AgentRunErrorCodes.Interrupted).toBe('agent_run_interrupted');
+    expect(AgentRunErrorCodes.InvalidJson).toBe('invalid_json');
+    expect(AgentRunErrorCodes.InvalidVersion).toBe('invalid_version');
+    expect(AgentRunErrorCodes.AttachmentUnreachable).toBe('attachment_unreachable');
+  });
+
+  it('matches a 400 invalid_version by code', () => {
+    const error = new CognipeerAPIError('bad', 400, 'invalid_request_error', undefined, undefined, 'invalid_version');
+    expect(isAgentRunErrorCode(error, AgentRunErrorCodes.InvalidVersion)).toBe(true);
+    expect(isAgentRunErrorCode(error, AgentRunErrorCodes.InvalidJson)).toBe(false);
+  });
+});
+
 describe('agent run status helpers', () => {
   it('requires_action is settled for wait() but not terminal', () => {
     expect(isAgentRunTerminal('requires_action')).toBe(false);

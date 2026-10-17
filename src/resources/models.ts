@@ -5,6 +5,8 @@ import { ListModelsQuery, ModelList } from '../types';
  * Models API: what the project can call. The list holds the project's models AND its
  * active agents (`id: 'agent:<key>'`, `cognipeer.kind === 'agent'`; only for tokens that
  * may read agents); either id works as `model` in `chat.completions` and `agents.responses`.
+ * A token needs the `models` OR the `agents` service (read): an agents-only token lists just
+ * the agents (`models: []`, no providers), a token with neither gets a 403.
  *
  * @example
  * ```typescript

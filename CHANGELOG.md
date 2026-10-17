@@ -96,6 +96,24 @@ agents with the published version by default). `client.automations` (built-in au
   `sessionId`, `status`, `class`, `metadata`, `routineId`. `verifyAgentRunCallback` and the callback types are unchanged.
 - Error codes `invalid_inputs` and `invalid_response_format`, `spend_limit_exceeded`, `agent_quota_exceeded` and
   `agent_inactive` (`AgentRunErrorCodes`); run error reasons `expired` and `interrupted`.
+- Error codes `agent_run_interrupted` (503: the run a waiting call is attached to was ended elsewhere; retry with an
+  idempotency key), `invalid_json`, `invalid_version` and `attachment_unreachable` (`AgentRunErrorCodes.Interrupted`,
+  `InvalidJson`, `InvalidVersion`, `AttachmentUnreachable`). Note the client retries a `503` on its own unless the body
+  says `retryable: false`.
+- `ChatCompletionRequest.version` (`number | 'draft'`) pins an agent version on `/chat/completions`.
+
+### Changed (platform fixes, no API change)
+
+- `ResponseUsage` always carries `input_tokens_details.cached_tokens` and `output_tokens_details.reasoning_tokens`
+  (both required in the type; `0` when not reported, and `reasoning_tokens` is `0` for agents).
+- `ModelList`: a token that can read agents but not models lists the agents only (`models: []`, no providers).
+- A stream that would exceed the concurrency cap or the agent quota is refused with a plain `429` before it opens
+  (`Retry-After` 30 s for the cap, 60 s for the quota); concurrency `429`s carry `Retry-After` on every call.
+- `AgentResponse.background` reports what the request asked for (a flex call reads `false`); `reasoning` applies to
+  runs that execute inside the request only; `accepts_images` is `false` while uploads are off.
+- `AgentRunCallbackEvent.id` is `evt_<runId>_<event>` for the first delivery and gets a `_<generation>` suffix for
+  later generations of a run; `runs.resolveAction()` answers `resp_<runId>` for pending and resumed outcomes;
+  `runs.cancel()` of a paused run ends it as `canceled` with `canceled_by_caller`.
 
 
 ## [3.2.0] - 2026-10-14

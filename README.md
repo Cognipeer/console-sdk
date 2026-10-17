@@ -178,7 +178,7 @@ const client = new ConsoleClient({
 
 #### Chat and models
 - `client.chat.completions.create(params, { sessionId?, idempotencyKey?, signal? })` - Create chat completion (streaming supported; `response_format`, `stream_options.include_usage`, `service_tier`, `metadata`; `model` may be an agent, `agent:<key>`)
-- `client.models.list()` - `data` holds the project's LLM models AND its active agents (`id: 'agent:<key>'`, `cognipeer.kind === 'agent'`; use `isAgentModelEntry`); `models` the registry rows
+- `client.models.list()` - `data` holds the project's LLM models AND its active agents (`id: 'agent:<key>'`, `cognipeer.kind === 'agent'`; use `isAgentModelEntry`); `models` the registry rows (a token that can only read agents gets the agents alone: `models: []`, no providers)
 
 #### Agents
 - `client.agents.responses.create(params, options?)` - Invoke an agent (OpenAI Responses API format). Runs the **published** version (`version: 3` pins, `version: 'draft'` runs the draft); `text.format` structured output (`output_parsed`), `metadata`, `service_tier`, `inputs`; `stream: true` returns an async iterator of typed `response.*` events; a turn past the Console's window answers `202` and **returns** the response with `status: 'queued' | 'in_progress'` (never throws)

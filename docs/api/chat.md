@@ -103,7 +103,11 @@ await client.chat.completions.create({
 
 `model` can name an agent (`agent:support-bot`, or its key when no model has that key): the agent runs its published
 version and its answer is `message.content` (a JSON string with `response_format`). `client.models.list()` lists the
-project's models and agents together (`cognipeer.kind === 'agent'`).
+project's models and agents together (`cognipeer.kind === 'agent'`); a token that can only read agents lists the agents alone
+(`models: []`, no providers). `version` pins a published version (a positive integer or numeric string) or runs the draft
+(`'draft'`); anything else is `400 invalid_version`. The agent continues a session from a resent transcript only when
+exactly one of the caller's sessions matches it, and the match covers file and image references and the `user` field, so
+different end users start separate sessions.
 
 ```typescript
 const res = await client.chat.completions.create(

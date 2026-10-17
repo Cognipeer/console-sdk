@@ -47,6 +47,20 @@ describe('ChatCompletionsResource', () => {
     expect(http.stream).not.toHaveBeenCalled();
   });
 
+  it('sends the agent version (a number or the draft) and the end-user id in the body', async () => {
+    const http = createMockHttp();
+    vi.mocked(http.request).mockResolvedValue({} as ChatCompletionResponse);
+    const resource = new ChatCompletionsResource(http);
+
+    const pinned: ChatCompletionRequest = { ...baseParams, model: 'agent:support', version: 3, user: 'end-user-1' };
+    await resource.create(pinned);
+    const draft: ChatCompletionRequest = { ...baseParams, model: 'agent:support', version: 'draft' };
+    await resource.create(draft);
+
+    expect(http.request).toHaveBeenNthCalledWith(1, 'POST', '/api/client/v1/chat/completions', { body: pinned });
+    expect(http.request).toHaveBeenNthCalledWith(2, 'POST', '/api/client/v1/chat/completions', { body: draft });
+  });
+
   it('creates a non-streaming completion via http.request when stream is explicitly false', async () => {
     const http = createMockHttp();
     const params: ChatCompletionRequest & { stream: false } = { ...baseParams, stream: false };

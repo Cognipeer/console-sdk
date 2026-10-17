@@ -174,7 +174,14 @@ export class AgentResponsesResource {
    *   returns the {@link AgentResponse} with `status: 'queued'` or `'in_progress'`. The
    *   turn keeps running: follow it with `retrieve(res.id)` or
    *   `client.agents.runs.wait(res.cognipeer.run_id)`.
-   * - `stream: true` returns an async iterator of typed `response.*` events.
+   * - `stream: true` returns an async iterator of typed `response.*` events. The run caps and the
+   *   agent quota are checked before the stream opens, so over a limit the call throws the plain
+   *   `CognipeerAPIError` (429, with `retryAfterMs`); a limit reached in the instant after that
+   *   check, or a run ended elsewhere (`agent_run_interrupted`), arrives as an `error` event.
+   * - A waited call whose run was ended elsewhere before it finished (the server shut down, the worker
+   *   was lost) throws a 503 `CognipeerAPIError` with `errorCode === 'agent_run_interrupted'`
+   *   (`AgentRunErrorCodes.Interrupted`), never a partial answer. Send an `idempotencyKey`
+   *   so a retry does not repeat tool side effects. A body that is not a JSON object is 400 `invalid_json`.
    *
    * @example
    * ```typescript
