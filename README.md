@@ -13,7 +13,7 @@ Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com
 - 🚦 **Moderations** - OpenAI-compatible content moderation backed by guardrails
 - 💰 **Spend & Budgets** - Cost reporting and enforced spend caps per tenant/token/model
 - 🎧 **Realtime** - Low-latency voice sessions over WebSocket (binary PCM/G.711 audio, server turn detection, barge-in, first message, latency metrics) and Twilio phone calls
-- 🧑‍✈️ **Agents** - Invoke Console-managed agents (OpenAI Responses API, streaming), run async/scheduled/deferred jobs (`agents.runs`) and recurring routines (`agents.routines`)
+- 🧑‍✈️ **Agents** - Invoke Console-managed agents (OpenAI Responses API, streaming), run async/scheduled/deferred jobs (`agents.runs`), and recurring or event-driven routines (`agents.routines`: cron, once, manual, webhook)
 - 📊 **Embeddings** - Text vectorization for semantic search
 - 🗄️ **Vector Operations** - Manage vector databases (Pinecone, Chroma, Qdrant, etc.)
 - 📁 **File Management** - Upload, download, and manage files with markdown conversion + file providers
@@ -178,27 +178,31 @@ const client = new ConsoleClient({
 
 #### Chat and models
 - `client.chat.completions.create(params, { sessionId?, idempotencyKey?, signal? })` - Create chat completion (streaming supported; `response_format`, `stream_options.include_usage`, `service_tier`, `metadata`; `model` may be an agent, `agent:<key>`)
-- `client.models.list()` - The project's models AND active agents (`id: 'agent:<key>'`, `cognipeer.kind === 'agent'`; use `isAgentModelEntry`)
+- `client.models.list()` - `data` holds the project's LLM models AND its active agents (`id: 'agent:<key>'`, `cognipeer.kind === 'agent'`; use `isAgentModelEntry`); `models` the registry rows
 
 #### Agents
 - `client.agents.responses.create(params, options?)` - Invoke an agent (OpenAI Responses API format). Runs the **published** version (`version: 3` pins, `version: 'draft'` runs the draft); `text.format` structured output (`output_parsed`), `metadata`, `service_tier`, `inputs`; `stream: true` returns an async iterator of typed `response.*` events; a turn past the Console's window answers `202` and **returns** the response with `status: 'queued' | 'in_progress'` (never throws)
 - `client.agents.responses.retrieve(id)` / `.cancel(id)` - Read a response (`resp_<runId>`) / stop its run (`POST /responses/{id}/cancel`)
-- `client.agents.runs.create(agentKey, body, { idempotencyKey?, prefer?, signal? })` - Start a run (`wait`, `class: 'deferred'`, `run_at` / `delay_seconds`, `inputs`, `response_format`, `callback`, `metadata`, `stream`); an `Idempotency-Key` is generated when you pass none
+- `client.agents.runs.create(agentKey, body, { idempotencyKey?, prefer?, signal? })` - Start a run (`wait`, `class: 'deferred'`, `run_at` / `delay_seconds`, `inputs`, `response_format`, `callback`, `metadata`, `stream`); an `Idempotency-Key` is generated when you pass none (also with `stream: true`)
 - `client.agents.runs.list(query)` - Await it for a page (`data`, `has_more`, `last_id`, `getNextPage()`) or `for await` every run; filters `agent`, `status`, `class`, `session_id`, `routine_id`, `channel`, `metadata`, `created_after/before`
 - `client.agents.runs.get(runId, { wait? })` / `.cancel(runId)` / `.queue()` - Run status (optionally long-polled) with `result`, `output_text`, `output_parsed`, `error`; cancel; running/queued/scheduled counters per class
 - `client.agents.runs.wait(runId, { timeoutMs?, waitSeconds?, signal? })` - Uses the `?wait=` long-poll until the run is terminal **or `requires_action`** (waiting on an approval/question)
 - `client.agents.runs.events(runId, { after? })` / `.events.stream(runId)` - The run's session events (JSON, SSE with `Last-Event-ID` resume)
-- `client.agents.routines.list/create/get/update/delete(agentKey, …)` / `.run(agentKey, routineId, body?)` - Recurring prompts: cron schedule (+ IANA timezone), once, or manual; each fire is a run
+- `client.agents.routines.list/create/get/update/delete(agentKey, …)` - Routines: a prompt run on a cron schedule (+ IANA timezone), once, by hand, or when an authenticated webhook delivery arrives; each fire is a run
+- `client.agents.routines.run(agentKey, routineId, { inputs?, metadata?, payload?, headers?, dry_run? }, { wait?, prefer?, idempotencyKey?, signal? })` - Fire a routine now (`200` run, or `202` while it goes); on a webhook routine `payload` / `headers` are a sample event and `dry_run: true` only shows the turn it would build
+- `client.agents.routines.rotateWebhookSecret(agentKey, routineId, { grace_seconds?, secret? })` / `.deliveries(agentKey, routineId, { before?, limit? })` - Replace a webhook trigger's secret (the old one keeps working for `grace_seconds`); its delivery log
+- `signRoutineWebhook(secret, body, { timestamp?, eventId?, event? })` - The headers that authenticate a delivery to a webhook trigger with auth `signature`
 - `client.agents.sessions.create({ agent, title?, metadata?, budget? })` - Start an empty session (nothing runs); continue it with `responses.create({ session_id })`
 - `client.agents.sessions.list({ agent?, status?, limit?, after? })` - Await it for a page, or `for await` it for every session (newest first)
 - `client.agents.sessions.delete(conversationId)` - Delete a session with its files, events and open actions
+- `client.agents.sessions.cancel(conversationId)` - Stop the turn running on a session (`{ object: 'agent.session.cancel', session_id, cancelled, run_ids }`)
 - `client.agents.sessions.get(conversationId)` - Runtime state: `runtime_status`, `stop_reason`, `pending_actions`, `last_event_seq`
 - `client.agents.sessions.actions.list(conversationId)` / `.resolve(conversationId, actionId, body, { background? })` - Pending approvals/questions (read from the session; the Console has no client list route) and answering them
 - `client.agents.sessions.events.list(conversationId, { after?, types?, limit? })` / `.stream(conversationId, { after?, types?, signal? })` - The session event log: paged, or followed live with automatic `Last-Event-ID` reconnect
 - `client.agents.sessions.update(conversationId, { budget, resume })` - Raise, set or remove (`null`) the session spend budget (`budget` is required; `{ max_cost_usd, on_reach }`)
 - `client.agents.sessions.files.upload/list/delete(conversationId, …)` - Files the agent can read in the conversation; each file says where it is stored (`bucket_key`, `path`)
 - `client.agents.sessions.files.content(conversationId, fileId, { variant? })` / `.contentStream(…)` - Download a session file (the original, or the `markdown` text the agent reads)
-- `client.agents.get(key).attachments` - Whether the agent takes files now, its limits, and whether its model reads images
+- `client.agents.get(key).attachments` - Whether the agent takes files now, its limits, whether its model reads images, and `outputs` (files it writes for the person)
 - `client.webhooks.create/list/get/update/delete/rotateSecret/test/deliveries/redeliver/eventTypes` - Webhook subscriptions (objects keep camelCase field names, unlike the agent API's snake_case)
 - `verifyWebhook({ rawBody, signatureHeader, secret })` from `@cognipeer/console-sdk/webhooks` (Node.js) - Verify a signed webhook delivery (`verifyAgentRunCallback` is the same check, kept for existing code)
 
@@ -226,6 +230,14 @@ await client.agents.routines.create('report-bot', {
   trigger: { type: 'schedule', cron: '0 9 * * 1-5', timezone: 'Europe/Istanbul' },
   prompt: 'Summarise yesterday',
 });
+
+// An event-driven prompt: post events to routine.webhook.url (the secret is shown once)
+const routine = await client.agents.routines.create('pr-reviewer', {
+  name: 'Review pull requests',
+  trigger: { type: 'webhook', preset: 'github', events: ['pull_request'] },
+  prompt: 'Review pull request #{{payload.pull_request.number}}',
+});
+console.log(routine.webhook); // { url, secret }
 ```
 
 See [Agents](docs/api/agents.md) for runs, routines, `202` handling, structured output and error codes.
@@ -336,16 +348,18 @@ Details and the error table: [Agents → Sessions](docs/api/agents.md#sessions-s
 ##### Stopping a turn
 
 ```typescript
-// By conversation (a response id without its `resp_` prefix)...
-const { cancelled, run_ids } = await client.agents.sessions.cancel(conversationId);
+// By session (`res.cognipeer.session_id`, `res.conversation.id`, `run.session_id`)...
+const { cancelled, run_ids } = await client.agents.sessions.cancel(sessionId);
 
 // ...or by response id (`resp_<runId>`): answers the response (`cancelled`, or `in_progress` while it lands).
 await client.agents.responses.cancel(response.id);
 ```
 
-Cancellation is cooperative: the turn ends at its next checkpoint. `cancelled: false` means nothing
-was running; an unknown id is a `404`. Closing the connection (`signal`) alone does not stop a
-server-side turn. `agents.runs.cancel(runId)` stops one run.
+Cancellation is cooperative: the turn ends at its next checkpoint, keeping what it had streamed (a
+streamed Response ends with `response.incomplete`). `cancelled: false` means nothing was running; an
+unknown id is a `404`. This is how an inline call (`responses.create`, chat completions, A2A) is stopped
+from a second request. Closing the connection (`signal`) alone does not stop a server-side turn, except
+a `responses.create({ stream: true })` without `background: true`. `agents.runs.cancel(runId)` stops one run.
 
 ##### Choosing a model and reasoning
 
@@ -412,12 +426,49 @@ const { data: markdown } = await client.agents.sessions.files.content(session.id
 // A large file: `contentStream()` returns { body: ReadableStream, contentType, fileName?, size? }.
 ```
 
+An agent with an attachments bucket can also write files for the person (`agent.attachments.outputs`),
+with uploads off: they come back as `output_files` on the Response (and as `file_path` annotations).
+
 Upload errors (`CognipeerAPIError.errorCode`, see `AgentActionErrorCodes`): `403 attachments_disabled`
 (files off for the agent, or on with no bucket chosen), `409 storage_unavailable` (the bucket was deleted or
 disabled, or its provider is unusable; the message names it), `409 storage_not_configured`,
 `409 too_many_files`, `413 file_too_large`, `415 unsupported_file_type`, `429 quota_exceeded`. The file
 content call needs a Console that serves the session-file content route; `variant: 'markdown'` on a
 file without a text version is a `409 markdown_unavailable`.
+
+##### Routines and webhook triggers
+
+A routine is a saved prompt (and inputs) with a trigger; every fire is an ordinary run (`runs.list({ routine_id })`).
+Triggers: `schedule` (5-field cron + IANA `timezone`), `once` (`run_at` or `delay_seconds`), `manual`, `webhook`.
+
+```typescript
+import { signRoutineWebhook } from '@cognipeer/console-sdk';
+
+// A generic webhook trigger with a signed body. The secret is returned once, with the URL.
+const routine = await client.agents.routines.create('triage-bot', {
+  name: 'Deploy failures',
+  trigger: { type: 'webhook', preset: 'generic', auth: 'signature', events: ['deploy.failed'] },
+  prompt: 'Triage the failed deploy of {{payload.service}}',
+});
+const { url, secret } = routine.webhook!;
+
+const body = JSON.stringify({ event: 'deploy.failed', service: 'api' });
+await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...signRoutineWebhook(secret, body) }, body });
+
+// Try an event without sending one: the message the run would get, and whether the filter passes.
+const dry = await client.agents.routines.run('triage-bot', routine.id, {
+  payload: { event: 'deploy.failed', service: 'api' },
+  dry_run: true,
+});
+console.log(dry.matched, dry.prompt);
+
+await client.agents.routines.deliveries('triage-bot', routine.id); // outcome of every request to the URL
+await client.agents.routines.rotateWebhookSecret('triage-bot', routine.id, { grace_seconds: 3600 });
+```
+
+`routines.run()` answers `200` with the run when it finished within `wait`, else `202` with the run still
+going (neither throws); `429` (`agent_run_concurrency_limit`, `spend_limit_exceeded`, `agent_quota_exceeded`)
+carries `Retry-After`. Details, presets and error codes: [Agents → Routines](docs/api/agents.md#routines).
 
 ##### Webhook subscriptions
 
@@ -453,7 +504,7 @@ app.post('/hooks/cognipeer', express.raw({ type: 'application/json' }), (req, re
   });
   if (!ok) return res.sendStatus(400);
   const event: WebhookEvent = JSON.parse(req.body.toString('utf8'));
-  // event.type: 'session.idled' | 'action.required' | 'agent_run.requires_action' | ...
+  // event.type: 'session.idled' | 'action.required' | 'agent_run.requires_action' | 'routine.fired' | 'feedback.recorded' | ...
   res.sendStatus(204);
 });
 ```

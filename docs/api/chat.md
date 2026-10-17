@@ -110,11 +110,22 @@ const res = await client.chat.completions.create(
   { model: 'agent:support-bot', messages: [{ role: 'user', content: 'Hi' }], inputs: { customer: 'acme' } },
   { sessionId: 'conv_1' }, // continue a session (X-Cognipeer-Session-Id); the answer carries `conversation_id`
 );
+res.conversation_id; // the session: pass it back as `conversation_id` in the body or as `sessionId`
 ```
 
-A non-streaming agent call that outlives the Console's wait window answers `202` with `choices: []`: it does not
-throw, `res.cognipeer.status` is `'in_progress'` and `res.cognipeer.run_id` is the run to follow with
-`client.agents.runs.wait(run_id)`.
+The agent owns its history: only the last `user` message is the turn (system and developer messages are ignored,
+the agent has its own prompt), and the session holds the rest. Name the session with `conversation_id` in the body or
+the `X-Cognipeer-Session-Id` header (`sessionId`); naming two different ones is `400 session_conflict`, an unknown one
+`404 session_not_found`. The reply carries it back in `conversation_id` and in the `X-Cognipeer-Session-Id` response
+header. Other fields of an agent's reply: `output_files` (files the agent produced, with `file_path` annotations on
+the message), and `stop_reason` / `stop_detail` when a limit or a cancel ended the run (`finish_reason: 'length'` for a
+limit). A streamed reply carries `conversation_id` on its first and last chunk and `files` on the last.
+
+A non-streaming agent call that outlives the Console's wait window (10 minutes by default) answers `202`: it does not
+throw, `choices` is `[]` and `res.cognipeer` is `{ status: 'queued' | 'in_progress', run_id, session_id }`. The run
+keeps going; follow it with `client.agents.runs.wait(res.cognipeer.run_id)`. An `idempotencyKey` makes a retry the same
+run. `service_tier: 'flex'` runs the turn as a deferred run (not with `stream: true`); a stream whose reader goes away
+stops the run.
 
 ## Tool Calling (Function Calling)
 

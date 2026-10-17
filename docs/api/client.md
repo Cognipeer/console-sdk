@@ -45,7 +45,7 @@ See [Chat API](/api/chat) for details.
 
 ### `client.models`
 
-Models API resource — `list()` returns the project's models and its active agents (`id: 'agent:<key>'`).
+Models API resource — `list()` returns `data`: the project's LLM models (OpenAI discovery shape) followed by its active agents (`id: 'agent:<key>'`, `cognipeer.kind === 'agent'`), and `models`: the registry rows (secrets masked). Agents are listed to a token that may read agents, unless `category` is not `llm` or a provider filter is set; either id works as `model` in chat completions and the Responses API.
 
 **Type:** `ModelsResource`
 
@@ -114,7 +114,7 @@ See [Memory API](/api/memory) for details.
 
 ### `client.agents`
 
-Agents API resource — list, retrieve and invoke agents (Responses API), start and follow runs (`agents.runs`), schedule recurring work (`agents.routines`), and manage sessions.
+Agents API resource — list, retrieve and invoke agents (Responses API), start and follow runs (`agents.runs`), run prompts on a schedule or from webhook events (`agents.routines`), and manage sessions.
 
 **Type:** `AgentsResource`
 
