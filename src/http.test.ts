@@ -417,6 +417,36 @@ describe('HttpClient', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it('does not auto-retry a 503 agent_run_interrupted (side effects possible)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        jsonResponse(
+          { error: { type: 'server_error', code: 'agent_run_interrupted', message: 'stopped', retryable: true, side_effects_possible: true } },
+          { status: 503 },
+        ),
+      );
+      const http = new HttpClient('https://api.test', 'key', 5000, 3, fetchMock);
+
+      await expect(http.request('POST', '/v1/responses', { body: {} })).rejects.toMatchObject({
+        statusCode: 503,
+        errorCode: 'agent_run_interrupted',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('still retries a plain 503', async () => {
+      vi.useFakeTimers();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ error: 'down' }, { status: 503 }))
+        .mockResolvedValueOnce(jsonResponse({ ok: true }));
+      const http = new HttpClient('https://api.test', 'key', 5000, 2, fetchMock);
+      const p = http.request('GET', '/v1/a');
+      await vi.runAllTimersAsync();
+      await expect(p).resolves.toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      vi.useRealTimers();
+    });
+
     it('surfaces a 503 agent_run_interrupted with its code and Retry-After', async () => {
       const fetchMock = vi.fn().mockResolvedValue(
         jsonResponse(
