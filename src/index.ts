@@ -39,7 +39,7 @@ export { signTriggerWebhook } from './triggerWebhook';
 export type { SignTriggerWebhookOptions } from './triggerWebhook';
 
 // Sessions: the page `agents.sessions.list()` resolves to
-export { AgentSessionPage } from './resources/agentSessions';
+export { AgentSessionPage, AgentSessionRemindersResource } from './resources/agentSessions';
 export type { AgentSessionListCall } from './resources/agentSessions';
 
 /** @deprecated Use `ConsoleClient` instead. */

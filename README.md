@@ -199,6 +199,7 @@ const client = new ConsoleClient({
 - `client.agents.sessions.get(conversationId)` - Runtime state: `runtime_status`, `stop_reason`, `pending_actions`, `last_event_seq`
 - `client.agents.sessions.actions.list(conversationId)` / `.resolve(conversationId, actionId, body, { background? })` - Pending approvals/questions (read from the session; the Console has no client list route) and answering them
 - `client.agents.sessions.events.list(conversationId, { after?, types?, limit? })` / `.stream(conversationId, { after?, types?, signal? })` - The session event log: paged, or followed live with automatic `Last-Event-ID` reconnect
+- `client.agents.sessions.reminders.list(conversationId, { status? })` / `.cancel(conversationId, reminderId)` - Messages the agent scheduled to come back to (`status`: `active` = scheduled only, default, or `all`); cancel a scheduled one (404 unknown, 409 already fired). A reminder is a run with channel `reminder`; its session events carry `origin: 'reminder'` / `trigger: 'reminder'`
 - `client.agents.sessions.update(conversationId, { budget, resume })` - Raise, set or remove (`null`) the session spend budget (`budget` is required; `{ max_cost_usd, on_reach }`)
 - `client.agents.sessions.files.upload/list/delete(conversationId, …)` - Files the agent can read in the conversation; each file says where it is stored (`bucket_key`, `path`)
 - `client.agents.sessions.files.content(conversationId, fileId, { variant? })` / `.contentStream(…)` - Download a session file (the original, or the `markdown` text the agent reads)

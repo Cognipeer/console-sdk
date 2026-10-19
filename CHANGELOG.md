@@ -12,6 +12,13 @@ OpenAI dialects over one engine. Needs the Console
 release that ships the agent runs API (`/client/v1/agents/{key}/runs`, triggers, `/client/v1/responses` for
 agents with the published version by default). `client.automations` (built-in automations) is unchanged.
 
+### Added
+
+- **Agent reminders.** `client.agents.sessions.reminders.list(sessionId, { status?: 'active' | 'all' })` and
+  `.cancel(sessionId, reminderId)` (`AgentSessionRemindersResource`); types `AgentReminder`, `AgentReminderStatus`,
+  `ListAgentRemindersQuery`, `AgentReminderList`. `AgentRunChannel` gains `'reminder'`; the `user.message` session
+  event may carry `origin: 'reminder'` and `session.status_running` `trigger: 'reminder'`.
+
 ### Breaking changes
 
 - **`client.agents.chat()` is removed.** Use `client.agents.responses.create({ model, input })`

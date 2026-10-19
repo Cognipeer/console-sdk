@@ -2754,7 +2754,7 @@ export interface AgentRunError {
 export type AgentRunClass = 'default' | 'deferred';
 
 /** Where a run came from. */
-export type AgentRunChannel = 'runs' | 'responses' | 'chat_completions' | 'a2a' | 'trigger' | (string & {});
+export type AgentRunChannel = 'runs' | 'responses' | 'chat_completions' | 'a2a' | 'trigger' | 'reminder' | (string & {});
 
 /** What started a run. */
 export type AgentRunTrigger = 'request' | 'schedule' | 'once' | 'manual' | 'webhook' | (string & {});
@@ -3655,11 +3655,11 @@ type Truncatable = { _truncated?: boolean };
 
 export type SessionUserMessageEvent = SessionEventEnvelope<
   'user.message',
-  { content: string } & Truncatable
+  { content: string; /** Set when the Console sent it for the user: a fired reminder. */ origin?: 'reminder' | (string & {}) } & Truncatable
 >;
 export type SessionStatusRunningEvent = SessionEventEnvelope<
   'session.status_running',
-  { trigger: 'message' | 'resume' | 'timeout' | (string & {}) }
+  { trigger: 'message' | 'resume' | 'timeout' | 'reminder' | (string & {}) }
 >;
 export type SessionToolUseEvent = SessionEventEnvelope<
   'agent.tool_use',
@@ -3995,6 +3995,53 @@ export interface SessionFile {
 export interface SessionFileList {
   object: 'list';
   data: SessionFile[];
+}
+
+/** Lifecycle of an agent reminder (a scheduled run with channel `reminder`). */
+export type AgentReminderStatus =
+  | 'scheduled'
+  | 'queued'
+  | 'running'
+  | 'requires_action'
+  | 'succeeded'
+  | 'failed'
+  | 'canceled';
+
+/** A message the agent scheduled to come back to in a session. `id` is the run id (`run_…`). */
+export interface AgentReminder {
+  id: string;
+  object: 'agent.reminder';
+  agent: string;
+  session_id: string;
+  status: AgentReminderStatus;
+  /** When it fires (epoch seconds). */
+  fire_at: number;
+  message: string;
+  reason: string | null;
+  /** The run in which the agent set it. */
+  set_by_run: string | null;
+  /** How many reminders in a row led to this one. */
+  chain: number;
+  created_at: number;
+  completed_at: number | null;
+  error: { type: string; message: string } | null;
+}
+
+/** Query of `sessions.reminders.list()`. */
+export interface ListAgentRemindersQuery {
+  /** `active` (default) = still `scheduled`; `all` also lists fired, failed and canceled ones. */
+  status?: 'active' | 'all';
+}
+
+/** `GET …/reminders` envelope. */
+export interface AgentReminderList {
+  object: 'list';
+  data: AgentReminder[];
+}
+
+/** `DELETE …/reminders/{id}` answer. */
+export interface AgentReminderCancelResult {
+  reminder: AgentReminder;
 }
 
 /** `DELETE …/files/{id}` answer. */

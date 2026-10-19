@@ -4,6 +4,7 @@ import {
   AgentSessionEventsResource,
   AgentSessionFilesResource,
   AgentSessionPage,
+  AgentSessionRemindersResource,
   AgentSessionsResource,
 } from './agentSessions';
 import { AgentsResource } from './agents';
@@ -66,6 +67,7 @@ describe('AgentSessionsResource', () => {
     expect(agents.sessions.events).toBeInstanceOf(AgentSessionEventsResource);
     expect(agents.sessions.actions).toBeInstanceOf(AgentSessionActionsResource);
     expect(agents.sessions.files).toBeInstanceOf(AgentSessionFilesResource);
+    expect(agents.sessions.reminders).toBeInstanceOf(AgentSessionRemindersResource);
   });
 
   it('gets the runtime state via GET /api/client/v1/agents/sessions/{id}', async () => {
@@ -1383,5 +1385,62 @@ describe('AgentResponsesResource.cancel', () => {
     const http = createMockHttp();
     http.request.mockRejectedValue(new CognipeerAPIError('not found', 404));
     await expect(new AgentsResource(http).responses.cancel('resp_x')).rejects.toBeInstanceOf(CognipeerAPIError);
+  });
+});
+
+// ── reminders ─────────────────────────────────────────────────────
+
+describe('AgentSessionRemindersResource', () => {
+  const reminder = {
+    id: 'run_r1',
+    object: 'agent.reminder',
+    agent: 'ops-agent',
+    session_id: 'conv_1',
+    status: 'scheduled',
+    fire_at: 1760000000,
+    message: 'Check the deploy',
+    reason: null,
+    set_by_run: 'run_0',
+    chain: 0,
+    created_at: 1759990000,
+    completed_at: null,
+    error: null,
+  };
+
+  it('lists active reminders via GET .../reminders', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ object: 'list', data: [reminder] });
+
+    const result = await new AgentSessionRemindersResource(http).list('conv_1');
+
+    expect(result).toEqual([reminder]);
+    expect(http.request).toHaveBeenCalledWith('GET', `${SESSION_PATH}/reminders`, {
+      query: { status: undefined },
+      signal: undefined,
+    });
+  });
+
+  it('passes status=all', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ object: 'list', data: [] });
+
+    await new AgentSessionRemindersResource(http).list('conv_1', { status: 'all' });
+
+    expect(http.request).toHaveBeenCalledWith('GET', `${SESSION_PATH}/reminders`, {
+      query: { status: 'all' },
+      signal: undefined,
+    });
+  });
+
+  it('cancels via DELETE .../reminders/{id} and encodes the id', async () => {
+    const http = createMockHttp();
+    http.request.mockResolvedValue({ reminder: { ...reminder, status: 'canceled' } });
+
+    const result = await new AgentSessionRemindersResource(http).cancel('conv_1', 'run/r1');
+
+    expect(result.status).toBe('canceled');
+    expect(http.request).toHaveBeenCalledWith('DELETE', `${SESSION_PATH}/reminders/run%2Fr1`, {
+      signal: undefined,
+    });
   });
 });

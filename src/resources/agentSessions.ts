@@ -4,6 +4,10 @@ import { HttpClient } from '../http';
 import { SseParser, SseMessage } from '../sse';
 import {
   AgentActionsPendingResponse,
+  AgentReminder,
+  AgentReminderCancelResult,
+  AgentReminderList,
+  ListAgentRemindersQuery,
   AgentConversationCancelResult,
   AgentResponse,
   AgentRun,
@@ -131,12 +135,14 @@ export class AgentSessionsResource {
   public readonly events: AgentSessionEventsResource;
   public readonly actions: AgentSessionActionsResource;
   public readonly files: AgentSessionFilesResource;
+  public readonly reminders: AgentSessionRemindersResource;
 
   constructor(http: HttpClient) {
     this.http = http;
     this.events = new AgentSessionEventsResource(http);
     this.actions = new AgentSessionActionsResource(http);
     this.files = new AgentSessionFilesResource(http);
+    this.reminders = new AgentSessionRemindersResource(http);
   }
 
   /**
@@ -754,5 +760,44 @@ export class AgentSessionFilesResource {
     return this.http.request<SessionFileDeleted>('DELETE', filePath(conversationId, fileId), {
       signal: options.signal,
     });
+  }
+}
+
+/**
+ * Reminders of a session: messages the agent scheduled to come back to later. A reminder is
+ * a scheduled run with channel `reminder`; when it fires the session gets a `user.message`
+ * event with `origin: 'reminder'` and a `session.status_running` with `trigger: 'reminder'`.
+ */
+export class AgentSessionRemindersResource {
+  private http: HttpClient;
+
+  constructor(http: HttpClient) {
+    this.http = http;
+  }
+
+  /** The session's reminders: only `scheduled` ones by default, every reminder with `status: 'all'`. */
+  async list(
+    sessionId: string,
+    options: ListAgentRemindersQuery & { signal?: AbortSignal } = {},
+  ): Promise<AgentReminder[]> {
+    const response = await this.http.request<AgentReminderList>('GET', sessionPath(sessionId, '/reminders'), {
+      query: { status: options.status },
+      signal: options.signal,
+    });
+    return response.data;
+  }
+
+  /** Cancel a scheduled reminder. 404 when unknown or on another session, 409 when it is no longer `scheduled`. */
+  async cancel(
+    sessionId: string,
+    reminderId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<AgentReminder> {
+    const response = await this.http.request<AgentReminderCancelResult>(
+      'DELETE',
+      sessionPath(sessionId, `/reminders/${encodeURIComponent(reminderId)}`),
+      { signal: options.signal },
+    );
+    return response.reminder;
   }
 }
