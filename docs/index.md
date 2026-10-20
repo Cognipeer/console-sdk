@@ -31,7 +31,7 @@ features:
     details: List, execute, and convert OpenAPI and MCP tools into Agent SDK objects without writing adapter glue per provider.
   - icon: '04'
     title: Browser automation
-    details: Create browser profiles, drive live sessions, and expose each browser as its own MCP endpoint for Browser Use clients.
+    details: Create browser profiles, drive live sessions, and call a browser published as an MCP server from the Console's MCP module.
   - icon: '05'
     title: Embeddings & vectors
     details: A single API across Chroma, Postgres, Elasticsearch, Azure AI Search, and S3 Vectors. Build retrieval without committing to a backend on day one.

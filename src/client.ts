@@ -1,6 +1,7 @@
 import { HttpClient } from './http';
 import { ConsoleClientOptions } from './types';
 import { ChatResource } from './resources/chat';
+import { ModelsResource } from './resources/models';
 import { BatchesResource } from './resources/batches';
 import { ModerationsResource } from './resources/moderations';
 import { BudgetsResource, SpendResource } from './resources/spend';
@@ -16,7 +17,7 @@ import { MemoryResource } from './resources/memory';
 import { RagResource } from './resources/rag';
 import { ConfigResource } from './resources/config';
 import { AgentsResource } from './resources/agents';
-import { BrowserMcpResource, BrowserSessionsResource, BrowsersResource } from './resources/browser';
+import { BrowserSessionsResource, BrowsersResource } from './resources/browser';
 import { AudioResource, OcrResource } from './resources/audio';
 import { AutomationsResource } from './resources/automations';
 import { CrawlerResource } from './resources/crawler';
@@ -66,6 +67,9 @@ export class ConsoleClient {
 
   /** Chat completions API */
   public chat: ChatResource;
+
+  /** Models API: the project's models and active agents */
+  public models: ModelsResource;
 
   /** Batch API (OpenAI-compatible async bulk inference) */
   public batches: BatchesResource;
@@ -123,11 +127,8 @@ export class ConsoleClient {
   /** Browser sessions (Playwright) API */
   public browserSessions: BrowserSessionsResource;
 
-  /** Browsers (parent profiles for sessions and Browser Use / MCP integration) */
+  /** Browsers (parent profiles for sessions and Browser Use) */
   public browsers: BrowsersResource;
-
-  /** Browser MCP helper API */
-  public browserMcp: BrowserMcpResource;
 
   /** Audio (STT / TTS / translation) API */
   public audio: AudioResource;
@@ -140,8 +141,6 @@ export class ConsoleClient {
 
   /** Crawler API (scheduled + ad-hoc web crawls) */
   public crawler: CrawlerResource;
-
-  /** JS Sandbox API (managed isolate execution) */
 
   /** Agent Sandbox API (remote runtime sandboxes: exec, code, fs, git, sessions) */
   public sandbox: SandboxResource;
@@ -200,6 +199,7 @@ export class ConsoleClient {
 
     // Initialize resources
     this.chat = new ChatResource(this.http);
+    this.models = new ModelsResource(this.http);
     this.batches = new BatchesResource(this.http);
     this.moderations = new ModerationsResource(this.http);
     this.spend = new SpendResource(this.http);
@@ -218,7 +218,6 @@ export class ConsoleClient {
     this.agents = new AgentsResource(this.http);
     this.browserSessions = new BrowserSessionsResource(this.http);
     this.browsers = new BrowsersResource(this.http);
-    this.browserMcp = new BrowserMcpResource(this.http);
     this.audio = new AudioResource(this.http);
     this.ocr = new OcrResource(this.http);
     this.automations = new AutomationsResource(this.http);

@@ -34,10 +34,6 @@ Use it when you need to:
 | Export browser PDF | `client.browserSessions.pdf(sessionKey, data)` | `POST /browser/sessions/:sessionKey/pdf` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
 | Close browser session | `client.browserSessions.close(sessionKey)` | `DELETE /browser/sessions/:sessionKey` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
 | Delete browser session | `client.browserSessions.delete(sessionId)` | `DELETE /browser/sessions/by-id/:sessionId` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
-| Get browser MCP SSE URL | `client.browserMcp.getSseUrl(browserKey)` | `GET /browser/:browserKey/mcp/sse` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
-| Build browser MCP message URL | `client.browserMcp.getMessageUrl(browserKey, sessionId)` | `POST /browser/:browserKey/mcp/message?sessionId=...` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
-| Initialize browser MCP server | `client.browserMcp.initialize(browserKey)` | `POST /browser/:browserKey/mcp/message` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
-| List browser MCP tools | `client.browserMcp.listTools(browserKey)` | `POST /browser/:browserKey/mcp/message` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
 | List vector providers | `client.vectors.providers.list()` | `GET /vector/providers` | [Vector](https://cognipeer.github.io/cognipeer-console/api/vector) |
 | Create vector provider | `client.vectors.providers.create()` | `POST /vector/providers` | [Vector](https://cognipeer.github.io/cognipeer-console/api/vector) |
 | List indexes | `client.vectors.indexes.list(providerKey)` | `GET /vector/providers/:providerKey/indexes` | [Vector](https://cognipeer.github.io/cognipeer-console/api/vector) |

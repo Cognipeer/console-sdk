@@ -83,6 +83,56 @@ Enable streaming responses:
 stream: true
 ```
 
+### `response_format`, `stream_options`, `service_tier`, `metadata`
+
+```typescript
+await client.chat.completions.create({
+  model: 'gpt-4o',
+  messages: [{ role: 'user', content: 'Extract the invoice total' }],
+  // Constrain the answer to JSON that fits a schema (models and agents)
+  response_format: { type: 'json_schema', json_schema: { name: 'invoice', schema: { type: 'object' }, strict: true } },
+  stream: true,
+  stream_options: { include_usage: true }, // a final chunk with `usage`
+  service_tier: 'flex',                    // agents: low-priority deferred run
+  metadata: { ticket: 'OPS-12' },          // agents: stored on the run
+  reasoning_effort: 'xhigh',               // 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+});
+```
+
+## Calling an agent
+
+`model` can name an agent (`agent:support-bot`, or its key when no model has that key): the agent runs its published
+version and its answer is `message.content` (a JSON string with `response_format`). `client.models.list()` lists the
+project's models and agents together (`cognipeer.kind === 'agent'`); a token that can only read agents lists the agents alone
+(`models: []`, no providers). `version` pins a published version (a positive integer or numeric string) or runs the draft
+(`'draft'`); anything else is `400 invalid_version`. The agent continues a session from a resent transcript only when
+exactly one of the caller's sessions matches it, and the match covers file and image references and the `user` field, so
+different end users start separate sessions. `variables` carries values for the agent's [variables](/api/agents#variables)
+next to the message. Chat clients usually send none, so an agent that is also used in chat should keep its variables optional
+or give each a default: a required variable without a default makes the call fail with `400 invalid_variables`.
+
+```typescript
+const res = await client.chat.completions.create(
+  { model: 'agent:support-bot', messages: [{ role: 'user', content: 'Hi' }], variables: { customer: 'acme' } },
+  { sessionId: 'conv_1' }, // continue a session (X-Cognipeer-Session-Id); the answer carries `conversation_id`
+);
+res.conversation_id; // the session: pass it back as `conversation_id` in the body or as `sessionId`
+```
+
+The agent owns its history: only the last `user` message is the turn (system and developer messages are ignored,
+the agent has its own prompt), and the session holds the rest. Name the session with `conversation_id` in the body or
+the `X-Cognipeer-Session-Id` header (`sessionId`); naming two different ones is `400 session_conflict`, an unknown one
+`404 session_not_found`. The reply carries it back in `conversation_id` and in the `X-Cognipeer-Session-Id` response
+header. Other fields of an agent's reply: `output_files` (files the agent produced, with `file_path` annotations on
+the message), and `stop_reason` / `stop_detail` when a limit or a cancel ended the run (`finish_reason: 'length'` for a
+limit). A streamed reply carries `conversation_id` on its first and last chunk and `files` on the last.
+
+A non-streaming agent call that outlives the Console's wait window (10 minutes by default) answers `202`: it does not
+throw, `choices` is `[]` and `res.cognipeer` is `{ status: 'queued' | 'in_progress', run_id, session_id }`. The run
+keeps going; follow it with `client.agents.runs.wait(res.cognipeer.run_id)`. An `idempotencyKey` makes a retry the same
+run. `service_tier: 'flex'` runs the turn as a deferred run (not with `stream: true`); a stream whose reader goes away
+stops the run.
+
 ## Tool Calling (Function Calling)
 
 Define tools (functions) the model can call:

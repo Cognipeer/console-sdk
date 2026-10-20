@@ -43,6 +43,19 @@ Chat completions API resource.
 
 See [Chat API](/api/chat) for details.
 
+### `client.models`
+
+Models API resource — `list()` returns `data`: the project's LLM models (OpenAI discovery shape) followed by its active agents (`id: 'agent:<key>'`, `cognipeer.kind === 'agent'`), and `models`: the registry rows (secrets masked). Agents are listed to a token that may read agents, unless `category` is not `llm` or a provider filter is set; either id works as `model` in chat completions and the Responses API.
+
+**Type:** `ModelsResource`
+
+```typescript
+import { isAgentModelEntry } from '@cognipeer/console-sdk';
+
+const { data } = await client.models.list();
+const agents = data.filter(isAgentModelEntry); // { id: 'agent:<key>', cognipeer: { kind: 'agent', key } }
+```
+
 ### `client.embeddings`
 
 Embeddings API resource.
@@ -101,7 +114,7 @@ See [Memory API](/api/memory) for details.
 
 ### `client.agents`
 
-Agents API resource — list, retrieve, and invoke agents using the Responses API format.
+Agents API resource — list, retrieve and invoke agents (Responses API), start and follow runs (`agents.runs`), start agents on a schedule, at a set time or from a webhook (`agents.triggers`), and manage sessions.
 
 **Type:** `AgentsResource`
 
@@ -109,7 +122,7 @@ See [Agents API](/api/agents) for details.
 
 ### `client.browsers`
 
-Browser profile API resource — manage the reusable browser containers that own Browser Use defaults, browser sessions, and per-browser MCP endpoints.
+Browser profile API resource — manage the reusable browser containers that own Browser Use defaults and browser sessions.
 
 **Type:** `BrowsersResource`
 
@@ -120,14 +133,6 @@ See [Browser API](/api/browser) for details.
 Browser session API resource — create Playwright-backed sessions, execute discrete browser actions, inspect snapshots, and persist artifacts.
 
 **Type:** `BrowserSessionsResource`
-
-See [Browser API](/api/browser) for details.
-
-### `client.browserMcp`
-
-Browser MCP helper resource — build browser-scoped MCP URLs and discover the Browser Use toolset exposed by a browser profile.
-
-**Type:** `BrowserMcpResource`
 
 See [Browser API](/api/browser) for details.
 
@@ -337,7 +342,7 @@ The browser surface is split into three SDK resources:
 
 - `client.browsers` for browser profiles.
 - `client.browserSessions` for direct browser automation.
-- `client.browserMcp` for Browser Use-compatible MCP connection helpers.
+- `client.mcp.server(serverKey)` for a browser published as a Browser MCP server in the Console's MCP module.
 
 The old standalone `client.browserAgents` surface has been removed. If you want a Console-managed agent to browse the web, attach the `Browser Use` system tool inside Console and invoke that agent through `client.agents`.
 

@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
   AgentActionErrorCodes,
+  AgentConfigErrorCodes,
   AgentRunErrorCodes,
   CognipeerError,
   CognipeerAPIError,
   isAgentActionErrorCode,
   isAgentRunErrorCode,
   isAgentRunSettled,
+  isAgentModelEntry,
   isAgentRunTerminal,
+  isResponseStreamEvent,
   isSessionEvent,
   WEBHOOK_EVENT_TYPES,
 } from './types';
@@ -71,6 +74,21 @@ describe('agent run error helpers', () => {
   it('distinguishes the concurrency limit from other rate_limit_error types by code', () => {
     const limit = new CognipeerAPIError('cap', 429, 'rate_limit_error', undefined, undefined, 'agent_run_concurrency_limit');
     expect(isAgentRunErrorCode(limit, AgentRunErrorCodes.ConcurrencyLimit)).toBe(true);
+  });
+});
+
+describe('agent run error codes of the platform fixes', () => {
+  it('names the codes the Console answers with', () => {
+    expect(AgentRunErrorCodes.Interrupted).toBe('agent_run_interrupted');
+    expect(AgentRunErrorCodes.InvalidJson).toBe('invalid_json');
+    expect(AgentRunErrorCodes.InvalidVersion).toBe('invalid_version');
+    expect(AgentRunErrorCodes.AttachmentUnreachable).toBe('attachment_unreachable');
+  });
+
+  it('matches a 400 invalid_version by code', () => {
+    const error = new CognipeerAPIError('bad', 400, 'invalid_request_error', undefined, undefined, 'invalid_version');
+    expect(isAgentRunErrorCode(error, AgentRunErrorCodes.InvalidVersion)).toBe(true);
+    expect(isAgentRunErrorCode(error, AgentRunErrorCodes.InvalidJson)).toBe(false);
   });
 });
 
@@ -191,5 +209,43 @@ describe('WEBHOOK_EVENT_TYPES', () => {
     expect(WEBHOOK_EVENT_TYPES).toContain('action.required');
     expect(WEBHOOK_EVENT_TYPES).toContain('agent_run.requires_action');
     expect(WEBHOOK_EVENT_TYPES).toContain('webhook.test');
+  });
+});
+
+describe('SDK 4.0 contract helpers', () => {
+  it('the webhook catalog has trigger and feedback events and no schedule events', () => {
+    expect(WEBHOOK_EVENT_TYPES).toEqual(expect.arrayContaining(['trigger.fired', 'trigger.failed', 'feedback.recorded']));
+    expect(WEBHOOK_EVENT_TYPES).not.toContain('schedule.fired');
+    expect(WEBHOOK_EVENT_TYPES).not.toContain('schedule.failed');
+  });
+
+  it('run error codes no longer include the removed background / sync-timeout codes', () => {
+    const codes = Object.values(AgentRunErrorCodes) as string[];
+    expect(codes).not.toContain('idempotency_key_sync_not_supported');
+    expect(codes).not.toContain('timeout');
+    expect(AgentRunErrorCodes.InvalidVariables).toBe('invalid_variables');
+    expect(Object.values(AgentActionErrorCodes) as string[]).not.toContain('agent_background_disabled');
+  });
+
+  it('error code constants spell the codes the Console sends', () => {
+    expect(AgentRunErrorCodes).toMatchObject({
+      InvalidResponseFormat: 'invalid_response_format',
+      SpendLimitExceeded: 'spend_limit_exceeded',
+      QuotaExceeded: 'agent_quota_exceeded',
+      AgentInactive: 'agent_inactive',
+    });
+    const unreadable = new CognipeerAPIError('x', 409, 'invalid_request_error', undefined, undefined, 'sandbox_secrets_unreadable');
+    expect(isAgentRunErrorCode(unreadable, AgentConfigErrorCodes.SandboxSecretsUnreadable)).toBe(true);
+  });
+
+  it('scheduled runs are not settled', () => {
+    expect(isAgentRunSettled('scheduled')).toBe(false);
+    expect(isAgentRunTerminal('scheduled')).toBe(false);
+  });
+
+  it('narrows response stream events and model entries', () => {
+    expect(isResponseStreamEvent({ type: 'response.created', sequence_number: 0, response: {} as never }, 'response.created')).toBe(true);
+    expect(isResponseStreamEvent({ type: 'response.future', sequence_number: 1 }, 'response.completed')).toBe(false);
+    expect(isAgentModelEntry({ id: 'm', object: 'model', created: 0, owned_by: 'x' })).toBe(false);
   });
 });

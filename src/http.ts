@@ -90,11 +90,16 @@ function combineSignals(
  * A server can veto the status-based retry by answering
  * `{ error: { retryable: false } }` — e.g. a synchronous agent turn that hit
  * its `504` ceiling after tool calls may already have had side effects, so
- * re-sending it would repeat them.
+ * re-sending it would repeat them. `side_effects_possible: true` vetoes it too.
  */
 function serverSaysNotRetryable(error: CognipeerAPIError): boolean {
-  const body = error.response as { error?: { retryable?: unknown } } | undefined;
-  return body?.error?.retryable === false;
+  const body = error.response as
+    | { error?: { retryable?: unknown; side_effects_possible?: unknown } }
+    | undefined;
+  // `retryable: true` with `side_effects_possible: true` (a run ended elsewhere,
+  // `agent_run_interrupted`) means "retry it yourself with an Idempotency-Key":
+  // tool calls may already have run, so this client must not resend on its own.
+  return body?.error?.retryable === false || body?.error?.side_effects_possible === true;
 }
 
 /**
@@ -123,6 +128,11 @@ export class HttpClient {
     if (!this.fetchImpl) {
       throw new CognipeerError('Fetch is not available. Please provide a fetch implementation.');
     }
+  }
+
+  /** The request timeout in ms (what a long-poll must stay below). */
+  getTimeoutMs(): number {
+    return this.timeout;
   }
 
   /**

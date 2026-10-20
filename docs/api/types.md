@@ -309,17 +309,6 @@ interface BrowserSession {
 }
 ```
 
-### `BrowserMcpConnectionInfo`
-
-```typescript
-interface BrowserMcpConnectionInfo {
-  browserKey: string;
-  sseUrl: string;
-  messageUrlTemplate: string;
-  authHeader: string;
-}
-```
-
 The standalone `BrowserAgent*` types were removed together with the old browser agent API. Browser-aware agent runs now flow through Console-managed agents with the `Browser Use` system tool attached.
 
 ## Tracing Types

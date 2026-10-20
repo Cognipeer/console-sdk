@@ -6,46 +6,18 @@ import {
   BrowserArtifactResult,
   BrowserCreateInput,
   BrowserCreateSessionInput,
-  BrowserMcpConnectionInfo,
-  BrowserMcpInitializeResult,
-  BrowserMcpToolDescriptor,
   BrowserSessionEvent,
   BrowserExtractInput,
   BrowserExtractResult,
   BrowserPdfInput,
+  BrowserScreenshotInlineResult,
   BrowserScreenshotInput,
   BrowserSession,
   BrowserSnapshotResult,
   BrowserUpdateInput,
 } from '../types';
-import { CognipeerError } from '../types';
 
 const BASE = '/api/client/v1/browser';
-const JSONRPC_VERSION = '2.0';
-
-interface JsonRpcSuccess<T> {
-  id: number | string | null;
-  jsonrpc: string;
-  result: T;
-}
-
-interface JsonRpcFailure {
-  error: {
-    code: number;
-    message: string;
-  };
-  id: number | string | null;
-  jsonrpc: string;
-}
-
-function unwrapJsonRpc<T>(payload: JsonRpcFailure | JsonRpcSuccess<T>): T {
-  if ('error' in payload) {
-    throw new CognipeerError(payload.error.message);
-  }
-
-  return payload.result;
-}
-
 /**
  * Browser sessions API
  *
@@ -121,9 +93,21 @@ export class BrowserSessionsResource {
     );
   }
 
-  /** Persist a screenshot to the configured files bucket. */
-  async screenshot(sessionKey: string, input: BrowserScreenshotInput = {}): Promise<BrowserArtifactResult> {
-    return this.http.request<BrowserArtifactResult>(
+  /**
+   * Persist a screenshot to the configured files bucket. With `{ inline: true }`
+   * the image also comes back as a base64 content block (and `persist: false`
+   * skips saving it).
+   */
+  async screenshot(
+    sessionKey: string,
+    input: BrowserScreenshotInput & { inline: true },
+  ): Promise<BrowserScreenshotInlineResult>;
+  async screenshot(sessionKey: string, input?: BrowserScreenshotInput): Promise<BrowserArtifactResult>;
+  async screenshot(
+    sessionKey: string,
+    input: BrowserScreenshotInput = {},
+  ): Promise<BrowserArtifactResult | BrowserScreenshotInlineResult> {
+    return this.http.request<BrowserArtifactResult | BrowserScreenshotInlineResult>(
       'POST',
       `${BASE}/sessions/${encodeURIComponent(sessionKey)}/screenshot`,
       { body: input },
@@ -185,74 +169,7 @@ export class BrowserSessionsResource {
 }
 
 /**
- * Browser MCP helper API
- *
- * Each browser profile exposes a dedicated MCP endpoint. Use this helper to
- * build connection URLs and discover the exposed Browser Use toolset.
- *
- * @example
- * ```ts
- * const info = client.browserMcp.getConnectionInfo('research-browser');
- * const meta = await client.browserMcp.initialize('research-browser');
- * const tools = await client.browserMcp.listTools('research-browser');
- * console.log(info.sseUrl, meta.protocolVersion, tools.map((tool) => tool.name));
- * ```
- */
-export class BrowserMcpResource {
-  constructor(private http: HttpClient) {}
-
-  getSseUrl(browserKey: string): string {
-    return this.http.resolveURL(`${BASE}/${encodeURIComponent(browserKey)}/mcp/sse`);
-  }
-
-  getMessageUrl(browserKey: string, sessionId: string): string {
-    return this.http.resolveURL(`${BASE}/${encodeURIComponent(browserKey)}/mcp/message`, { sessionId });
-  }
-
-  getConnectionInfo(browserKey: string): BrowserMcpConnectionInfo {
-    const messageBase = this.http.resolveURL(`${BASE}/${encodeURIComponent(browserKey)}/mcp/message`);
-    return {
-      authHeader: 'Authorization: Bearer <API_TOKEN>',
-      browserKey,
-      messageUrlTemplate: `${messageBase}?sessionId=<sessionId>`,
-      sseUrl: this.getSseUrl(browserKey),
-    };
-  }
-
-  async initialize(browserKey: string): Promise<BrowserMcpInitializeResult> {
-    const payload = await this.http.request<JsonRpcFailure | JsonRpcSuccess<BrowserMcpInitializeResult>>(
-      'POST',
-      `${BASE}/${encodeURIComponent(browserKey)}/mcp/message`,
-      {
-        body: {
-          id: 1,
-          jsonrpc: JSONRPC_VERSION,
-          method: 'initialize',
-          params: {},
-        },
-      },
-    );
-    return unwrapJsonRpc(payload);
-  }
-
-  async listTools(browserKey: string): Promise<BrowserMcpToolDescriptor[]> {
-    const payload = await this.http.request<JsonRpcFailure | JsonRpcSuccess<{ tools: BrowserMcpToolDescriptor[] }>>(
-      'POST',
-      `${BASE}/${encodeURIComponent(browserKey)}/mcp/message`,
-      {
-        body: {
-          id: 2,
-          jsonrpc: JSONRPC_VERSION,
-          method: 'tools/list',
-        },
-      },
-    );
-    return unwrapJsonRpc(payload).tools ?? [];
-  }
-}
-
-/**
- * Browsers (parent profiles for sessions, Browser Use, and per-browser MCP endpoints).
+ * Browsers (parent profiles for sessions and Browser Use).
  */
 export class BrowsersResource {
   constructor(private http: HttpClient) {}
