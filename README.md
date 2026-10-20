@@ -23,7 +23,7 @@ Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com
 - ⚙️ **Automations** - Trigger and pause built-in scheduled jobs
 - 🔀 **Rerankers** - Cohere-compatible reranking
 - 🛰️ **MCP** - Talk to the built-in Console MCP server and tenant-configured MCP servers
-- 🌐 **Browser Automation** - Manage browser profiles, drive live sessions, and expose per-browser MCP endpoints
+- 🌐 **Browser Automation** - Manage browser profiles, drive live sessions, and call browsers published as MCP servers
 - 🔍 **Agent Tracing** - Streaming + bulk ingest, OTLP/HTTP JSON, plus OpenTelemetry exporter
 - 🧠 **Memory Stores** - Persist, search, and recall scoped memories
 - 🛡️ **Guardrails** - Evaluate content with tenant guardrail policies
@@ -669,7 +669,7 @@ app.post('/hooks/cognipeer', express.raw({ type: 'application/json' }), (req, re
 - `client.browserSessions.delete(sessionId)` - Delete a stored session record
 
 #### Browser MCP
-A browser is published to MCP clients from the Console's MCP module (**MCP Servers → New server → Internal service →
+A browser is published to MCP clients from the Console's MCP module (**MCP Servers → New MCP server → Internal service →
 Browser**). Use `client.mcp.server(serverKey)` with that server's key: `browser_open_session` returns a `sessionKey`
 that every page tool takes.
 

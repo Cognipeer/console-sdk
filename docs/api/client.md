@@ -122,7 +122,7 @@ See [Agents API](/api/agents) for details.
 
 ### `client.browsers`
 
-Browser profile API resource — manage the reusable browser containers that own Browser Use defaults, browser sessions, and per-browser MCP endpoints.
+Browser profile API resource — manage the reusable browser containers that own Browser Use defaults and browser sessions.
 
 **Type:** `BrowsersResource`
 

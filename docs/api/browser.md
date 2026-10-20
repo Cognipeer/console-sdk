@@ -3,13 +3,13 @@
 Use the browser surface when you need one of these two paths:
 
 - direct browser automation from your application code,
-- a per-browser MCP endpoint that exposes the Browser Use toolset.
+- a Browser MCP server, published from the Console's MCP module, that exposes the Browser Use toolset.
 
 The old standalone `client.browserAgents` API has been removed. If you want a Console-managed agent to browse the web, attach the `Browser Use` system tool in Console and invoke that agent through `client.agents`.
 
 ## Browser Profiles
 
-Browser profiles are reusable parent containers. They hold the default session config, artifact bucket, and metadata used by browser sessions and browser-scoped MCP endpoints.
+Browser profiles are reusable parent containers. They hold the default session config, artifact bucket, and metadata used by browser sessions and by a Browser MCP server that publishes the profile.
 
 ### `client.browsers.create(input)`
 
@@ -130,7 +130,7 @@ Delete a stored session record.
 
 ## Browser MCP
 
-A browser is published to MCP clients from the Console's MCP module: **MCP Servers → New server → Internal service →
+A browser is published to MCP clients from the Console's MCP module: **MCP Servers → New MCP server → Internal service →
 Browser**. The server gets what every MCP server has (endpoints, access modes, tool toggles, guardrails, logs, hubs).
 Talk to it with `client.mcp.server(serverKey)`:
 
