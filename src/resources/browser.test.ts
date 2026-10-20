@@ -1,8 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { BrowserSessionsResource, BrowserMcpResource, BrowsersResource } from './browser';
+import { BrowserSessionsResource, BrowsersResource } from './browser';
 import { createMockHttp } from '../test/mockHttp';
 import { HttpClient } from '../http';
-import { CognipeerError } from '../types';
 
 describe('BrowserSessionsResource', () => {
   it('creates a session', async () => {
@@ -222,76 +221,6 @@ describe('BrowserSessionsResource', () => {
 
       await expect(resource.screenshotLive('sess_1')).rejects.toThrow('screenshotLive failed (500)');
     });
-  });
-});
-
-describe('BrowserMcpResource', () => {
-  it('builds SSE and message URLs via resolveURL', () => {
-    const http = createMockHttp();
-    const resource = new BrowserMcpResource(http);
-
-    resource.getSseUrl('browser1');
-    resource.getMessageUrl('browser1', 'sess_1');
-
-    expect(http.resolveURL).toHaveBeenCalledWith('/api/client/v1/browser/browser1/mcp/sse');
-    expect(http.resolveURL).toHaveBeenCalledWith(
-      '/api/client/v1/browser/browser1/mcp/message',
-      { sessionId: 'sess_1' },
-    );
-  });
-
-  it('bundles connection info', () => {
-    const http = createMockHttp();
-    http.resolveURL.mockImplementation((path: string) => `https://mock.test${path}`);
-    const resource = new BrowserMcpResource(http);
-
-    const info = resource.getConnectionInfo('browser1');
-
-    expect(info.browserKey).toBe('browser1');
-    expect(info.sseUrl).toBe('https://mock.test/api/client/v1/browser/browser1/mcp/sse');
-    expect(info.messageUrlTemplate).toBe(
-      'https://mock.test/api/client/v1/browser/browser1/mcp/message?sessionId=<sessionId>',
-    );
-  });
-
-  it('initializes the MCP connection via JSON-RPC', async () => {
-    const http = createMockHttp();
-    const initResult = { protocolVersion: '2024-11-05' };
-    http.request.mockResolvedValue({ id: 1, jsonrpc: '2.0', result: initResult });
-    const resource = new BrowserMcpResource(http);
-
-    const result = await resource.initialize('browser1');
-
-    expect(result).toBe(initResult);
-    expect(http.request).toHaveBeenCalledWith(
-      'POST',
-      '/api/client/v1/browser/browser1/mcp/message',
-      { body: { id: 1, jsonrpc: '2.0', method: 'initialize', params: {} } },
-    );
-  });
-
-  it('throws a CognipeerError when initialize gets a JSON-RPC error', async () => {
-    const http = createMockHttp();
-    http.request.mockResolvedValue({ id: 1, jsonrpc: '2.0', error: { code: -1, message: 'boom' } });
-    const resource = new BrowserMcpResource(http);
-
-    await expect(resource.initialize('browser1')).rejects.toThrow(CognipeerError);
-    await expect(resource.initialize('browser1')).rejects.toThrow('boom');
-  });
-
-  it('lists MCP tools via JSON-RPC, defaulting to an empty array', async () => {
-    const http = createMockHttp();
-    http.request.mockResolvedValue({ id: 2, jsonrpc: '2.0', result: {} });
-    const resource = new BrowserMcpResource(http);
-
-    const result = await resource.listTools('browser1');
-
-    expect(result).toEqual([]);
-    expect(http.request).toHaveBeenCalledWith(
-      'POST',
-      '/api/client/v1/browser/browser1/mcp/message',
-      { body: { id: 2, jsonrpc: '2.0', method: 'tools/list' } },
-    );
   });
 });
 

@@ -130,50 +130,26 @@ Delete a stored session record.
 
 ## Browser MCP
 
-Every browser profile now exposes its own MCP endpoint. This is the external transport equivalent of the `Browser Use` system tool.
-
-### `client.browserMcp.getConnectionInfo(browserKey)`
-
-Build the browser-scoped MCP URLs.
+A browser is published to MCP clients from the Console's MCP module: **MCP Servers → New server → Internal service →
+Browser**. The server gets what every MCP server has (endpoints, access modes, tool toggles, guardrails, logs, hubs).
+Talk to it with `client.mcp.server(serverKey)`:
 
 ```ts
-const info = client.browserMcp.getConnectionInfo(browser.key);
+const browserMcp = client.mcp.server('research-browser-mcp');
 
-console.log(info.sseUrl);
-console.log(info.messageUrlTemplate);
-// Authorization: Bearer <API_TOKEN>
+const { sessionKey } = JSON.parse(
+  (await browserMcp.callTool('browser_open_session', {})).content[0].text,
+);
+await browserMcp.callTool('browser_navigate', { sessionKey, url: 'https://example.com' });
 ```
 
-### `client.browserMcp.getSseUrl(browserKey)`
-
-Get the SSE URL for an MCP client.
-
-### `client.browserMcp.getMessageUrl(browserKey, sessionId)`
-
-Build the JSON-RPC message URL once your MCP client has a `sessionId`.
-
-### `client.browserMcp.initialize(browserKey)`
-
-Read the MCP server metadata.
-
-```ts
-const meta = await client.browserMcp.initialize(browser.key);
-console.log(meta.protocolVersion, meta.serverInfo.name);
-```
-
-### `client.browserMcp.listTools(browserKey)`
-
-List the Browser Use-compatible MCP tools exposed by the browser.
-
-```ts
-const tools = await client.browserMcp.listTools(browser.key);
-console.log(tools.map((tool) => tool.name));
-```
+`browser_open_session` returns a `sessionKey`; every page tool takes it. A session is driven only through the MCP server
+that opened it. The per-browser endpoint (`/browser/:browserKey/mcp/*`) and `client.browserMcp` were removed in 4.0.0.
 
 ## Migration Note
 
 If you previously depended on the removed browser agent management API:
 
 1. Use `client.browserSessions` for direct programmatic browser automation.
-2. Use `client.browserMcp` when another MCP-compatible runtime should drive the browser.
+2. Publish the browser as a Browser MCP server (Console MCP module) when another MCP-compatible runtime should drive it.
 3. Use Console-managed agents plus the `Browser Use` system tool when you want a hosted agent to browse autonomously.

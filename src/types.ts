@@ -4394,18 +4394,6 @@ export type BrowserSessionEventType =
   | 'agent_event'
   | 'close'
   | 'error';
-export type BrowserMcpToolName =
-  | 'browser_navigate'
-  | 'browser_click'
-  | 'browser_hover'
-  | 'browser_type'
-  | 'browser_press'
-  | 'browser_wait'
-  | 'browser_snapshot'
-  | 'browser_extract'
-  | 'browser_screenshot'
-  | 'browser_close';
-
 export interface BrowserAccessRules {
   allowList?: string[];
   blockList?: string[];
@@ -4666,32 +4654,6 @@ export interface BrowserCreateSessionInput {
   artifactBucketKey?: string;
   config?: BrowserSessionConfig;
   metadata?: Record<string, unknown>;
-}
-
-export interface BrowserMcpInitializeResult {
-  capabilities?: {
-    tools?: {
-      listChanged?: boolean;
-    };
-  };
-  protocolVersion: string;
-  serverInfo: {
-    name: string;
-    version: string;
-  };
-}
-
-export interface BrowserMcpToolDescriptor {
-  name: BrowserMcpToolName;
-  description: string;
-  inputSchema: Record<string, unknown>;
-}
-
-export interface BrowserMcpConnectionInfo {
-  browserKey: string;
-  sseUrl: string;
-  messageUrlTemplate: string;
-  authHeader: string;
 }
 
 // ============================================================================

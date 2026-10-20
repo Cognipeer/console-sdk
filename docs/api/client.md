@@ -136,14 +136,6 @@ Browser session API resource — create Playwright-backed sessions, execute disc
 
 See [Browser API](/api/browser) for details.
 
-### `client.browserMcp`
-
-Browser MCP helper resource — build browser-scoped MCP URLs and discover the Browser Use toolset exposed by a browser profile.
-
-**Type:** `BrowserMcpResource`
-
-See [Browser API](/api/browser) for details.
-
 ### `client.tools`
 
 Unified tools API resource — list, retrieve, execute tools and convert them to Agent SDK-compatible objects.
@@ -350,7 +342,7 @@ The browser surface is split into three SDK resources:
 
 - `client.browsers` for browser profiles.
 - `client.browserSessions` for direct browser automation.
-- `client.browserMcp` for Browser Use-compatible MCP connection helpers.
+- `client.mcp.server(serverKey)` for a browser published as a Browser MCP server in the Console's MCP module.
 
 The old standalone `client.browserAgents` surface has been removed. If you want a Console-managed agent to browse the web, attach the `Browser Use` system tool inside Console and invoke that agent through `client.agents`.
 

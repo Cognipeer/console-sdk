@@ -669,13 +669,11 @@ app.post('/hooks/cognipeer', express.raw({ type: 'application/json' }), (req, re
 - `client.browserSessions.delete(sessionId)` - Delete a stored session record
 
 #### Browser MCP
-- `client.browserMcp.getConnectionInfo(browserKey)` - Build SSE/message endpoint URLs for MCP clients
-- `client.browserMcp.getSseUrl(browserKey)` - Get the SSE endpoint for a browser MCP server
-- `client.browserMcp.getMessageUrl(browserKey, sessionId)` - Build the JSON-RPC message URL
-- `client.browserMcp.initialize(browserKey)` - Read the MCP server metadata
-- `client.browserMcp.listTools(browserKey)` - List Browser Use MCP tools
+A browser is published to MCP clients from the Console's MCP module (**MCP Servers → New server → Internal service →
+Browser**). Use `client.mcp.server(serverKey)` with that server's key: `browser_open_session` returns a `sessionKey`
+that every page tool takes.
 
-Standalone `client.browserAgents` management has been removed. To give a Console-managed agent browser capabilities, configure the `Browser Use` system tool in Console. Use `client.browserSessions` or `client.browserMcp` for direct browser automation from the SDK.
+Standalone `client.browserAgents` management has been removed. To give a Console-managed agent browser capabilities, configure the `Browser Use` system tool in Console. Use `client.browserSessions`, or a Browser MCP server through `client.mcp.server(serverKey)`, for direct browser automation from the SDK.
 
 #### Prompts
 - `client.prompts.list(query?)` - List prompt templates

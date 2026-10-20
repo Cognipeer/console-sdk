@@ -86,7 +86,6 @@ describe('ConsoleClient', () => {
       'agents',
       'browserSessions',
       'browsers',
-      'browserMcp',
       'audio',
       'ocr',
       'automations',

@@ -56,6 +56,10 @@ agents with the published version by default). `client.automations` (built-in au
   `IdempotencyKeySyncNotSupported`: a turn past the window is a `202` now); webhook events `schedule.fired` /
   `schedule.failed` and the `WebhookScheduleEvent` type (replaced by `trigger.fired` / `trigger.failed`).
 - Removed the orphan JS Sandbox comment and `examples/js-sandbox-basic.ts` (`client.jsSandbox` no longer exists).
+- **`client.browserMcp` is removed**, with `BrowserMcpResource` and the `BrowserMcp*` types: the Console no longer serves
+  a per-browser MCP endpoint (`/browser/:browserKey/mcp/*`). Publish the browser from the Console's MCP module (**MCP
+  Servers → New server → Internal service → Browser**) and use `client.mcp.server(serverKey)`; `browser_open_session`
+  returns the `sessionKey` every page tool takes.
 
 ### Added
 

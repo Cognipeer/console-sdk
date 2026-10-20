@@ -12,6 +12,18 @@ OpenAI dialects over one engine. Needs the Console
 release that ships the agent runs API (`/client/v1/agents/{key}/runs`, triggers, `/client/v1/responses` for
 agents with the published version by default). `client.automations` (built-in automations) is unchanged.
 
+### Added
+
+- **Agent reminders.** `client.agents.sessions.reminders.list(sessionId, { status?: 'active' | 'all' })` and
+  `.cancel(sessionId, reminderId)` (`AgentSessionRemindersResource`); types `AgentReminder`, `AgentReminderStatus`,
+  `ListAgentRemindersQuery`, `AgentReminderList`. `AgentRunChannel` gains `'reminder'`; the `user.message` session
+  event may carry `origin: 'reminder'` and `session.status_running` `trigger: 'reminder'`.
+- **Sandbox env from Config.** `SandboxCreateRequest.envRefs` / `groupRefs` take sandbox variables from Config (one item
+  per variable, or whole groups) instead of typed values; new `ConfigValueRef` / `ConfigGroupRef` types.
+- **Inline browser screenshots.** `client.browserSessions.screenshot(key, { inline: true })` returns the image as a
+  base64 content block (`BrowserScreenshotInlineResult`); `persist: false` skips saving it. New types
+  `BrowserContentBlock` and `BrowserScreenshotInlineResult`. Calls without `inline` are unchanged.
+
 ### Breaking changes
 
 - **`client.agents.chat()` is removed.** Use `client.agents.responses.create({ model, input })`
@@ -44,6 +56,10 @@ agents with the published version by default). `client.automations` (built-in au
   `IdempotencyKeySyncNotSupported`: a turn past the window is a `202` now); webhook events `schedule.fired` /
   `schedule.failed` and the `WebhookScheduleEvent` type (replaced by `trigger.fired` / `trigger.failed`).
 - Removed the orphan JS Sandbox comment and `examples/js-sandbox-basic.ts` (`client.jsSandbox` no longer exists).
+- **`client.browserMcp` is removed**, with `BrowserMcpResource` and the `BrowserMcp*` types: the Console no longer serves
+  a per-browser MCP endpoint (`/browser/:browserKey/mcp/*`). Publish the browser from the Console's MCP module (**MCP
+  Servers → New server → Internal service → Browser**) and use `client.mcp.server(serverKey)`; `browser_open_session`
+  returns the `sessionKey` every page tool takes.
 
 ### Added
 
