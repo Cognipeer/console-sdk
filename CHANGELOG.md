@@ -20,7 +20,7 @@ agents with the published version by default). `client.automations` (built-in au
   event may carry `origin: 'reminder'` and `session.status_running` `trigger: 'reminder'`.
 - **Sandbox env from Config.** `SandboxCreateRequest.envRefs` / `groupRefs` take sandbox variables from Config (one item
   per variable, or whole groups) instead of typed values; new `ConfigValueRef` / `ConfigGroupRef` types.
-- **Inline browser screenshots.** `client.browser.sessions.screenshot(key, { inline: true })` returns the image as a
+- **Inline browser screenshots.** `client.browserSessions.screenshot(key, { inline: true })` returns the image as a
   base64 content block (`BrowserScreenshotInlineResult`); `persist: false` skips saving it. New types
   `BrowserContentBlock` and `BrowserScreenshotInlineResult`. Calls without `inline` are unchanged.
 
