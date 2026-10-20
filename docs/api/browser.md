@@ -131,8 +131,8 @@ Delete a stored session record.
 ## Browser MCP
 
 A browser is published to MCP clients from the Console's MCP module: **MCP Servers → New MCP server → Internal service →
-Browser**. The server gets what every MCP server has (endpoints, access modes, tool toggles, guardrails, logs, hubs).
-Talk to it with `client.mcp.server(serverKey)`:
+Browser**. The server gets what every MCP server has (endpoints, tool toggles, guardrails, logs, hubs) except a public
+URL: a browser server is always called with an API token. Talk to it with `client.mcp.server(serverKey)`:
 
 ```ts
 const browserMcp = client.mcp.server('research-browser-mcp');
