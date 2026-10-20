@@ -13,6 +13,7 @@ import {
   BrowserExtractInput,
   BrowserExtractResult,
   BrowserPdfInput,
+  BrowserScreenshotInlineResult,
   BrowserScreenshotInput,
   BrowserSession,
   BrowserSnapshotResult,
@@ -121,9 +122,21 @@ export class BrowserSessionsResource {
     );
   }
 
-  /** Persist a screenshot to the configured files bucket. */
-  async screenshot(sessionKey: string, input: BrowserScreenshotInput = {}): Promise<BrowserArtifactResult> {
-    return this.http.request<BrowserArtifactResult>(
+  /**
+   * Persist a screenshot to the configured files bucket. With `{ inline: true }`
+   * the image also comes back as a base64 content block (and `persist: false`
+   * skips saving it).
+   */
+  async screenshot(
+    sessionKey: string,
+    input: BrowserScreenshotInput & { inline: true },
+  ): Promise<BrowserScreenshotInlineResult>;
+  async screenshot(sessionKey: string, input?: BrowserScreenshotInput): Promise<BrowserArtifactResult>;
+  async screenshot(
+    sessionKey: string,
+    input: BrowserScreenshotInput = {},
+  ): Promise<BrowserArtifactResult | BrowserScreenshotInlineResult> {
+    return this.http.request<BrowserArtifactResult | BrowserScreenshotInlineResult>(
       'POST',
       `${BASE}/sessions/${encodeURIComponent(sessionKey)}/screenshot`,
       { body: input },
