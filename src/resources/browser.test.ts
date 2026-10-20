@@ -132,6 +132,29 @@ describe('BrowserSessionsResource', () => {
     );
   });
 
+  it('requests an inline screenshot and returns the content blocks', async () => {
+    const http = createMockHttp();
+    const inline = {
+      content: [
+        { type: 'text', text: 'Screenshot of http://x/ (800x600)' },
+        { type: 'image', mimeType: 'image/png', data: 'AAAA', width: 800, height: 600 },
+      ],
+      structured: { url: 'http://x/', width: 800, height: 600, fullPage: false },
+    };
+    http.request.mockResolvedValue(inline);
+    const resource = new BrowserSessionsResource(http);
+
+    const result = await resource.screenshot('sess_1', { inline: true, persist: false });
+
+    expect(result.content[1]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(result.structured.width).toBe(800);
+    expect(http.request).toHaveBeenCalledWith(
+      'POST',
+      '/api/client/v1/browser/sessions/sess_1/screenshot',
+      { body: { inline: true, persist: false } },
+    );
+  });
+
   it('creates a PDF artifact', async () => {
     const http = createMockHttp();
     const artifact = { url: 'https://files.example.com/doc.pdf' };

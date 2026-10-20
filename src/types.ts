@@ -3553,6 +3553,40 @@ export interface BrowserScreenshotInput {
   selector?: string;
   type?: 'png' | 'jpeg';
   quality?: number;
+  /** Also return the image in the response as a base64 content block. */
+  inline?: boolean;
+  /** Save to the session's artifact bucket (server default true). `persist: false` requires `inline: true`. */
+  persist?: boolean;
+}
+
+/** MCP-shaped content block, as returned by tools that can carry images, audio or resources. */
+export type BrowserContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; mimeType: string; data?: string; name?: string; width?: number; height?: number }
+  | { type: 'audio'; mimeType: string; data: string; name?: string }
+  | {
+      type: 'resource_link';
+      uri: string;
+      name?: string;
+      title?: string;
+      description?: string;
+      mimeType?: string;
+      size?: number;
+    }
+  | { type: 'resource'; resource: { uri: string; mimeType?: string; text?: string; blob?: string } };
+
+/** Result of `screenshot(key, { inline: true })`. `artifact`/`eventId` are present only when it was persisted. */
+export interface BrowserScreenshotInlineResult {
+  artifact?: BrowserArtifactRef;
+  eventId?: string;
+  content: BrowserContentBlock[];
+  structured: {
+    url: string;
+    width?: number;
+    height?: number;
+    fullPage?: boolean;
+    artifact?: BrowserArtifactRef;
+  };
 }
 
 export interface BrowserPdfInput {
