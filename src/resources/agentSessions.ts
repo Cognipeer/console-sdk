@@ -4,6 +4,10 @@ import { HttpClient } from '../http';
 import { SseParser, SseMessage } from '../sse';
 import {
   AgentActionsPendingResponse,
+  AgentReminder,
+  AgentReminderCancelResult,
+  AgentReminderList,
+  ListAgentRemindersQuery,
   AgentConversationCancelResult,
   AgentResponse,
   AgentRun,
@@ -122,8 +126,7 @@ export type AgentSessionListCall = Promise<AgentSessionPage> & AsyncIterable<Age
  * const res = await client.agents.responses.create({ model: 'ops-agent', input: 'Clean up the staging DB' });
  * if (res.status === 'requires_action') {
  *   const [action] = res.required_action!.actions;
- *   const conversationId = res.id.replace(/^resp_/, '');
- *   const next = await client.agents.sessions.actions.resolve(conversationId, action.id, { decision: 'allow' });
+ *   const next = await client.agents.sessions.actions.resolve(res.cognipeer!.session_id!, action.id, { decision: 'allow' });
  * }
  * ```
  */
@@ -132,12 +135,14 @@ export class AgentSessionsResource {
   public readonly events: AgentSessionEventsResource;
   public readonly actions: AgentSessionActionsResource;
   public readonly files: AgentSessionFilesResource;
+  public readonly reminders: AgentSessionRemindersResource;
 
   constructor(http: HttpClient) {
     this.http = http;
     this.events = new AgentSessionEventsResource(http);
     this.actions = new AgentSessionActionsResource(http);
     this.files = new AgentSessionFilesResource(http);
+    this.reminders = new AgentSessionRemindersResource(http);
   }
 
   /**
@@ -211,18 +216,19 @@ export class AgentSessionsResource {
   }
 
   /**
-   * Stop the turn running on a conversation (and its queued or running
-   * background runs). Cooperative: the turn ends at its next checkpoint.
-   * Open approvals / questions are cancelled too when the caller may answer them.
-   * `cancelled: false` means nothing was running.
+   * Stop the turn running on a session: the way to stop an inline call (`responses.create`,
+   * chat completions, A2A) from a second request. Its queued or running runs stop too.
+   * Cooperative: the turn ends at its next checkpoint, keeping what it had streamed
+   * (`stop_reason: cancelled`). Open approvals / questions are cancelled when the caller may
+   * answer them. `cancelled: false` means nothing was running (not an error).
    *
-   * Rejects with `CognipeerAPIError` 404 when the conversation is not found.
-   * @param conversationId - The conversation id (a response id without its `resp_` prefix)
+   * Rejects with `CognipeerAPIError` 404 `session_not_found`.
+   * @param conversationId - The session id (`session_id` of a run, `cognipeer.session_id` or `conversation.id` of a response)
    */
   async cancel(conversationId: string, options: { signal?: AbortSignal } = {}): Promise<AgentConversationCancelResult> {
     return this.http.request<AgentConversationCancelResult>(
       'POST',
-      `/api/client/v1/agents/conversations/${encodeURIComponent(conversationId)}/cancel`,
+      sessionPath(conversationId, '/cancel'),
       { signal: options.signal },
     );
   }
@@ -248,8 +254,7 @@ export class AgentSessionsResource {
    * apart with `result.object`.
    *
    * Rejects with `CognipeerAPIError`: 400 `invalid_budget` (malformed, or not
-   * above what the session already spent), 400 `agent_background_disabled`
-   * (a resume needs background execution), 403 `budget_override_forbidden`
+   * above what the session already spent), 403 `budget_override_forbidden`
    * (the agent has its own session budget and does not let API callers raise
    * or remove it; lowering it is allowed), 404 `session_not_found`, 409
    * `agent_run_conflict` (a run is already active).
@@ -272,9 +277,20 @@ export class AgentSessionsResource {
  */
 export class AgentSessionEventsResource {
   private http: HttpClient;
+  private readonly eventsPath: (id: string, suffix: string) => string;
+  private readonly afterParam: string;
 
-  constructor(http: HttpClient) {
+  /**
+   * @param scope - Another event log with the same frames (a run's: `agents.runs.events`):
+   *   its path under the API and the name of its `after` query parameter.
+   */
+  constructor(
+    http: HttpClient,
+    scope: { path?: (id: string, suffix: string) => string; afterParam?: string } = {},
+  ) {
     this.http = http;
+    this.eventsPath = scope.path ?? ((id, suffix) => sessionPath(id, suffix));
+    this.afterParam = scope.afterParam ?? 'after';
   }
 
   /**
@@ -286,9 +302,9 @@ export class AgentSessionEventsResource {
     query: ListSessionEventsQuery = {},
     options: { signal?: AbortSignal } = {},
   ): Promise<SessionEventList> {
-    return this.http.request<SessionEventList>('GET', sessionPath(conversationId, '/events'), {
+    return this.http.request<SessionEventList>('GET', this.eventsPath(conversationId, '/events'), {
       query: {
-        after: query.after,
+        [this.afterParam]: query.after,
         types: query.types?.length ? query.types.join(',') : undefined,
         limit: query.limit,
       },
@@ -374,9 +390,9 @@ export class AgentSessionEventsResource {
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       const resumeFrom = state.lastSeq;
-      const response = await this.http.requestStream('GET', sessionPath(conversationId, '/events/stream'), {
+      const response = await this.http.requestStream('GET', this.eventsPath(conversationId, '/events/stream'), {
         query: {
-          after: resumeFrom > 0 ? resumeFrom : undefined,
+          [this.afterParam]: resumeFrom > 0 ? resumeFrom : undefined,
           types: options.types?.length ? options.types.join(',') : undefined,
         },
         headers: {
@@ -569,11 +585,16 @@ export class AgentSessionActionsResource {
    * {@link AgentRun} comes back right away (`202`); follow it with
    * `agents.runs.wait()`.
    *
+   * The `id` of an inline answer is `resp_<runId>` of the run that paused (also while other
+   * actions of the pause are open): `responses.retrieve(id)` reads it, and the run's events
+   * (`agents.runs.events`) include the continuation. Only a pause that no run owns (one raised
+   * on the dashboard) keeps an id built from the session.
+   *
    * Rejects with `CognipeerAPIError`: 403 `action_forbidden` (not an allowed
    * approver), 404 `action_not_found` / `session_not_found`, 409
    * `action_not_pending` (already answered), `action_cancelled` (withdrawn before
    * it was answered) or `agent_run_conflict` (a run is active), 410
-   * `action_expired`, 400 `invalid_resolution` / `agent_background_disabled`,
+   * `action_expired`, 400 `invalid_resolution`,
    * 503 `authorization_unavailable` (the Console could not decide; nothing
    * changed, retry). `error.response.error.action_status` carries the final state
    * of a request that is no longer open. See `AgentActionErrorCodes`.
@@ -739,5 +760,44 @@ export class AgentSessionFilesResource {
     return this.http.request<SessionFileDeleted>('DELETE', filePath(conversationId, fileId), {
       signal: options.signal,
     });
+  }
+}
+
+/**
+ * Reminders of a session: messages the agent scheduled to come back to later. A reminder is
+ * a scheduled run with channel `reminder`; when it fires the session gets a `user.message`
+ * event with `origin: 'reminder'` and a `session.status_running` with `trigger: 'reminder'`.
+ */
+export class AgentSessionRemindersResource {
+  private http: HttpClient;
+
+  constructor(http: HttpClient) {
+    this.http = http;
+  }
+
+  /** The session's reminders: only `scheduled` ones by default, every reminder with `status: 'all'`. */
+  async list(
+    sessionId: string,
+    options: ListAgentRemindersQuery & { signal?: AbortSignal } = {},
+  ): Promise<AgentReminder[]> {
+    const response = await this.http.request<AgentReminderList>('GET', sessionPath(sessionId, '/reminders'), {
+      query: { status: options.status },
+      signal: options.signal,
+    });
+    return response.data;
+  }
+
+  /** Cancel a scheduled reminder. 404 when unknown or on another session, 409 when it is no longer `scheduled`. */
+  async cancel(
+    sessionId: string,
+    reminderId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<AgentReminder> {
+    const response = await this.http.request<AgentReminderCancelResult>(
+      'DELETE',
+      sessionPath(sessionId, `/reminders/${encodeURIComponent(reminderId)}`),
+      { signal: options.signal },
+    );
+    return response.reminder;
   }
 }

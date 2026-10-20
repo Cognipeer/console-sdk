@@ -7,7 +7,7 @@ import { HttpClient } from '../http';
  * path, and payload a resource sends, without making real HTTP calls.
  */
 export type MockHttpClient = {
-  [K in 'request' | 'stream' | 'requestBinary' | 'requestStream' | 'requestMultipart' | 'requestRaw' | 'resolveURL']: ReturnType<
+  [K in 'request' | 'stream' | 'requestBinary' | 'requestStream' | 'requestMultipart' | 'requestRaw' | 'resolveURL' | 'getTimeoutMs']: ReturnType<
     typeof vi.fn
   >;
 };
@@ -28,6 +28,7 @@ export function createMockHttp(): MockHttpClient & HttpClient {
     requestMultipart: vi.fn(),
     requestRaw: vi.fn(),
     resolveURL: vi.fn((path: string) => `https://mock.test${path}`),
+    getTimeoutMs: vi.fn(() => 60_000),
   };
   return mock as unknown as MockHttpClient & HttpClient;
 }

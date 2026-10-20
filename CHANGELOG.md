@@ -5,6 +5,131 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-10-17
+
+The agent platform release: runs, triggers (schedule, once, manual and webhook; an agent can have several) and the
+OpenAI dialects over one engine. Needs the Console
+release that ships the agent runs API (`/client/v1/agents/{key}/runs`, triggers, `/client/v1/responses` for
+agents with the published version by default). `client.automations` (built-in automations) is unchanged.
+
+### Added
+
+- **Agent reminders.** `client.agents.sessions.reminders.list(sessionId, { status?: 'active' | 'all' })` and
+  `.cancel(sessionId, reminderId)` (`AgentSessionRemindersResource`); types `AgentReminder`, `AgentReminderStatus`,
+  `ListAgentRemindersQuery`, `AgentReminderList`. `AgentRunChannel` gains `'reminder'`; the `user.message` session
+  event may carry `origin: 'reminder'` and `session.status_running` `trigger: 'reminder'`.
+
+### Breaking changes
+
+- **`client.agents.chat()` is removed.** Use `client.agents.responses.create({ model, input })`
+  (`res.output_text`, `res.conversation.id` for the session).
+- **Agents run the published version by default** on `agents.responses.create()` (the draft only when
+  nothing was ever published). Pin with `version: 3`, run the draft with `version: 'draft'`.
+- **`responses.create()` never returns an `AgentRun`.** `background: true` and a turn past the Console's
+  wait window answer HTTP `202`, and the SDK returns the `AgentResponse` with `status: 'queued' | 'in_progress'`
+  (`cognipeer.run_id` is the run to follow). The `AgentBackgroundResponseCreateRequest` type is removed.
+- **Agent request type** (`AgentResponseCreateRequest`) drops `instructions`, `temperature`, `top_p` and
+  `max_output_tokens`: the agent's own configuration applies (the Console ignores them and lists them in
+  `X-Cognipeer-Ignored-Params`). `version` is `number | 'draft'`.
+- **Response ids are `resp_<runId>`.** The session is `res.conversation.id` / `res.cognipeer.session_id`; do not
+  strip a `resp_` prefix to get it. `AgentResponse.status` is now
+  `queued | in_progress | completed | incomplete | failed | cancelled | requires_action`.
+- **`responses.cancel(id)`** posts to `/client/v1/responses/{id}/cancel` and returns the `AgentResponse`
+  (was `{ id, conversation_id, cancelled, run_ids }` from `/agents/responses/{id}/cancel`). `AgentResponseCancelResult`
+  is removed. `sessions.cancel()` uses `/client/v1/agents/sessions/{id}/cancel` and answers
+  `{ object: 'agent.session.cancel', session_id, cancelled, run_ids }` (`conversation_id` is gone; `run_ids` are `run_<id>`).
+- **`AgentResponse.output`** is `(ResponseReasoningItem | ResponseOutputMessage)[]`: the reasoning item comes first when
+  the agent shows its reasoning. `usage` is `null` until the turn has an answer; `error` is `{ code, message }`.
+- **`ModelList.models`** (the registry rows) is always present; an agent entry's `description` is always a string.
+- **`AgentRunCallbackEvent`** carries `sessionId` and `conversationId`; the never-sent `tenantId` / `projectId` are removed.
+- **`runs.wait()`** uses the `?wait=` long-poll instead of 1 s polling: `pollIntervalMs` is now the smallest gap
+  between polls, `waitSeconds` sets one poll's length (default 20, capped below the client timeout).
+- **`AgentRun`** has the new run shape (`class`, `version`, `session_id`, `channel`, `trigger`, `trigger_id`,
+  `metadata`, `output_text`, `output_parsed`, `scheduled_for`, `detached_at`); `AgentRunStatus` gains `scheduled`.
+- **Removed:** error codes `agent_background_disabled` (`AgentActionErrorCodes.BackgroundDisabled`),
+  `idempotency_key_sync_not_supported` and the sync `timeout` 504 (`AgentRunErrorCodes.SyncTimeout`,
+  `IdempotencyKeySyncNotSupported`: a turn past the window is a `202` now); webhook events `schedule.fired` /
+  `schedule.failed` and the `WebhookScheduleEvent` type (replaced by `trigger.fired` / `trigger.failed`).
+- Removed the orphan JS Sandbox comment and `examples/js-sandbox-basic.ts` (`client.jsSandbox` no longer exists).
+
+### Added
+
+- **`client.agents.runs`**: `create(agentKey, body, options?)` (`wait`, `class: 'default' | 'deferred'`, `run_at` /
+  `delay_seconds`, `variables`, `response_format`, `callback`, `metadata`, `session_id`, `version`, `stream`; the
+  `Prefer` header via `options.prefer`; an `Idempotency-Key` is generated when none is given), `list(query)`
+  (OpenAI list envelope, `AgentRunPage` with `getNextPage()` and async iteration), `get(id, { wait })`, `cancel(id)`,
+  `wait(id)`, `events(id)` / `events.stream(id)` (SSE with resume), `queue()`, `resolveAction(runId, actionId, body)`.
+- **`client.agents.triggers`**: `list`, `create`, `get`, `update`, `delete`, `run(agentKey, triggerId, body?, options?)`.
+  A trigger starts an agent with a prompt on its own: on a cron schedule (+ IANA timezone), once, by hand, or on a
+  **webhook**. An agent can have several triggers; each has one `type` (`schedule`, `once`, `manual`, `webhook`) and the
+  settings of that type in the sub-object named after it (`schedule`, `once`, `webhook`). `list()` returns the list
+  envelope `{ object: 'list', data, has_more }`, ids are bare (no prefix), timestamps unix seconds (only `once.run_at` is
+  ISO), `delete()` answers `{ id, object: 'agent.trigger.deleted', deleted: true }`. Each fire is a run
+  (`channel: 'trigger'`, `runs.list({ trigger_id })`). `run()` answers the run (`200`, or `202` while it goes), takes `wait`
+  in the call options, and an `Idempotency-Key` is generated when none is given; `429` carries `Retry-After`.
+- **Webhook triggers** (`type: 'webhook'`, `webhook: { preset, auth, events, filter, include_payload }`; presets `github`,
+  `gitlab`, `azure_devops`, `generic`): a new trigger comes back with `webhook.secret` (shown once;
+  `AgentTriggerWithSecret`); `triggers.rotateWebhookSecret(agentKey, triggerId, { grace_seconds?, secret? })`;
+  `triggers.deliveries(agentKey, triggerId, { before?, limit? })` (the delivery log);
+  `triggers.run(..., { payload, headers, dry_run })` builds the turn from a sample event, or with `dry_run: true`
+  answers an `AgentTriggerDryRun` and starts nothing.
+- **`signTriggerWebhook(secret, body, { timestamp?, eventId?, event? })`**, exported from the package root (no Node.js
+  APIs): the `x-cognipeer-signature` / `x-cognipeer-event-id` / `x-cognipeer-event` headers for a webhook trigger with
+  auth `signature`. Tested against the Console's verifier.
+- **Variables**: an agent's declared variables are sent as `variables` next to the message (`runs.create()`,
+  `responses.create()`, chat completions, `triggers.create()` / `update()` / `run()`) and published as
+  `Agent.variables_schema`; a missing required value or a wrong type is `400 invalid_variables`
+  (`AgentRunErrorCodes.InvalidVariables`). Best for runs a program starts (the runs API, triggers, n8n / CI, an agent called
+  as a tool); chat clients never send them, so a required variable without a default fails every chat call. The README
+  and the Agents API page (Variables) explain it.
+- **`responses.create({ stream: true })`** returns an async iterator of typed `response.*` events
+  (`AgentResponseStreamEvent`, `isResponseStreamEvent`); `responses.retrieve(id)`.
+- Request fields on agent responses: `text.format` (structured output), `metadata`, `service_tier`, `variables`,
+  `background`, `callback_url` / `callback_secret`, `stream`, `store`; `input_file.file_url`.
+  `AgentResponse` gains `output_text`, `output_parsed`, `output_error`, `output_files`, `error`, `metadata`,
+  `text`, `service_tier`, `background` (also reported by `retrieve()` for a run started with `background: true`,
+  streamed or not), `conversation`, `cognipeer.run_id` / `session_id`; `isAgentResponseFinal()`. Stream events include
+  the reasoning summary events (`response.reasoning_summary_*`), `response.incomplete` (a limit or a cancelled run) and
+  `response.failed`; the `error` event carries `error_type`.
+- **`client.models.list()`** typed with the project's models and its active agents (`id: 'agent:<key>'`,
+  `cognipeer.kind === 'agent'`; `isAgentModelEntry`).
+- **Chat completions**: `response_format`, `stream_options.include_usage`, `service_tier`, `metadata`, `variables`,
+  `conversation_id`; per-call `{ sessionId, idempotencyKey, signal }`; the `202` body (`choices: []`,
+  `cognipeer.status` `queued | in_progress`, `run_id`, `session_id`), `output_files` / `stop_reason` / `stop_detail`
+  and the usage chunk are typed.
+- `ReasoningEffort` accepts `xhigh` and `max`. `Agent.variables_schema` / `output_schema`. `Agent.attachments.outputs`
+  (`enabled`, `max_files_per_turn`, `max_file_size_mb`, `types`): files the agent writes for the person work with uploads
+  off when the agent has an attachments bucket. `AgentConfig.sandbox.secretsUnreadable`: stored sandbox secrets that can
+  no longer be decrypted (see `AgentConfigErrorCodes.SandboxSecretsUnreadable`, `409 sandbox_secrets_unreadable`).
+- `runs.create({ stream: true })` sends an `Idempotency-Key` like every other run call (the Console accepts it on streams);
+  `runs.resolveAction()` takes `{ background: true }` and answers the queued run; `runs.list({ trigger })` (a run's
+  `trigger` is also `webhook`); `AgentRun.output_error`.
+- Webhook events `trigger.fired`, `trigger.failed` and `feedback.recorded` (typed, in `WEBHOOK_EVENT_TYPES`; trigger
+  events carry `triggerId`, `agentKey`, `trigger` (what started the fire), `runId` / `reason`, `event`); `agent_run.*` event
+  data carries `sessionId`, `status`, `class`, `metadata`, `triggerId`. `verifyAgentRunCallback` and the callback types are
+  unchanged.
+- Error codes `invalid_variables` and `invalid_response_format`, `spend_limit_exceeded`, `agent_quota_exceeded` and
+  `agent_inactive` (`AgentRunErrorCodes`); run error reasons `expired` and `interrupted`.
+- Error codes `agent_run_interrupted` (503: the run a waiting call is attached to was ended elsewhere; retry with an
+  idempotency key), `invalid_json`, `invalid_version` and `attachment_unreachable` (`AgentRunErrorCodes.Interrupted`,
+  `InvalidJson`, `InvalidVersion`, `AttachmentUnreachable`). Note the client retries a `503` on its own unless the body
+  says `retryable: false`.
+- `ChatCompletionRequest.version` (`number | 'draft'`) pins an agent version on `/chat/completions`.
+
+### Changed (platform fixes, no API change)
+
+- `ResponseUsage` always carries `input_tokens_details.cached_tokens` and `output_tokens_details.reasoning_tokens`
+  (both required in the type; `0` when not reported, and `reasoning_tokens` is `0` for agents).
+- `ModelList`: a token that can read agents but not models lists the agents only (`models: []`, no providers).
+- A stream that would exceed the concurrency cap or the agent quota is refused with a plain `429` before it opens
+  (`Retry-After` 30 s for the cap, 60 s for the quota); concurrency `429`s carry `Retry-After` on every call.
+- `AgentResponse.background` reports what the request asked for (a flex call reads `false`); `reasoning` applies to
+  runs that execute inside the request only; `accepts_images` is `false` while uploads are off.
+- `AgentRunCallbackEvent.id` is `evt_<runId>_<event>` for the first delivery and gets a `_<generation>` suffix for
+  later generations of a run; `runs.resolveAction()` answers `resp_<runId>` for pending and resumed outcomes;
+  `runs.cancel()` of a paused run ends it as `canceled` with `canceled_by_caller`.
+
+
 ## [3.2.0] - 2026-10-14
 
 ### Added
@@ -512,6 +637,17 @@ turns a monitoring policy into an enforcing one. `retrieval.pre` /
   tool schemas on detail).
 - `realtime.connect({ runtimeContext })` sends session-scoped downstream auth
   right after the socket opens; refreshable via `updateSession`.
+
+## [1.5.0] - 2026-07-14
+
+### Added
+- Aegis API (`client.aegis`, Enterprise) — enforcement-plane policy evaluation: `evaluate()` returns an `allow`/`redact`/`require_approval`/`sandbox`/`block` decision with findings, risk score and a sanitized resource; `shields.list()` and `shields.audit(shieldId)` read the enforcement instances and their decision trails. Shields are configured in the Console dashboard (`/dashboard/aegis`).
+
+## [1.4.1] - 2026-07-07
+
+### Added
+- `client.sandbox.listeningPorts(id)` — TCP ports currently LISTENing inside a sandbox, with a `loopbackOnly` flag (a service bound only to 127.0.0.1 must be restarted on 0.0.0.0 to be previewable).
+- `SandboxPreviewInfo.allPorts` — when true (platform default), **any** port is previewable through `previewUrl(id, port)` / share links, not just the suggested list; the platform provisions an on-demand forwarder for unpublished ports.
 
 ## [1.4.0] - 2026-07-05
 

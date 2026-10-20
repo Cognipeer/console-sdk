@@ -1,6 +1,7 @@
 import { HttpClient } from './http';
 import { ConsoleClientOptions } from './types';
 import { ChatResource } from './resources/chat';
+import { ModelsResource } from './resources/models';
 import { BatchesResource } from './resources/batches';
 import { ModerationsResource } from './resources/moderations';
 import { BudgetsResource, SpendResource } from './resources/spend';
@@ -66,6 +67,9 @@ export class ConsoleClient {
 
   /** Chat completions API */
   public chat: ChatResource;
+
+  /** Models API: the project's models and active agents */
+  public models: ModelsResource;
 
   /** Batch API (OpenAI-compatible async bulk inference) */
   public batches: BatchesResource;
@@ -141,8 +145,6 @@ export class ConsoleClient {
   /** Crawler API (scheduled + ad-hoc web crawls) */
   public crawler: CrawlerResource;
 
-  /** JS Sandbox API (managed isolate execution) */
-
   /** Agent Sandbox API (remote runtime sandboxes: exec, code, fs, git, sessions) */
   public sandbox: SandboxResource;
 
@@ -200,6 +202,7 @@ export class ConsoleClient {
 
     // Initialize resources
     this.chat = new ChatResource(this.http);
+    this.models = new ModelsResource(this.http);
     this.batches = new BatchesResource(this.http);
     this.moderations = new ModerationsResource(this.http);
     this.spend = new SpendResource(this.http);

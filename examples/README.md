@@ -24,7 +24,6 @@ npm run example:memory            # Scoped memories: add, search, recall
 npm run example:audio             # TTS → MP3 → STT round-trip
 npm run example:crawler           # Ad-hoc crawl + poll + read results
 npm run example:reranker          # Cohere-compatible reranking
-npm run example:js-sandbox        # Run JS inside a managed isolate
 npm run example:mcp-console       # Talk to the built-in Console MCP server
 npm run example:tracing-stream    # Streaming tracing session (start/append/end)
 ```
@@ -39,7 +38,6 @@ Most examples are happy with just `COGNIPEER_API_KEY`. A few accept overrides:
 | `COGNIPEER_TTS_MODEL`, `COGNIPEER_TTS_VOICE`, `COGNIPEER_STT_MODEL` | audio | Pick model/voice. |
 | `COGNIPEER_CRAWL_URLS` | crawler | Comma-separated URLs to crawl (default: `https://example.com`). |
 | `COGNIPEER_RERANKER_KEY` | reranker | Required — pick a reranker configured in Console. |
-| `COGNIPEER_JS_RUNTIME_KEY` | js-sandbox | Optional runtime to target. |
 | `COGNIPEER_VECTOR_PROVIDER_KEY`, `COGNIPEER_EMBEDDING_MODEL_KEY` | memory, rag | Provider/embedding overrides. |
 
 ## File list
@@ -53,7 +51,6 @@ Most examples are happy with just `COGNIPEER_API_KEY`. A few accept overrides:
 | `audio-tts-stt.ts` | Text-to-speech → speech-to-text |
 | `crawler-adhoc.ts` | Run an ad-hoc crawl and read results |
 | `reranker-basic.ts` | Run a Cohere-compatible reranker |
-| `js-sandbox-basic.ts` | Execute JS inside a sandbox runtime |
 | `mcp-console.ts` | Drive the built-in Console MCP server |
 | `tracing-stream.ts` | Stream a tracing session event-by-event |
 
