@@ -17,7 +17,7 @@ import { MemoryResource } from './resources/memory';
 import { RagResource } from './resources/rag';
 import { ConfigResource } from './resources/config';
 import { AgentsResource } from './resources/agents';
-import { BrowserSessionsResource, BrowsersResource } from './resources/browser';
+import { BrowserFlowsResource, BrowserSessionsResource, BrowsersResource } from './resources/browser';
 import { AudioResource, OcrResource } from './resources/audio';
 import { AutomationsResource } from './resources/automations';
 import { CrawlerResource } from './resources/crawler';
@@ -130,6 +130,9 @@ export class ConsoleClient {
   /** Browsers (parent profiles for sessions and Browser Use) */
   public browsers: BrowsersResource;
 
+  /** Browser flows: record a browser task once, then replay it without a model */
+  public browserFlows: BrowserFlowsResource;
+
   /** Audio (STT / TTS / translation) API */
   public audio: AudioResource;
 
@@ -218,6 +221,7 @@ export class ConsoleClient {
     this.agents = new AgentsResource(this.http);
     this.browserSessions = new BrowserSessionsResource(this.http);
     this.browsers = new BrowsersResource(this.http);
+    this.browserFlows = new BrowserFlowsResource(this.http);
     this.audio = new AudioResource(this.http);
     this.ocr = new OcrResource(this.http);
     this.automations = new AutomationsResource(this.http);

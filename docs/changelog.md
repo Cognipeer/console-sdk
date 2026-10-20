@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+Browser flows, durable element targets and signed-in browser profiles: the client side of browser automation that can
+repeat itself. Additive apart from one type narrowing (see Changed). Needs a Console that serves the browser flows API
+(`/client/v1/browser/flows`); declared flow `outputs` and run `captures` need a Console new enough to have them.
+
+### Added
+
+- **`client.browserFlows`: record a browser task once, replay it without a model.** Driving a browser with a model is
+  discovery (it reads the page, guesses, backtracks and bills tokens for every step); replaying a flow is execution.
+  `record({ sessionId, name, status? })` turns a driven session into an ordered step list with durable targets, and
+  lifts every typed value into a declared input; `run(idOrKey, { inputs?, keepSessionOpen?, maxSteps? })` replays it and
+  returns the run. A failed run resolves: read `status`, `failedStepIndex` and `stepResults`. Also `create`, `list`,
+  `get`, `update`, `delete`, `listRuns` and `getRun`. New types `BrowserFlow`, `BrowserFlowRun`, `BrowserFlowInput`,
+  `BrowserFlowStep`, `BrowserFlowStepPolicy`, `BrowserFlowStepResult`, `BrowserFlowCreateInput`,
+  `BrowserFlowUpdateInput`, `BrowserFlowRecordInput`, `BrowserFlowRunInput`, `BrowserFlowSessionConfig` and the
+  `BrowserFlowStatus` / `BrowserFlowRunStatus` / `BrowserFlowTrigger` unions.
+- **Declared flow outputs.** `BrowserFlow.outputs` (`BrowserFlowOutput`: `name`, a `source` template over the step
+  captures and the run's inputs, an optional `type` cast and `required`) defines the JSON a run returns.
+  `BrowserFlowRun.captures` keeps the raw `captureAs` values next to `outputs`.
+- **Durable element targets.** `BrowserTarget` names an element by `ref` (valid for one snapshot only) or by the
+  durable `role` + `name` (`nameContains`), `testId`, `label`, `placeholder`, `text`, `selector`, `nth` and `frame`.
+  Every targeted action, `extract` and `screenshot` accepts it. Action results now carry `resolvedTarget` (the durable
+  form of the element the action hit: save this, not the `ref`), `targetStrategy` and, for `tab` actions, `tabs`;
+  `extract` results carry `resolvedTarget` too.
+- **More browser actions.** `select`, `check`, `upload`, `drag`, `back` / `forward` / `reload` and `tab`. `click` takes
+  `clickCount`, `type` takes `submit`, `wait` takes `text` and `loadState`, and the targeted actions take a `timeout`.
+  `extract` takes `mode: 'value'`. `BrowserSessionEventType` gains the matching event types.
+- **Signed-in profiles.** `client.browsers.setProfile(idOrKey, storageState, fileName?)` attaches a Playwright
+  `storageState` so every session the browser opens starts signed in, instead of replaying credentials through a login
+  form on each run. It is encrypted on the server and never read back: only the `BrowserProfileSummary` that
+  `setProfile()` returns, and `Browser.storageStateMeta`, describe it. `clearProfile()` removes it, and
+  `client.browserSessions.exportProfile(sessionKey)` produces a `storageState` from a session you signed in to by hand.
+- **Session observation.** `client.browserSessions.find(sessionKey, text, { limit? })` locates visible text and returns
+  a durable target for each hit (`BrowserFindResult`); `client.browserSessions.diagnostics(sessionKey)` returns the
+  console messages, failed requests and last dialog the session saw (`BrowserObservations`).
+- **Session settings.** `BrowserSessionConfig` gains `timezoneId`, `actionTimeoutMs`, `navigationTimeoutMs`, `proxy`,
+  `extraHTTPHeaders`, `httpCredentials`, `acceptDownloads`, `ignoreHTTPSErrors`, `dialogPolicy` and `storageState`.
+
+### Changed
+
+- **`BrowserActionWait` no longer declares `ref`.** The API never accepted it on a `wait` (browser request bodies are
+  strict, so it answered `400`); the type now matches. Wait on a `selector`, `text`, `ms` or `loadState`.
+- `BrowserScreenshotInput` and `BrowserExtractInput` now extend `BrowserTarget`. They keep `ref` and `selector`.
+
 ## [4.0.0] - 2026-10-17
 
 The agent platform release: runs, triggers (schedule, once, manual and webhook; an agent can have several) and the
