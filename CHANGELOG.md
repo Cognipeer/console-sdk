@@ -18,6 +18,8 @@ agents with the published version by default). `client.automations` (built-in au
   `.cancel(sessionId, reminderId)` (`AgentSessionRemindersResource`); types `AgentReminder`, `AgentReminderStatus`,
   `ListAgentRemindersQuery`, `AgentReminderList`. `AgentRunChannel` gains `'reminder'`; the `user.message` session
   event may carry `origin: 'reminder'` and `session.status_running` `trigger: 'reminder'`.
+- **Sandbox env from Config.** `SandboxCreateRequest.envRefs` / `groupRefs` take sandbox variables from Config (one item
+  per variable, or whole groups) instead of typed values; new `ConfigValueRef` / `ConfigGroupRef` types.
 
 ### Breaking changes
 

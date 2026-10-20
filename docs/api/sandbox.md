@@ -24,6 +24,24 @@ console.log(res.exitCode, res.stdout);
 await client.sandbox.delete(sbx.id);
 ```
 
+### Environment variables from Config
+
+Instead of typing values into `env`, a sandbox can take them from Config: one config item per
+variable (`envRefs`, by `configId` or `configKey`), or whole config groups (`groupRefs`, by `groupId`
+or `groupKey`) whose items become variables named from their key (`cfg-openai-api-key` →
+`OPENAI_API_KEY`). Only the references are stored; values are read when the sandbox starts, in the
+token's project. A variable set by name (`env` or `envRefs`) wins over a group, and naming a new item
+needs read access to Config.
+
+```typescript
+const sbx = await client.sandbox.create({
+  template: 'python-ml',
+  env: { LOG_LEVEL: 'debug' },
+  envRefs: { HF_TOKEN: { configKey: 'cfg-hf-token' } },
+  groupRefs: [{ groupKey: 'cfg-grp-openai' }],
+});
+```
+
 ### Run code
 
 ```typescript

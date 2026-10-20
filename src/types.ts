@@ -2035,6 +2035,18 @@ export interface ConfigAuditLog {
   createdAt: string;
 }
 
+/**
+ * A variable whose value comes from a Config item instead of being typed, by item id or key. Stored as a
+ * reference; the value is read when it is used, in the caller's project.
+ */
+export type ConfigValueRef = { configId: string } | { configKey: string };
+
+/**
+ * A whole Config group bound at once, by id or key: every item in it (now and later) becomes a variable named
+ * from the item key (`cfg-openai-api-key` -> `OPENAI_API_KEY`).
+ */
+export type ConfigGroupRef = { groupId: string } | { groupKey: string };
+
 export interface ResolveConfigRequest {
   keys: string[];
 }
@@ -6292,6 +6304,13 @@ export interface SandboxCreateRequest {
   name?: string;
   /** Per-sandbox environment variables (override template env). */
   env?: Record<string, string>;
+  /**
+   * Per-sandbox variables taken from Config (name -> item). Resolved when the sandbox starts, in the token's
+   * project; an item outside it fails the start. Naming a new item needs read access to Config.
+   */
+  envRefs?: Record<string, ConfigValueRef>;
+  /** Config groups bound to this sandbox. A variable set by name (`env`, `envRefs`) wins over a group. */
+  groupRefs?: ConfigGroupRef[];
   runnerId?: string;
   volumeId?: string;
   /** Persist the sandbox so it survives stop/restart instead of being ephemeral. */
