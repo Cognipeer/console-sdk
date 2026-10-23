@@ -34,6 +34,20 @@ Use it when you need to:
 | Export browser PDF | `client.browserSessions.pdf(sessionKey, data)` | `POST /browser/sessions/:sessionKey/pdf` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
 | Close browser session | `client.browserSessions.close(sessionKey)` | `DELETE /browser/sessions/:sessionKey` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
 | Delete browser session | `client.browserSessions.delete(sessionId)` | `DELETE /browser/sessions/by-id/:sessionId` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Find text in a session | `client.browserSessions.find(sessionKey, text, options?)` | `GET /browser/sessions/:sessionKey/find` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Read session diagnostics | `client.browserSessions.diagnostics(sessionKey)` | `GET /browser/sessions/:sessionKey/diagnostics` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Export session profile | `client.browserSessions.exportProfile(sessionKey)` | `GET /browser/sessions/:sessionKey/profile` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Attach signed-in profile | `client.browsers.setProfile(idOrKey, storageState, fileName?)` | `PUT /browser/browsers/:idOrKey/profile` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Clear signed-in profile | `client.browsers.clearProfile(idOrKey)` | `DELETE /browser/browsers/:idOrKey/profile` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Create browser flow | `client.browserFlows.create(data)` | `POST /browser/flows` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| List browser flows | `client.browserFlows.list(query?)` | `GET /browser/flows` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Get browser flow | `client.browserFlows.get(idOrKey)` | `GET /browser/flows/:idOrKey` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Update browser flow | `client.browserFlows.update(idOrKey, data)` | `PATCH /browser/flows/:idOrKey` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Delete browser flow | `client.browserFlows.delete(idOrKey)` | `DELETE /browser/flows/:idOrKey` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Record browser flow | `client.browserFlows.record(data)` | `POST /browser/flows/record` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Run browser flow | `client.browserFlows.run(idOrKey, data?)` | `POST /browser/flows/:idOrKey/run` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| List browser flow runs | `client.browserFlows.listRuns(query?)` | `GET /browser/flow-runs` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
+| Get browser flow run | `client.browserFlows.getRun(runId)` | `GET /browser/flow-runs/:runId` | [Browser](https://cognipeer.github.io/cognipeer-console/api/browser) |
 | List vector providers | `client.vectors.providers.list()` | `GET /vector/providers` | [Vector](https://cognipeer.github.io/cognipeer-console/api/vector) |
 | Create vector provider | `client.vectors.providers.create()` | `POST /vector/providers` | [Vector](https://cognipeer.github.io/cognipeer-console/api/vector) |
 | List indexes | `client.vectors.indexes.list(providerKey)` | `GET /vector/providers/:providerKey/indexes` | [Vector](https://cognipeer.github.io/cognipeer-console/api/vector) |

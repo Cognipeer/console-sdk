@@ -23,7 +23,7 @@ Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com
 - ⚙️ **Automations** - Trigger and pause built-in scheduled jobs
 - 🔀 **Rerankers** - Cohere-compatible reranking
 - 🛰️ **MCP** - Talk to the built-in Console MCP server and tenant-configured MCP servers
-- 🌐 **Browser Automation** - Manage browser profiles, drive live sessions, and call browsers published as MCP servers
+- 🌐 **Browser Automation** - Manage browser profiles, drive live sessions, record a task once and replay it as a flow, and call browsers published as MCP servers
 - 🔍 **Agent Tracing** - Streaming + bulk ingest, OTLP/HTTP JSON, plus OpenTelemetry exporter
 - 🧠 **Memory Stores** - Persist, search, and recall scoped memories
 - 🛡️ **Guardrails** - Evaluate content with tenant guardrail policies
@@ -653,6 +653,8 @@ app.post('/hooks/cognipeer', express.raw({ type: 'application/json' }), (req, re
 - `client.browsers.get(idOrKey)` - Get browser profile details
 - `client.browsers.update(idOrKey, data)` - Update a browser profile
 - `client.browsers.delete(idOrKey)` - Delete a browser profile
+- `client.browsers.setProfile(idOrKey, storageState, fileName?)` - Attach a signed-in profile (Playwright `storageState`); never readable back
+- `client.browsers.clearProfile(idOrKey)` - Remove the signed-in profile
 
 #### Browser Sessions
 - `client.browserSessions.create(data)` - Create a browser session under a browser profile
@@ -665,8 +667,19 @@ app.post('/hooks/cognipeer', express.raw({ type: 'application/json' }), (req, re
 - `client.browserSessions.screenshotLive(sessionKey, query?)` - Fetch a raw viewport screenshot
 - `client.browserSessions.screenshot(sessionKey, input?)` - Persist a screenshot artifact
 - `client.browserSessions.pdf(sessionKey, input?)` - Export a PDF artifact
+- `client.browserSessions.find(sessionKey, text, options?)` - Find visible text and get a durable target for each hit
+- `client.browserSessions.diagnostics(sessionKey)` - Console messages, failed requests and the last dialog
+- `client.browserSessions.exportProfile(sessionKey)` - Export the session's cookies and storage as a `storageState`
 - `client.browserSessions.close(sessionKey)` - Close a live session
 - `client.browserSessions.delete(sessionId)` - Delete a stored session record
+
+An action names its element with a `ref` from the latest snapshot or with a durable target (`role` + `name`, `testId`, `label`, `placeholder`, `text`, `selector`); every action result returns `resolvedTarget`, the durable form to save.
+
+#### Browser Flows
+- `client.browserFlows.record(input)` - Turn a driven session into a replayable flow
+- `client.browserFlows.run(idOrKey, input?)` - Run a flow (no model) and wait for the result
+- `client.browserFlows.create(input)` / `.list(query?)` / `.get(idOrKey)` / `.update(idOrKey, input)` / `.delete(idOrKey)` - Manage flows
+- `client.browserFlows.listRuns(query?)` / `.getRun(runId)` - Run history
 
 #### Browser MCP
 A browser is published to MCP clients from the Console's MCP module (**MCP Servers → New MCP server → Internal service →

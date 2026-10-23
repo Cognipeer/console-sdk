@@ -271,6 +271,7 @@ interface Browser {
   status: 'active' | 'disabled';
   artifactBucketKey?: string;
   defaultSessionConfig?: BrowserSessionConfig;
+  storageStateMeta?: BrowserProfileSummary | null; // the signed-in profile's summary; the profile itself is never returned
   defaultModelKey?: string;
   defaultRunOptions?: { maxSteps?: number; temperature?: number; runtimeProfile?: string };
   metadata?: Record<string, unknown>;
@@ -306,6 +307,86 @@ interface BrowserSession {
   createdAt?: string;
   updatedAt?: string;
   eventCount?: number;
+}
+```
+
+### `BrowserTarget`
+
+How an action names the element it acts on. `ref` is volatile (valid for one snapshot); every other field is durable. `resolvedTarget` on an action result is the durable form of what the action hit.
+
+```typescript
+interface BrowserTarget {
+  ref?: string;
+  role?: string;
+  name?: string;
+  nameContains?: boolean;
+  testId?: string;
+  label?: string;
+  placeholder?: string;
+  text?: string;
+  selector?: string;
+  nth?: number;
+  frame?: string | string[];
+}
+```
+
+`BrowserAction` is a union of `goto`, `click`, `hover`, `type`, `press`, `select`, `check`, `upload`, `drag`, `back` / `forward` / `reload`, `wait`, `scroll` and `tab` actions; the targeted ones extend `BrowserTarget`.
+
+### `BrowserProfileSummary`
+
+```typescript
+interface BrowserProfileSummary {
+  uploadedAt: string;
+  uploadedBy?: string;
+  cookieCount: number;
+  origins: string[];
+  earliestExpiry?: string;
+  sourceFileName?: string;
+}
+```
+
+### `BrowserFlow`
+
+```typescript
+interface BrowserFlow {
+  id: string;
+  key: string;
+  name: string;
+  status: 'draft' | 'active' | 'disabled';
+  browserId: string;
+  inputs?: BrowserFlowInput[];   // { name, type: 'string' | 'number' | 'boolean' | 'secret', required?, default?, ... }
+  outputs?: BrowserFlowOutput[]; // { name, source, type?: 'string' | 'number' | 'boolean' | 'json', required? }
+  steps: BrowserFlowStep[];      // { id, action, label?, captureAs?, policy?, when? }
+  sessionConfig?: BrowserFlowSessionConfig;
+  recordedFromSessionId?: string;
+  version: number;
+  lastRun?: { runId: string; status: BrowserFlowRunStatus; startedAt: string; durationMs?: number };
+  // plus tenantId, projectId, description, metadata, createdBy, updatedBy, createdAt, updatedAt
+}
+```
+
+### `BrowserFlowRun`
+
+```typescript
+interface BrowserFlowRun {
+  id: string;
+  flowId: string;
+  flowKey: string;
+  flowVersion: number;
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  trigger: 'manual' | 'agent' | 'api' | 'schedule';
+  sessionId?: string;
+  sessionKey?: string;
+  inputs?: Record<string, unknown>;   // non-secret inputs only
+  stepResults?: BrowserFlowStepResult[];
+  outputs?: Record<string, unknown>;  // the declared shape, or the raw captures when none is declared
+  captures?: Record<string, unknown>; // raw captureAs values
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+  errorMessage?: string;
+  failedStepIndex?: number;
+  // plus tenantId, projectId, createdBy, createdAt, updatedAt
 }
 ```
 

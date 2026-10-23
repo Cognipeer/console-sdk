@@ -4386,6 +4386,14 @@ export type BrowserSessionEventType =
   | 'press'
   | 'wait'
   | 'scroll'
+  | 'select'
+  | 'check'
+  | 'upload'
+  | 'drag'
+  | 'back'
+  | 'forward'
+  | 'reload'
+  | 'tab'
   | 'extract'
   | 'snapshot'
   | 'screenshot'
@@ -4404,9 +4412,33 @@ export interface BrowserSessionConfig {
   viewport?: { width: number; height: number };
   userAgent?: string;
   locale?: string;
+  /** IANA zone, e.g. `Europe/Istanbul`. Pages that render dates read this. */
+  timezoneId?: string;
   maxLifetimeMs?: number;
   idleTimeoutMs?: number;
+  /** Default per-action timeout in ms (1 to 120000). */
+  actionTimeoutMs?: number;
+  /** Default navigation (`goto`) timeout in ms (1 to 300000). */
+  navigationTimeoutMs?: number;
   access?: BrowserAccessRules;
+  /** Route the session's traffic through an egress proxy. */
+  proxy?: { server: string; username?: string; password?: string; bypass?: string };
+  /** Sent on every request, e.g. an API key for an internal app or a tracing header. */
+  extraHTTPHeaders?: Record<string, string>;
+  /** HTTP basic auth, for internal tools that still sit behind it. */
+  httpCredentials?: { username: string; password: string };
+  /** Off by default: an automated browser that accepts files is an ingest path. */
+  acceptDownloads?: boolean;
+  /** DANGER: disables TLS verification. Only for a known-broken internal certificate chain. */
+  ignoreHTTPSErrors?: boolean;
+  /** How `alert` / `confirm` / `prompt` are answered. An unanswered dialog blocks the page. */
+  dialogPolicy?: 'accept' | 'dismiss';
+  /**
+   * Cookies + origin storage to start from (a Playwright `storageState` export).
+   * To sign every session in, attach it to the browser with `browsers.setProfile()`
+   * instead. A stored session record keeps none of this, nor `httpCredentials` or `proxy.password`.
+   */
+  storageState?: Record<string, unknown>;
 }
 
 export interface BrowserArtifactRef {
@@ -4468,52 +4500,141 @@ export interface BrowserSessionEvent {
   createdAt?: string;
 }
 
+/**
+ * How an action names the element it acts on.
+ *
+ * TWO CLASSES OF FIELD. `ref` is VOLATILE: it is a marker the browser mints
+ * for one `snapshot()` and renumbers on the next, so it addresses an element
+ * only within the turn that produced it. Everything else is DURABLE: it
+ * describes the element the way a person would ("the button labelled Sign
+ * in") and still resolves after a re-render or a deploy.
+ *
+ * A live script can use `ref`. Anything SAVED (a flow step, a fixture) must use
+ * the durable fields; `resolvedTarget` on every action result hands you exactly
+ * that for whatever the action just touched.
+ */
+export interface BrowserTarget {
+  /** Volatile aria marker from the most recent snapshot. Never save this: a flow step carrying one is rejected. */
+  ref?: string;
+  /** ARIA role, paired with `name`. */
+  role?: string;
+  /** Accessible name. Exact unless `nameContains` is set. */
+  name?: string;
+  /** Match `name` as a substring rather than in full. */
+  nameContains?: boolean;
+  /** `data-testid` value: the most durable target when the app provides one. */
+  testId?: string;
+  /** Text of the associated `<label>`. */
+  label?: string;
+  /** Input placeholder text. */
+  placeholder?: string;
+  /** Visible text content. */
+  text?: string;
+  /** CSS selector. Last resort: it breaks on markup changes. */
+  selector?: string;
+  /** Disambiguates when the chosen strategy matches several elements. */
+  nth?: number;
+  /** CSS selector of an iframe to resolve inside (outermost first when an array). */
+  frame?: string | string[];
+}
+
+/** Which strategy resolved a target, reported on action results. */
+export type BrowserTargetStrategy =
+  | 'ref'
+  | 'testId'
+  | 'role'
+  | 'label'
+  | 'placeholder'
+  | 'text'
+  | 'selector';
+
 export interface BrowserActionGoto {
   type: 'goto';
   url: string;
   waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
   timeout?: number;
 }
-export interface BrowserActionClick {
+export interface BrowserActionClick extends BrowserTarget {
   type: 'click';
-  ref?: string;
-  selector?: string;
   button?: 'left' | 'right' | 'middle';
+  clickCount?: 1 | 2;
   timeout?: number;
 }
-export interface BrowserActionHover {
+export interface BrowserActionHover extends BrowserTarget {
   type: 'hover';
-  ref?: string;
-  selector?: string;
   timeout?: number;
 }
-export interface BrowserActionType {
+export interface BrowserActionType extends BrowserTarget {
   type: 'type';
-  ref?: string;
-  selector?: string;
+  /** The text to type. On this action `text` is the value, not a locator. */
   text: string;
   delay?: number;
   clear?: boolean;
+  /** Press Enter after typing. */
+  submit?: boolean;
+  timeout?: number;
 }
-export interface BrowserActionPress {
+export interface BrowserActionPress extends BrowserTarget {
   type: 'press';
-  ref?: string;
-  selector?: string;
   key: string;
+  timeout?: number;
 }
+export interface BrowserActionSelect extends BrowserTarget {
+  type: 'select';
+  /** Option values to select. Give `values` or `labels`. */
+  values?: string[];
+  /** Option labels to select. */
+  labels?: string[];
+  timeout?: number;
+}
+export interface BrowserActionCheck extends BrowserTarget {
+  type: 'check';
+  /** `false` unchecks. Idempotent either way, unlike a click. Defaults to checking. */
+  checked?: boolean;
+  timeout?: number;
+}
+export interface BrowserActionUpload extends BrowserTarget {
+  type: 'upload';
+  /** Files-service ids to feed into the file input (1 to 10), not filesystem paths. */
+  fileIds: string[];
+  timeout?: number;
+}
+export interface BrowserActionDrag {
+  type: 'drag';
+  from: BrowserTarget;
+  to: BrowserTarget;
+  timeout?: number;
+}
+export interface BrowserActionHistory {
+  type: 'back' | 'forward' | 'reload';
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+  timeout?: number;
+}
+/** Give at least one of `ms`, `selector`, `text` or `loadState`. */
 export interface BrowserActionWait {
   type: 'wait';
   ms?: number;
-  ref?: string;
   selector?: string;
+  /** Wait until this text appears anywhere on the page. */
+  text?: string;
   state?: 'attached' | 'detached' | 'visible' | 'hidden';
+  /** Wait for a navigation / network state instead of an element. */
+  loadState?: 'load' | 'domcontentloaded' | 'networkidle';
+  timeout?: number;
 }
-export interface BrowserActionScroll {
+export interface BrowserActionScroll extends BrowserTarget {
   type: 'scroll';
-  ref?: string;
-  selector?: string;
   x?: number;
   y?: number;
+  timeout?: number;
+}
+export interface BrowserActionTab {
+  type: 'tab';
+  op: 'list' | 'new' | 'switch' | 'close';
+  /** Index into the session's tab list. Required for `switch` and `close`. */
+  index?: number;
+  /** Initial URL, for `new`. */
+  url?: string;
 }
 export type BrowserAction =
   | BrowserActionGoto
@@ -4521,30 +4642,64 @@ export type BrowserAction =
   | BrowserActionHover
   | BrowserActionType
   | BrowserActionPress
+  | BrowserActionSelect
+  | BrowserActionCheck
+  | BrowserActionUpload
+  | BrowserActionDrag
+  | BrowserActionHistory
   | BrowserActionWait
-  | BrowserActionScroll;
+  | BrowserActionScroll
+  | BrowserActionTab;
 
 export interface BrowserActionResult {
   ok: boolean;
   url?: string;
   pageTitle?: string;
   ariaSnapshot?: string;
+  /**
+   * DURABLE description of the element the action actually hit. Save this, not
+   * the `ref` you passed in. Present whenever a target resolved.
+   */
+  resolvedTarget?: BrowserTarget;
+  /** Which strategy resolved the target, for debugging a drifted selector. */
+  targetStrategy?: BrowserTargetStrategy;
+  /** Open tabs after the action, when it touched the tab set. */
+  tabs?: Array<{ index: number; url: string; title?: string; active: boolean }>;
   artifact?: BrowserArtifactRef;
   errorMessage?: string;
 }
 
-export interface BrowserExtractInput {
-  ref?: string;
-  selector?: string;
-  mode?: 'text' | 'html' | 'attr';
+export interface BrowserExtractInput extends BrowserTarget {
+  /** `text` is `innerText`, `html` the markup, `attr` needs `attribute`, `value` reads a form field. */
+  mode?: 'text' | 'html' | 'attr' | 'value';
+  /** Required when `mode` is `attr`. */
   attribute?: string;
+  /** Read every match instead of the first. */
   multiple?: boolean;
 }
 
 export interface BrowserExtractResult {
   ok: boolean;
   values: string[];
+  /** Durable form of the element that was read. */
+  resolvedTarget?: BrowserTarget;
   errorMessage?: string;
+}
+
+/** Result of `browserSessions.find()`. A failed search is `ok: false` with `errorMessage`, not an HTTP error. */
+export interface BrowserFindResult {
+  ok: boolean;
+  /** One entry per hit: a snippet of its text and a durable target that selects it. */
+  matches: Array<{ text: string; target: BrowserTarget }>;
+  errorMessage?: string;
+}
+
+/** Result of `browserSessions.diagnostics()`: what the page itself reported. */
+export interface BrowserObservations {
+  console: Array<{ type: string; text: string; at: string }>;
+  networkFailures: Array<{ url: string; method?: string; failure?: string; at: string }>;
+  /** The last `alert` / `confirm` / `prompt` and how `dialogPolicy` answered it. */
+  lastDialog?: { type: string; message: string; action: string; at: string };
 }
 
 export interface BrowserSnapshotResult {
@@ -4557,10 +4712,9 @@ export interface BrowserArtifactResult {
   eventId: string;
 }
 
-export interface BrowserScreenshotInput {
+/** Name an element (any `BrowserTarget` field) to capture just that element instead of the viewport. */
+export interface BrowserScreenshotInput extends BrowserTarget {
   fullPage?: boolean;
-  ref?: string;
-  selector?: string;
   type?: 'png' | 'jpeg';
   quality?: number;
   /** Also return the image in the response as a base64 content block. */
@@ -4615,12 +4769,30 @@ export interface Browser {
   status: BrowserStatus;
   artifactBucketKey?: string;
   defaultSessionConfig?: BrowserSessionConfig;
+  /**
+   * Non-secret description of the attached signed-in profile (`null` once it is
+   * cleared). The profile itself (cookies + origin storage) is encrypted on the
+   * server and never returned: attach one with `browsers.setProfile()`.
+   */
+  storageStateMeta?: BrowserProfileSummary | null;
   defaultModelKey?: string;
   defaultRunOptions?: { maxSteps?: number; temperature?: number; runtimeProfile?: string };
   metadata?: Record<string, unknown>;
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** What `browsers.setProfile()` returns, and what `Browser.storageStateMeta` holds: a description, never the cookies. */
+export interface BrowserProfileSummary {
+  uploadedAt: string;
+  uploadedBy?: string;
+  cookieCount: number;
+  /** Cookie domains and storage origins the profile covers. */
+  origins: string[];
+  /** Earliest cookie expiry (session cookies are ignored). Warn before a profile goes stale. */
+  earliestExpiry?: string;
+  sourceFileName?: string;
 }
 
 export interface BrowserCreateInput {
@@ -4654,6 +4826,210 @@ export interface BrowserCreateSessionInput {
   artifactBucketKey?: string;
   config?: BrowserSessionConfig;
   metadata?: Record<string, unknown>;
+}
+
+// ── Browser flows (record once, replay without a model) ─────────────
+
+export type BrowserFlowStatus = 'draft' | 'active' | 'disabled';
+export type BrowserFlowRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type BrowserFlowTrigger = 'manual' | 'agent' | 'api' | 'schedule';
+
+/** Session settings a flow can override. A flow never carries cookies: sign-in comes from the browser's profile. */
+export type BrowserFlowSessionConfig = Omit<BrowserSessionConfig, 'storageState'>;
+
+/** A declared parameter of a flow, bound at run time into `{{input.name}}`. */
+export interface BrowserFlowInput {
+  /** An identifier (letters, digits, underscore; not starting with a digit), up to 64 characters. */
+  name: string;
+  label?: string;
+  type: 'string' | 'number' | 'boolean' | 'secret';
+  required?: boolean;
+  /** Applied when a run supplies nothing. Never set for `secret`: the API rejects it, a default would be a credential in the flow. */
+  default?: string | number | boolean;
+  description?: string;
+}
+
+/**
+ * One field of the JSON a run returns.
+ *
+ * A flow that declares none returns whatever `captureAs` collected, a shape that
+ * changes when someone renames a capture. Declaring outputs makes the return
+ * value a contract that survives the steps being rewritten underneath it.
+ */
+export interface BrowserFlowOutput {
+  /** Key in the returned JSON (an identifier). */
+  name: string;
+  /**
+   * Template over captures and inputs, e.g. `{{step.total}}` or
+   * `{{input.reference}}: {{step.total}}`. A lone placeholder passes the captured
+   * value through untouched, so an `extract` with `multiple` stays an array.
+   */
+  source: string;
+  /** Cast applied to the value. Left off, the value is returned as captured. A cast that fails leaves the field out. */
+  type?: 'string' | 'number' | 'boolean' | 'json';
+  /** A run that cannot resolve this field fails, even when every step passed. */
+  required?: boolean;
+  description?: string;
+}
+
+export interface BrowserFlowStepPolicy {
+  /** Attempts beyond the first (0 to 10). Default 0. */
+  retries?: number;
+  /** Delay before the first retry in ms (default 500). It doubles on each further attempt. */
+  retryDelayMs?: number;
+  /** Per-step timeout in ms. Falls back to the session's action timeout. */
+  timeoutMs?: number;
+  /** A failing optional step is recorded and skipped instead of aborting the run. */
+  optional?: boolean;
+}
+
+export interface BrowserFlowStep {
+  /** Stable id, so a run's step results stay attributable after steps are reordered. */
+  id: string;
+  /** Operator-facing label. Generated from the action when omitted. */
+  label?: string;
+  /**
+   * What the step does: a `BrowserAction` payload, or `{ type: 'extract', ... }`
+   * (a `BrowserExtractInput`) to read the page. Text fields may use
+   * `{{input.name}}` and `{{step.name}}` placeholders. It must not carry a
+   * volatile `ref`: the API rejects the step when it is saved.
+   */
+  action: Record<string, unknown>;
+  /**
+   * Store this step's result under a name, for later `{{step.name}}` use and for
+   * `outputs`: the extracted value for an `extract` step (a string for one match,
+   * an array otherwise), the page URL after any other action.
+   */
+  captureAs?: string;
+  policy?: BrowserFlowStepPolicy;
+  /** Skip the step unless this renders truthy, e.g. `{{input.coupon}}`. Empty, `false`, `0` and `undefined` skip it. */
+  when?: string;
+}
+
+export interface BrowserFlow {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  key: string;
+  name: string;
+  description?: string;
+  status: BrowserFlowStatus;
+  /** Id of the browser the flow runs under. */
+  browserId: string;
+  inputs?: BrowserFlowInput[];
+  /** Declared shape of the JSON a run returns. Empty means "the raw captures". */
+  outputs?: BrowserFlowOutput[];
+  steps: BrowserFlowStep[];
+  sessionConfig?: BrowserFlowSessionConfig;
+  /** Session this flow was recorded from, for provenance. */
+  recordedFromSessionId?: string;
+  /** Bumped when `steps` or `outputs` change; a run pins the version it executed. */
+  version: number;
+  /** Rollup of the most recent run, for list views. */
+  lastRun?: { runId: string; status: BrowserFlowRunStatus; startedAt: string; durationMs?: number };
+  metadata?: Record<string, unknown>;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BrowserFlowStepResult {
+  stepId: string;
+  index: number;
+  /** `skipped` is a step whose `when` was falsy, or an `optional` step that failed. */
+  status: 'succeeded' | 'failed' | 'skipped';
+  attempts: number;
+  durationMs?: number;
+  url?: string;
+  /** The step's action as stored: placeholders unresolved, a literal `text` replaced by `[literal:N chars]`. */
+  action?: Record<string, unknown>;
+  /** Whatever `captureAs` collected. */
+  captured?: unknown;
+  /** Screenshot of the page the step gave up on. */
+  artifact?: BrowserArtifactRef;
+  errorMessage?: string;
+}
+
+export interface BrowserFlowRun {
+  id: string;
+  tenantId: string;
+  projectId?: string;
+  flowId: string;
+  flowKey: string;
+  /** Flow version this run executed. The steps may have changed since. */
+  flowVersion: number;
+  status: BrowserFlowRunStatus;
+  trigger: BrowserFlowTrigger;
+  /** The session the run drove. Its event log is the fine-grained record. */
+  sessionId?: string;
+  sessionKey?: string;
+  /** Non-secret inputs only: `secret` parameters are never persisted. */
+  inputs?: Record<string, unknown>;
+  stepResults?: BrowserFlowStepResult[];
+  /** The run's return value, in the shape `flow.outputs` declares (the raw `captures` when none is declared). */
+  outputs?: Record<string, unknown>;
+  /** Raw values collected by `captureAs`, keyed by name: the debugging view of `outputs`. */
+  captures?: Record<string, unknown>;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+  errorMessage?: string;
+  /** Index of the step that aborted the run. */
+  failedStepIndex?: number;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BrowserFlowCreateInput {
+  /** Lowercase kebab-case. Generated from `name` when omitted, and suffixed (`-2`, `-3`) when taken. */
+  key?: string;
+  name: string;
+  description?: string;
+  /** Defaults to `draft`. */
+  status?: BrowserFlowStatus;
+  /** The browser the flow runs under: its id or key. */
+  browserId: string;
+  inputs?: BrowserFlowInput[];
+  outputs?: BrowserFlowOutput[];
+  /** Defaults to none. `id` and `label` are generated for a step that omits them. */
+  steps?: Array<Partial<BrowserFlowStep> & { action: Record<string, unknown> }>;
+  sessionConfig?: BrowserFlowSessionConfig;
+  /** Session this flow was recorded from, for provenance. */
+  recordedFromSessionId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Any create field except `key` and `recordedFromSessionId` (an update accepts
+ * but ignores both). `steps`, `inputs` and `outputs` replace the stored list
+ * wholesale, and changing `steps` or `outputs` bumps the flow's `version`.
+ */
+export type BrowserFlowUpdateInput = Partial<Omit<BrowserFlowCreateInput, 'key' | 'recordedFromSessionId'>>;
+
+export interface BrowserFlowRecordInput {
+  /** The driven session to turn into steps: its `id`, not its `sessionKey`. */
+  sessionId: string;
+  name: string;
+  key?: string;
+  description?: string;
+  /** Defaults to `draft`, so a recording is reviewed before anything runs it. */
+  status?: 'draft' | 'active';
+  /**
+   * Event types to leave out, on top of the ones that are never recorded
+   * (`create`, `close`, `snapshot`, `screenshot`, `pdf`, `tool_call`, `agent_event`, `error`).
+   */
+  excludeTypes?: string[];
+}
+
+export interface BrowserFlowRunInput {
+  /** Values for the flow's declared inputs, by name. An empty string counts as not supplied, so the input's default applies. */
+  inputs?: Record<string, string | number | boolean>;
+  /** Keep the session open when the run fails, so you can look at the page it stopped on. */
+  keepSessionOpen?: boolean;
+  /** Stop after this many steps (1 to 500), for dry-running a long flow. */
+  maxSteps?: number;
 }
 
 // ============================================================================

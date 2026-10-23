@@ -136,6 +136,14 @@ Browser session API resource — create Playwright-backed sessions, execute disc
 
 See [Browser API](/api/browser) for details.
 
+### `client.browserFlows`
+
+Browser flows API resource — record a browser task once, then replay it without a model in the loop.
+
+**Type:** `BrowserFlowsResource`
+
+See [Browser API](/api/browser#browser-flows) for details.
+
 ### `client.tools`
 
 Unified tools API resource — list, retrieve, execute tools and convert them to Agent SDK-compatible objects.
@@ -338,10 +346,11 @@ interface VectorIndex {
 
 ### Browser Resources
 
-The browser surface is split into three SDK resources:
+The browser surface is split into four SDK resources:
 
-- `client.browsers` for browser profiles.
+- `client.browsers` for browser profiles, including their signed-in profile.
 - `client.browserSessions` for direct browser automation.
+- `client.browserFlows` for tasks you record once and replay without a model.
 - `client.mcp.server(serverKey)` for a browser published as a Browser MCP server in the Console's MCP module.
 
 The old standalone `client.browserAgents` surface has been removed. If you want a Console-managed agent to browse the web, attach the `Browser Use` system tool inside Console and invoke that agent through `client.agents`.

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ConsoleClient } from './client';
+import { BrowserFlowsResource } from './resources/browser';
 import { ChatResource } from './resources/chat';
 import { EmbeddingsResource } from './resources/embeddings';
 import { SandboxResource } from './resources/sandbox';
@@ -67,6 +68,7 @@ describe('ConsoleClient', () => {
     expect(client.embeddings).toBeInstanceOf(EmbeddingsResource);
     expect(client.sandbox).toBeInstanceOf(SandboxResource);
     expect(client.realtime).toBeInstanceOf(RealtimeResource);
+    expect(client.browserFlows).toBeInstanceOf(BrowserFlowsResource);
 
     // Spot-check the remaining resources are all constructed (non-null objects).
     const resourceKeys = [
@@ -86,6 +88,7 @@ describe('ConsoleClient', () => {
       'agents',
       'browserSessions',
       'browsers',
+      'browserFlows',
       'audio',
       'ocr',
       'automations',
