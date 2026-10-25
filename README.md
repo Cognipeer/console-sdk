@@ -9,7 +9,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Cognipeer/console-sdk?style=social)](https://github.com/Cognipeer/console-sdk)
 [![Docs](https://img.shields.io/badge/docs-docs.cognipeer.com-0A7CFF)](https://docs.cognipeer.com/console-sdk/)
 
-[Docs](https://docs.cognipeer.com/console-sdk/) · [Quick start](#quick-start) · [Examples](./examples) · [Changelog](./CHANGELOG.md)
+[Docs](https://docs.cognipeer.com/console-sdk/) · [Quick start](#quick-start) · [Examples](./examples) · [Changelog](./CHANGELOG.md) · [Contact](mailto:developer@cognipeer.com)
 
 ## Features
 
@@ -773,6 +773,8 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 | [cognipeer-observability](https://github.com/Cognipeer/cognipeer-observability) | Drop-in agent tracing for LangChain, LangGraph, OpenAI Agents and OpenTelemetry |
 
 If this project is useful to you, a ⭐ on GitHub helps other developers find it.
+
+Questions or enterprise support: [developer@cognipeer.com](mailto:developer@cognipeer.com).
 
 ## License
 
