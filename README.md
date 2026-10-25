@@ -1,10 +1,15 @@
 # Cognipeer Console SDK
 
-Official TypeScript/JavaScript SDK for [Cognipeer Console](https://cognipeer.com) - A multi-tenant SaaS platform for AI and Agentic services.
+**Official TypeScript/JavaScript SDK for [Cognipeer Console](https://github.com/Cognipeer/console): call chat, agents, embeddings, vectors, RAG, MCP, guardrails and tracing through one typed client.**
 
 [![npm version](https://img.shields.io/npm/v/@cognipeer/console-sdk)](https://www.npmjs.com/package/@cognipeer/console-sdk)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm downloads](https://img.shields.io/npm/dm/@cognipeer/console-sdk)](https://www.npmjs.com/package/@cognipeer/console-sdk)
+[![License](https://img.shields.io/github/license/Cognipeer/console-sdk)](https://github.com/Cognipeer/console-sdk/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/Cognipeer/console-sdk?style=social)](https://github.com/Cognipeer/console-sdk)
+[![Docs](https://img.shields.io/badge/docs-docs.cognipeer.com-0A7CFF)](https://docs.cognipeer.com/console-sdk/)
+
+[Docs](https://docs.cognipeer.com/console-sdk/) · [Quick start](#quick-start) · [Examples](./examples) · [Changelog](./CHANGELOG.md)
 
 ## Features
 
@@ -754,6 +759,20 @@ Check out the [examples](./examples) directory for more detailed usage:
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+## Cognipeer open-source projects
+
+| Project | What it does |
+| --- | --- |
+| [Cognipeer Console](https://github.com/Cognipeer/console) | Self-hosted AI gateway and control plane: OpenAI-compatible routing, RAG, MCP hub, guardrails and agent tracing |
+| [agent-sdk](https://github.com/Cognipeer/agent-sdk) | Lightweight, message-first agent runtime |
+| [agent-server](https://github.com/Cognipeer/agent-server) | Ready-made REST API layer for AI agents |
+| [chat-ui](https://github.com/Cognipeer/chat-ui) | React chat UI components for AI agents |
+| [to-markdown](https://github.com/Cognipeer/to-markdown) | Convert PDF, Office, HTML and more to Markdown for LLM pipelines |
+| [graph-builder](https://github.com/Cognipeer/graph-builder) | Turn text sources into a queryable graph |
+| [cognipeer-observability](https://github.com/Cognipeer/cognipeer-observability) | Drop-in agent tracing for LangChain, LangGraph, OpenAI Agents and OpenTelemetry |
+
+If this project is useful to you, a ⭐ on GitHub helps other developers find it.
 
 ## License
 
