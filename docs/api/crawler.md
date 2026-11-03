@@ -107,6 +107,8 @@ interface CrawlResult {
   bodyMarkdown?: string;   // page content as markdown
   errorMessage?: string;
   metadata?: Record<string, unknown>;
+  engine?: 'axios' | 'playwright'; // engine that produced the content (not set on errors)
+  fetchMs?: number;        // fetch time in ms, retries and browser fallback included
   fetchedAt?: string;
 }
 

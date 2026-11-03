@@ -5273,6 +5273,10 @@ export interface CrawlResult {
   text?: string;
   errorMessage?: string;
   metadata?: Record<string, unknown>;
+  /** Engine that produced the content; absent on error results and older rows. */
+  engine?: 'axios' | 'playwright';
+  /** Milliseconds the fetch took (retries and browser fallback included, markdown conversion excluded). */
+  fetchMs?: number;
   fetchedAt?: string;
 }
 
