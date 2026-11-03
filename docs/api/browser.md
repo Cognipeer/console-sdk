@@ -75,7 +75,7 @@ Browser sessions are the direct automation surface. You create a session under a
 ```ts
 const session = await client.browserSessions.create({
   browserId: browser.id,
-  name: 'akbank-research',
+  name: 'example-research',
 });
 ```
 
@@ -116,7 +116,7 @@ A failed action is still an HTTP `200`: check `result.ok` and read `result.error
 ```ts
 await client.browserSessions.action(session.sessionKey, {
   type: 'goto',
-  url: 'https://www.akbank.com',
+  url: 'https://www.example.com',
   waitUntil: 'networkidle',
 });
 
